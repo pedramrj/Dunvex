@@ -82,8 +82,11 @@ func TestSlipstreamLinkAndArgs(t *testing.T) {
 	if len(f) != 84 || f[1] != "ss" || f[11] != "" || f[7] != "dcubic" || f[12] != "ali" || f[13] != "pw" {
 		t.Fatalf("Slipstream link: %q", f[:14])
 	}
-	args := strings.Join(SlipstreamArgs(in, "127.0.0.1", 41000, "127.0.0.1:42000", "/run/c.pem", "/run/k.pem"), " ")
-	for _, w := range []string{"--dns-listen-address=127.0.0.1", "--dns-listen-port=41000", "--target-address=127.0.0.1:42000", "--domain=s.example.com", "--cert=/run/c.pem", "--key=/run/k.pem"} {
+	args := strings.Join(SlipstreamArgs(in, 41000, "127.0.0.1:42000", "/run/c.pem", "/run/k.pem"), " ")
+	if strings.Contains(args, "--dns-listen-address") {
+		t.Error("Slipstream v0.1.1 refuses --dns-listen-address")
+	}
+	for _, w := range []string{"--dns-listen-port=41000", "--target-address=127.0.0.1:42000", "--domain=s.example.com", "--cert=/run/c.pem", "--key=/run/k.pem"} {
 		if !strings.Contains(args, w) {
 			t.Errorf("args lack %s: %s", w, args)
 		}

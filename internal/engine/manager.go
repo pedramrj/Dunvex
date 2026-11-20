@@ -456,9 +456,9 @@ func (m *Manager) build() (b built, err error) {
 					b.errs[in.ID] = "Slipstream's certificate: " + e.Error()
 					continue
 				}
-				host, port, _ := net.SplitHostPort(back)
+				_, port, _ := net.SplitHostPort(back)
 				n, _ := strconv.Atoi(port)
-				b.slip = []byte(strings.Join(protocol.SlipstreamArgs(in, host, n, "127.0.0.1:"+strconv.Itoa(socks), cert, key), "\n") + "\n")
+				b.slip = []byte(strings.Join(protocol.SlipstreamArgs(in, n, "127.0.0.1:"+strconv.Itoa(socks), cert, key), "\n") + "\n")
 				b.slipIn = in.ID
 			}
 			xin = append(xin, protocol.TunnelSocks(in, us, socks))

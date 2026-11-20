@@ -67,12 +67,13 @@ func TunnelSocks(in *store.Inbound, users []*store.User, port int) map[string]an
 		"sniffing": obj{"enabled": true, "destOverride": []string{"http", "tls"}, "routeOnly": true}}
 }
 
-// SlipstreamArgs is the Slipstream server's command line: DNS on listen
-// (loopback, behind the shared port), streams to the SOCKS inbound at target,
-// QUIC with the certificate in cert and key.
-func SlipstreamArgs(in *store.Inbound, listenHost string, listenPort int, target, cert, key string) []string {
+// SlipstreamArgs is the Slipstream server's command line: DNS on listenPort
+// (behind the shared port), streams to the SOCKS inbound at target, QUIC with
+// the certificate in cert and key. Only flags v0.1.1 knows (it refuses any
+// other): it has no --dns-listen-address yet, so it listens on every address
+// of that port.
+func SlipstreamArgs(in *store.Inbound, listenPort int, target, cert, key string) []string {
 	return []string{
-		"--dns-listen-address=" + listenHost,
 		"--dns-listen-port=" + strconv.Itoa(listenPort),
 		"--target-address=" + target,
 		"--domain=" + XDNSDomain(in),

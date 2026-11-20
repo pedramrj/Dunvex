@@ -63,6 +63,9 @@ Routing rules (WARP, blocked sites…) apply to both, as to every Xray protocol.
   could be read. dnstt checks the server's key.
 - Slipstream's builds need glibc and OpenSSL 3 (Ubuntu 22.04+, Debian 12+); the download is checked against its
   SHA-256, pinned in Dunvex.
+- Slipstream v0.1.1 cannot be told which address to listen on, so besides port 53 (through the splitter) it also
+  answers on its internal port (40000 and up) on every address. That port only serves the same tunnel; close
+  40000–65000 UDP in a firewall if you want it hidden.
 
 ## Tested
 
@@ -71,5 +74,7 @@ Routing rules (WARP, blocked sites…) apply to both, as to every Xray protocol.
   for the user and the protocol. A client with another public key gets no session.
 - XDNS behind the splitter, next to dnstt on the same port, with a real Xray client.
 - The `slipnet://` link has the 84 fields of SlipNet's format v30, in SlipNet's own order.
-- Slipstream: its command line, certificate and SOCKS inbound are built and checked; it has **not** yet been run
-  with real traffic.
+- Slipstream: the official server v0.1.1 under Dunvex, behind the splitter next to dnstt, with the official client
+  set up from the panel's SlipNet link, on Linux with real Xray: through the user's SOCKS sign-in to the internet,
+  a wrong password refused, every DNS query answered and the usage counted for the user (2 MB at about 2.8 MB/s
+  straight to the server; through public resolvers it is much slower).

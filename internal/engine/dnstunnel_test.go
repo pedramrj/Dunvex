@@ -88,13 +88,13 @@ func TestDNSTunnelsBuild(t *testing.T) {
 		t.Errorf("dnstt plan: %+v", plan)
 	}
 	args := string(b.slip)
-	host, back, _ := net.SplitHostPort(port.zones["s.example.com"])
-	for _, w := range []string{"--domain=s.example.com", "--target-address=" + socks(ss), "--dns-listen-address=" + host, "--dns-listen-port=" + back} {
+	_, back, _ := net.SplitHostPort(port.zones["s.example.com"])
+	for _, w := range []string{"--domain=s.example.com", "--target-address=" + socks(ss), "--dns-listen-port=" + back} {
 		if !strings.Contains(args, w+"\n") {
 			t.Errorf("Slipstream args lack %s:\n%s", w, args)
 		}
 	}
-	if a := slipArgs(writeTemp(t, args)); len(a) != 6 || b.slipIn != ss.ID {
+	if a := slipArgs(writeTemp(t, args)); len(a) != 5 || b.slipIn != ss.ID {
 		t.Errorf("Slipstream args read back: %q", a)
 	}
 	for _, f := range []string{"self.crt", "self.key"} {
