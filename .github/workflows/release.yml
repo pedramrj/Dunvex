@@ -23,7 +23,7 @@ jobs:
       - name: Build
         env:
           VERSION: ${{ github.event.inputs.tag || github.ref_name }}
-        run: scripts/build-release.sh
+        run: bash scripts/build-release.sh
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
