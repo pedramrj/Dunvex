@@ -69,6 +69,7 @@ export const statusMeta: Record<Status, { color: string; key: Key }> = {
   limited: { color: "var(--color-warn)", key: "limited" },
   expired: { color: "var(--color-bad)", key: "expired" },
   disabled: { color: "var(--color-ink3)", key: "disabled" },
+  paused: { color: "var(--color-violet)", key: "paused" },
 };
 
 export function copyText(text: string): Promise<void> {

@@ -50,10 +50,10 @@ func Obtain(certDir, domain, email string) (certPath, keyPath string, err error)
 	}()
 
 	hello := &tls.ClientHelloInfo{
-		ServerName:       domain,
-		SignatureSchemes: []tls.SignatureScheme{tls.ECDSAWithP256AndSHA256},
-		SupportedCurves:  []tls.CurveID{tls.CurveP256},
-		CipherSuites:     []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
+		ServerName:        domain,
+		SignatureSchemes:  []tls.SignatureScheme{tls.ECDSAWithP256AndSHA256},
+		SupportedCurves:   []tls.CurveID{tls.CurveP256},
+		CipherSuites:      []uint16{tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256},
 		SupportedVersions: []uint16{tls.VersionTLS13, tls.VersionTLS12},
 	}
 	done := make(chan struct{})

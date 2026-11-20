@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------- type
-   One family name, two scripts: Vazirmatn carries Persian, Fira Sans (a
-   transit-signage humanist) carries Latin and figures. Both SIL OFL 1.1. */
+   "Dunvex Sans": Vazirmatn for Persian, Fira Sans for Latin and figures.
+   "Dunvex Mono": Fira Code for ports, addresses, keys and versions.
+   All SIL OFL 1.1, self-hosted. */
 @font-face {
   font-family: "Dunvex Sans";
   src: url("./fonts/Vazirmatn-Variable.woff2") format("woff2");
@@ -38,28 +39,49 @@
   font-display: swap;
   unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF, U+20AC, U+2212;
 }
+@font-face {
+  font-family: "Dunvex Mono";
+  src: url("./fonts/FiraCode-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Dunvex Mono";
+  src: url("./fonts/FiraCode-500.woff2") format("woff2");
+  font-weight: 500 700;
+  font-display: swap;
+}
 
-/* ---------------------------------------------------------------- world tokens
-   Night metro map: midnight enamel, porcelain signage, four line inks. */
+/* ---------------------------------------------------------------- tokens
+   Night interchange: a deep midnight ground lit by the four line inks. */
 @theme {
   --font-sans: "Dunvex Sans", system-ui, sans-serif;
-  --color-ground: #0a1224;
-  --color-rail: #0c1630;
-  --color-panel: #101b36;
-  --color-panel2: #152443;
-  --color-hair: #223154;
-  --color-hair2: #2c3d64;
-  --color-ink: #eef1f6;
-  --color-ink2: #aab6cf;
-  --color-ink3: #8593b2;
+  --font-mono: "Dunvex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-ground: #060a15;
+  --color-rail: #0a1022;
+  --color-panel: #0e162c;
+  --color-panel2: #141f3b;
+  --color-panel3: #1a2848;
+  --color-hair: #1c2747;
+  --color-hair2: #283658;
+  --color-ink: #f1f4fa;
+  --color-ink2: #a9b5cf;
+  --color-ink3: #7d8bab;
+
   --color-reality: #f0474f;
   --color-cdn: #4c8dff;
   --color-udp: #f2a93b;
   --color-classic: #34b37a;
+  --color-violet: #9b7bff;
+  --color-cyan: #38c8e8;
+
   --color-online: #3ddc97;
   --color-warn: #f2a93b;
   --color-bad: #ff5d73;
+
   --radius-pill: 999px;
+  --shadow-card: 0 1px 0 0 rgba(255, 255, 255, 0.045) inset, 0 24px 60px -36px rgba(0, 0, 0, 0.9);
 }
 
 :root {
@@ -90,8 +112,14 @@ body {
   font-feature-settings: "tnum" 1;
   unicode-bidi: isolate;
 }
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "calt" 0;
+  unicode-bidi: isolate;
+  letter-spacing: 0;
+}
 ::selection {
-  background: rgba(76, 141, 255, 0.35);
+  background: rgba(76, 141, 255, 0.4);
   color: #fff;
 }
 * {
@@ -110,18 +138,107 @@ body {
 input,
 textarea,
 select {
-  caret-color: var(--color-ink);
+  caret-color: var(--color-cdn);
 }
 :focus-visible {
-  outline: 2px solid var(--color-ink);
+  outline: 2px solid var(--color-cdn);
   outline-offset: 2px;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 a {
   text-underline-offset: 3px;
 }
+button,
+[role="button"],
+a,
+label[for],
+summary {
+  cursor: pointer;
+}
 
-/* line flow along the network map */
+/* ---------------------------------------------------------------- the night sky
+   Soft light from the four lines behind every page, plus a faint map grid. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 36rem at 12% -8%, rgba(47, 140, 255, 0.18), transparent 60%),
+    radial-gradient(44rem 30rem at 92% 4%, rgba(53, 184, 255, 0.1), transparent 62%),
+    radial-gradient(40rem 30rem at 78% 108%, rgba(240, 71, 79, 0.08), transparent 60%),
+    radial-gradient(36rem 26rem at 4% 96%, rgba(52, 179, 122, 0.07), transparent 60%);
+}
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(140, 165, 220, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 165, 220, 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
+}
+
+/* glass surface used by cards, sheets and bars */
+.glass {
+  background: linear-gradient(180deg, rgba(22, 33, 64, 0.78), rgba(12, 19, 38, 0.82));
+  border: 1px solid rgba(140, 165, 220, 0.12);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+.glass-strong {
+  background: linear-gradient(180deg, rgba(20, 31, 60, 0.94), rgba(11, 17, 34, 0.96));
+  border: 1px solid rgba(140, 165, 220, 0.14);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+/* a thin light along the top edge of a card */
+.edge {
+  position: relative;
+}
+.edge::before {
+  content: "";
+  position: absolute;
+  inset-inline: 18px;
+  top: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(160, 190, 255, 0.45), transparent);
+  pointer-events: none;
+}
+/* electric azure, the glow inside the logo */
+.brand-gradient {
+  background: linear-gradient(135deg, #1f6bff 0%, #2f8cff 50%, #35b8ff 100%);
+}
+/* brushed platinum, the metal of the logo */
+.platinum {
+  background: linear-gradient(180deg, #ffffff 0%, #d9dee7 40%, #9aa6ba 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.brand-text {
+  background: linear-gradient(135deg, #9fd0ff, #e8eef8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.glow-online {
+  box-shadow: 0 0 0 3px rgba(61, 220, 151, 0.14), 0 0 14px rgba(61, 220, 151, 0.45);
+}
+.shimmer {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------------------------------------------------------------- motion */
 @keyframes flow {
   to {
     stroke-dashoffset: -32;
@@ -131,18 +248,38 @@ a {
   stroke-dasharray: 2 14;
   animation: flow var(--flow-dur, 2s) linear infinite;
 }
-/* entrance motion starts from an already-visible state: if animations are
-   paused (background tab, low-power mode) nothing is left hidden */
+/* entrance starts visible, so nothing stays hidden if animations pause */
 @keyframes rise {
   from {
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
   to {
     transform: none;
   }
 }
 .rise {
-  animation: rise 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger > * {
+  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 40ms;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 80ms;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 120ms;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 160ms;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 200ms;
+}
+.stagger > *:nth-child(n + 7) {
+  animation-delay: 240ms;
 }
 @keyframes sheet-in {
   from {
@@ -153,7 +290,18 @@ a {
   }
 }
 .sheet {
-  animation: sheet-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: sheet-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade {
+  animation: fade-in 0.25s ease-out;
 }
 @keyframes pulse-ring {
   0% {
@@ -161,7 +309,7 @@ a {
     opacity: 0.55;
   }
   100% {
-    transform: scale(2.4);
+    transform: scale(2.6);
     opacity: 0;
   }
 }
@@ -177,7 +325,10 @@ a {
   .flow,
   .pulse::after,
   .rise,
-  .sheet {
+  .stagger > *,
+  .sheet,
+  .fade,
+  .shimmer {
     animation: none !important;
   }
 }

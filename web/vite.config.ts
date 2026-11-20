@@ -9,6 +9,6 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: { outDir: "dist", emptyOutDir: true, assetsInlineLimit: 0, chunkSizeWarningLimit: 900 },
   server: {
-    proxy: { "/panel/api": { target: "http://127.0.0.1:2096", changeOrigin: false } },
+    proxy: { "/panel/api": { target: process.env.DUNVEX_API || "http://127.0.0.1:2096", changeOrigin: false } },
   },
 });

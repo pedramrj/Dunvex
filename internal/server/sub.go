@@ -317,6 +317,18 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 		"Support": s.St.GetSetting("support_url", ""), "Announce": s.St.GetSetting("announce", ""),
 		"Days": daysText(v.DaysLeft), "Pending": v.Status == store.StatusPending,
 		"FontBase": s.SubPath() + "_font/", "RingColor": template.CSS(ringColor(pct)), "PctCSS": template.CSS(fmt.Sprintf("%.1f", pct)),
+		"Brand": s.SubPath() + "_brand/", "Paused": "", "DevLimit": "", "Bot": "",
+	}
+	if u.PausedUntil > now {
+		data["Paused"] = time.Unix(u.PausedUntil, 0).Format("15:04")
+	}
+	if u.IPLimit > 0 {
+		data["DevLimit"] = fmt.Sprint(u.IPLimit)
+	}
+	if s.Bot != nil && s.St.GetSetting("tg_user_bot", "true") == "true" {
+		if name, _ := s.Bot.Status()["username"].(string); name != "" {
+			data["Bot"] = "https://t.me/" + name + "?start=" + u.SubToken
+		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
@@ -332,7 +344,7 @@ func ringColor(pct float64) string {
 	case pct >= 75:
 		return "var(--udp)"
 	}
-	return "var(--cdn)"
+	return "var(--azure)"
 }
 
 func limitText(b int64) string {

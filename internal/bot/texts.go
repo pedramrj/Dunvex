@@ -1,0 +1,126 @@
+package bot
+
+var texts = map[string]map[string]string{
+	"fa": {
+		"hello":        "🚇 <b>Dunvex</b>\nمدیریت سرور از تلگرام. یکی را انتخاب کنید:",
+		"unknown":      "سلام! برای دیدن مصرف، لینک ربات را از صفحهٔ اشتراک خود باز کنید.\n\nشناسهٔ چت شما: <code>%d</code>\n(مدیر: این عدد را در تنظیمات › تلگرام وارد کنید.)",
+		"users":        "👥 کاربران",
+		"results":      "🔎 نتیجهٔ جستجو",
+		"refresh":      "🔄 به‌روزرسانی",
+		"b_status":     "📊 وضعیت سرور",
+		"b_users":      "👥 کاربران",
+		"b_new":        "➕ کاربر جدید",
+		"b_find":       "🔎 جستجو",
+		"b_online":     "🟢 آنلاین‌ها",
+		"b_backup":     "💾 پشتیبان",
+		"b_back":       "« بازگشت",
+		"ask_new":      "نام و مشخصات کاربر را بفرستید:\n<code>نام حجم‌GB روز دستگاه</code>\nمثال: <code>ali 50 30 2</code>\n(۰ یعنی نامحدود)",
+		"ask_find":     "نام یا بخشی از نام کاربر را بفرستید:",
+		"days":         "روز",
+		"b_disable":    "⏸ غیرفعال",
+		"b_enable":     "▶️ فعال",
+		"b_link":       "🔗 لینک و QR",
+		"b_reset":      "♻️ صفر کردن مصرف",
+		"b_delete":     "🗑 حذف",
+		"confirm_del":  "کاربر <b>%s</b> حذف شود؟ این کار برگشت ندارد.",
+		"b_yes_del":    "بله، حذف کن",
+		"deleted":      "کاربر <b>%s</b> حذف شد.",
+		"bad_name":     "نام فقط می‌تواند حرف انگلیسی، عدد و - _ . داشته باشد.",
+		"none":         "کاربری نیست",
+		"used":         "مصرف",
+		"left":         "مانده",
+		"from_first":   "از اولین اتصال",
+		"no_expiry":    "بدون تاریخ انقضا",
+		"paused_until": "به دلیل دستگاه زیاد متوقف شده تا",
+		"devices":      "دستگاه",
+		"last_seen":    "آخرین اتصال",
+		"disk":         "دیسک",
+		"uptime":       "روشن از",
+		"online":       "آنلاین",
+		"ended":        "تمام‌شده",
+		"today":        "امروز",
+		"month":        "این ماه",
+		"daily":        "گزارش روزانه",
+		"yesterday":    "مصرف دیروز",
+		"w_limited":    "حجم اشتراک شما تمام شد.",
+		"w_expired":    "مدت اشتراک شما تمام شد.",
+		"w_data":       "%d٪ حجم اشتراک شما مصرف شده است.",
+		"w_days":       "فقط %d روز از اشتراک شما مانده است.",
+		"st_active":    "فعال",
+		"st_pending":   "در انتظار اولین اتصال",
+		"st_limited":   "حجم تمام شد",
+		"st_expired":   "منقضی",
+		"st_disabled":  "غیرفعال",
+		"st_paused":    "متوقف (دستگاه زیاد)",
+	},
+	"en": {
+		"hello":        "🚇 <b>Dunvex</b>\nYour server from Telegram. Pick one:",
+		"unknown":      "Hi! To see your usage, open the bot link from your subscription page.\n\nYour chat ID: <code>%d</code>\n(Admin: put this number in Settings › Telegram.)",
+		"users":        "👥 Users",
+		"results":      "🔎 Search results",
+		"refresh":      "🔄 Refresh",
+		"b_status":     "📊 Server status",
+		"b_users":      "👥 Users",
+		"b_new":        "➕ New user",
+		"b_find":       "🔎 Find",
+		"b_online":     "🟢 Online",
+		"b_backup":     "💾 Backup",
+		"b_back":       "« Back",
+		"ask_new":      "Send the user's name and plan:\n<code>name GB days devices</code>\nExample: <code>ali 50 30 2</code>\n(0 means unlimited)",
+		"ask_find":     "Send a name or part of it:",
+		"days":         "days",
+		"b_disable":    "⏸ Disable",
+		"b_enable":     "▶️ Enable",
+		"b_link":       "🔗 Link & QR",
+		"b_reset":      "♻️ Reset usage",
+		"b_delete":     "🗑 Delete",
+		"confirm_del":  "Delete <b>%s</b>? This cannot be undone.",
+		"b_yes_del":    "Yes, delete",
+		"deleted":      "<b>%s</b> was deleted.",
+		"bad_name":     "Names may only use letters, digits and - _ .",
+		"none":         "No users",
+		"used":         "Used",
+		"left":         "Left",
+		"from_first":   "from first connection",
+		"no_expiry":    "No expiry",
+		"paused_until": "Paused for too many devices until",
+		"devices":      "Devices",
+		"last_seen":    "Last seen",
+		"disk":         "Disk",
+		"uptime":       "Up for",
+		"online":       "Online",
+		"ended":        "Ended",
+		"today":        "Today",
+		"month":        "This month",
+		"daily":        "Daily report",
+		"yesterday":    "Yesterday",
+		"w_limited":    "Your data is used up.",
+		"w_expired":    "Your subscription has ended.",
+		"w_data":       "%d%% of your data is used.",
+		"w_days":       "Only %d day(s) left on your subscription.",
+		"st_active":    "active",
+		"st_pending":   "waiting for first connection",
+		"st_limited":   "data used up",
+		"st_expired":   "expired",
+		"st_disabled":  "disabled",
+		"st_paused":    "paused (too many devices)",
+	},
+}
+
+func (b *Bot) t(key string) string {
+	b.mu.Lock()
+	lang := b.lang
+	b.mu.Unlock()
+	if m, ok := texts[lang]; ok {
+		if v, ok := m[key]; ok {
+			return v
+		}
+	}
+	return texts["en"][key]
+}
+
+func (b *Bot) language() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lang
+}

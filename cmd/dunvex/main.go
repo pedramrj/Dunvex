@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/bot"
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
@@ -206,6 +207,11 @@ func serve(home string) error {
 	for i := 0; i < 30 && sys.PublicIP() == "" && st.GetSetting("host", "") == "" && st.GetSetting("domain", "") == ""; i++ {
 		time.Sleep(200 * time.Millisecond)
 	}
+	tg := bot.New(bot.Deps{St: st, Mgr: mgr, Sys: sys, Version: Version, NewUser: srv.NewUser,
+		SubURL: func(u *store.User) string { return srv.SubURL(nil, u) }})
+	srv.Bot = tg
+	tg.Start()
+
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
@@ -361,15 +367,17 @@ func admin(home string, args []string) error {
 		pass = util.RandomString(14)
 	}
 	h, _ := server.HashPassword(pass)
+	// SSH access is the recovery path: it also turns two-step login off
 	if a, err := st.FirstAdmin(); err == nil {
-		err = st.UpdateAdmin(a.ID, args[0], h)
-		if err != nil {
+		a.Username, a.PasswordHash, a.TOTPSecret, a.Enabled = args[0], h, "", true
+		if err := st.SaveAdmin(a); err != nil {
 			return err
 		}
 	} else if err := st.UpsertAdmin(args[0], h); err != nil {
 		return err
 	}
 	printInfo(st, args[0], pass)
+	fmt.Println("  Two-step login is off for this admin; turn it on again in Settings › Security.")
 	return nil
 }
 
@@ -414,4 +422,3 @@ func core(home string, args []string) error {
 	fmt.Println("✓ sing-box", v)
 	return nil
 }
-

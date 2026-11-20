@@ -21,6 +21,8 @@ var ErrNotFound = errors.New("not found")
 type Store struct {
 	DB *sql.DB
 	mu sync.Mutex // serialises writes; SQLite allows one writer
+
+	OnLog func(kind, msg string) // called for every logged event
 }
 
 // Open opens (and migrates) the database at path.
@@ -101,13 +103,50 @@ var migrations = []string{
 	)`,
 }
 
+// columns added after the first release
+var addedColumns = []struct{ table, column, def string }{
+	{"users", "ip_limit", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "paused_until", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "owner_id", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "tg_chat", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "notified", "TEXT NOT NULL DEFAULT ''"},
+	{"admins", "role", "TEXT NOT NULL DEFAULT 'owner'"},
+	{"admins", "totp_secret", "TEXT NOT NULL DEFAULT ''"},
+	{"admins", "max_users", "INTEGER NOT NULL DEFAULT 0"},
+	{"admins", "max_data", "INTEGER NOT NULL DEFAULT 0"},
+	{"admins", "enabled", "INTEGER NOT NULL DEFAULT 1"},
+}
+
 func (s *Store) migrate() error {
 	for _, m := range migrations {
 		if _, err := s.DB.Exec(m); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	for _, c := range addedColumns {
+		if s.hasColumn(c.table, c.column) {
+			continue
+		}
+		if _, err := s.DB.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, c.table, c.column, c.def)); err != nil {
+			return fmt.Errorf("migrate %s.%s: %w", c.table, c.column, err)
+		}
+	}
 	return nil
+}
+
+func (s *Store) hasColumn(table, column string) bool {
+	rows, err := s.DB.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var n string
+		if rows.Scan(&n) == nil && n == column {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------- settings
@@ -148,12 +187,54 @@ func (s *Store) AllSettings() map[string]string {
 
 // ---------------------------------------------------------------- admins
 
+// Admin roles.
+const (
+	RoleOwner    = "owner"    // everything
+	RoleAdmin    = "admin"    // users and protocols, no server settings
+	RoleReseller = "reseller" // only the users they created, within a quota
+)
+
 // Admin is a panel administrator.
 type Admin struct {
 	ID           int64  `json:"id"`
 	Username     string `json:"username"`
 	PasswordHash string `json:"-"`
 	CreatedAt    int64  `json:"createdAt"`
+	Role         string `json:"role"`
+	TOTPSecret   string `json:"-"`
+	TOTP         bool   `json:"totp"`
+	MaxUsers     int    `json:"maxUsers"`
+	MaxData      int64  `json:"maxData"` // bytes a reseller may hand out in total (0 = unlimited)
+	Enabled      bool   `json:"enabled"`
+}
+
+// Can reports whether the admin's role reaches the given role.
+func (a *Admin) Can(role string) bool {
+	rank := map[string]int{RoleReseller: 1, RoleAdmin: 2, RoleOwner: 3}
+	return rank[a.Role] >= rank[role]
+}
+
+const adminCols = `id,username,password_hash,created_at,role,totp_secret,max_users,max_data,enabled`
+
+func scanAdmin(r scanner) (*Admin, error) {
+	a := &Admin{}
+	var enabled int
+	if err := r.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt, &a.Role, &a.TOTPSecret, &a.MaxUsers, &a.MaxData, &enabled); err != nil {
+		return nil, err
+	}
+	a.Enabled, a.TOTP = enabled == 1, a.TOTPSecret != ""
+	if a.Role == "" {
+		a.Role = RoleOwner
+	}
+	return a, nil
+}
+
+func (s *Store) oneAdmin(where string, args ...any) (*Admin, error) {
+	a, err := scanAdmin(s.DB.QueryRow(`SELECT `+adminCols+` FROM admins `+where, args...))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return a, err
 }
 
 // AdminCount returns the number of admins.
@@ -164,44 +245,71 @@ func (s *Store) AdminCount() int {
 }
 
 // AdminByName finds an admin.
-func (s *Store) AdminByName(name string) (*Admin, error) {
-	a := &Admin{}
-	err := s.DB.QueryRow(`SELECT id,username,password_hash,created_at FROM admins WHERE username=?`, name).
-		Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return a, err
-}
+func (s *Store) AdminByName(name string) (*Admin, error) { return s.oneAdmin(`WHERE username=?`, name) }
 
 // AdminByID finds an admin.
-func (s *Store) AdminByID(id int64) (*Admin, error) {
-	a := &Admin{}
-	err := s.DB.QueryRow(`SELECT id,username,password_hash,created_at FROM admins WHERE id=?`, id).
-		Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return a, err
-}
+func (s *Store) AdminByID(id int64) (*Admin, error) { return s.oneAdmin(`WHERE id=?`, id) }
 
-// FirstAdmin returns the oldest admin.
+// FirstAdmin returns the oldest owner.
 func (s *Store) FirstAdmin() (*Admin, error) {
-	a := &Admin{}
-	err := s.DB.QueryRow(`SELECT id,username,password_hash,created_at FROM admins ORDER BY id LIMIT 1`).
-		Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return a, err
+	return s.oneAdmin(`WHERE role='owner' ORDER BY id LIMIT 1`)
 }
 
-// UpsertAdmin creates the admin or replaces its credentials.
+// Admins lists every admin.
+func (s *Store) Admins() ([]*Admin, error) {
+	rows, err := s.DB.Query(`SELECT ` + adminCols + ` FROM admins ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []*Admin{}
+	for rows.Next() {
+		a, err := scanAdmin(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// UpsertAdmin creates an owner or replaces its credentials and turns 2FA off,
+// so `dunvex admin` from SSH always gets the operator back in.
 func (s *Store) UpsertAdmin(username, hash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.DB.Exec(`INSERT INTO admins(username,password_hash,created_at) VALUES(?,?,?)
-		ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash`, username, hash, time.Now().Unix())
+	_, err := s.DB.Exec(`INSERT INTO admins(username,password_hash,created_at,role) VALUES(?,?,?,'owner')
+		ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, totp_secret='', enabled=1, role='owner'`,
+		username, hash, time.Now().Unix())
+	return err
+}
+
+// CreateAdmin inserts a new admin.
+func (s *Store) CreateAdmin(a *Admin) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a.CreatedAt = time.Now().Unix()
+	res, err := s.DB.Exec(`INSERT INTO admins(username,password_hash,created_at,role,max_users,max_data,enabled) VALUES(?,?,?,?,?,?,?)`,
+		a.Username, a.PasswordHash, a.CreatedAt, a.Role, a.MaxUsers, a.MaxData, b2i(a.Enabled))
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return fmt.Errorf("an admin named %q already exists", a.Username)
+		}
+		return err
+	}
+	a.ID, _ = res.LastInsertId()
+	return nil
+}
+
+// SaveAdmin stores every field of an admin.
+func (s *Store) SaveAdmin(a *Admin) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, err := s.DB.Exec(`UPDATE admins SET username=?,password_hash=?,role=?,totp_secret=?,max_users=?,max_data=?,enabled=? WHERE id=?`,
+		a.Username, a.PasswordHash, a.Role, a.TOTPSecret, a.MaxUsers, a.MaxData, b2i(a.Enabled), a.ID)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+		return fmt.Errorf("an admin named %q already exists", a.Username)
+	}
 	return err
 }
 
@@ -210,35 +318,60 @@ func (s *Store) UpdateAdmin(id int64, username, hash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.DB.Exec(`UPDATE admins SET username=?, password_hash=? WHERE id=?`, username, hash, id)
+	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
+		return fmt.Errorf("an admin named %q already exists", username)
+	}
 	return err
+}
+
+// DeleteAdmin removes an admin; their users pass to the owner.
+func (s *Store) DeleteAdmin(id int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tx, err := s.DB.Begin()
+	if err != nil {
+		return err
+	}
+	tx.Exec(`UPDATE users SET owner_id=0 WHERE owner_id=?`, id)
+	tx.Exec(`DELETE FROM admins WHERE id=?`, id)
+	return tx.Commit()
 }
 
 // ---------------------------------------------------------------- users
 
 // User is a VPN subscriber.
 type User struct {
-	ID            int64   `json:"id"`
-	Name          string  `json:"name"`
-	UUID          string  `json:"uuid"`
-	Password      string  `json:"password"`
-	SubToken      string  `json:"subToken"`
-	Enabled       bool    `json:"enabled"`
-	DataLimit     int64   `json:"dataLimit"`
-	UsedUp        int64   `json:"usedUp"`
-	UsedDown      int64   `json:"usedDown"`
-	LifetimeUsed  int64   `json:"lifetimeUsed"`
-	ExpireAt      int64   `json:"expireAt"`
-	DurationDays  int     `json:"durationDays"`
-	FirstUseAt    int64   `json:"firstUseAt"`
-	ResetPeriod   string  `json:"resetPeriod"`
-	LastResetAt   int64   `json:"lastResetAt"`
-	InboundIDs    []int64 `json:"inboundIds"`
-	Note          string  `json:"note"`
-	WGPrivate     string  `json:"-"`
-	WGPublic      string  `json:"-"`
-	WGIndex       int     `json:"-"`
-	CreatedAt     int64   `json:"createdAt"`
-	LastOnlineAt  int64   `json:"lastOnlineAt"`
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	UUID         string  `json:"uuid"`
+	Password     string  `json:"password"`
+	SubToken     string  `json:"subToken"`
+	Enabled      bool    `json:"enabled"`
+	DataLimit    int64   `json:"dataLimit"`
+	UsedUp       int64   `json:"usedUp"`
+	UsedDown     int64   `json:"usedDown"`
+	LifetimeUsed int64   `json:"lifetimeUsed"`
+	ExpireAt     int64   `json:"expireAt"`
+	DurationDays int     `json:"durationDays"`
+	FirstUseAt   int64   `json:"firstUseAt"`
+	ResetPeriod  string  `json:"resetPeriod"`
+	LastResetAt  int64   `json:"lastResetAt"`
+	InboundIDs   []int64 `json:"inboundIds"`
+	Note         string  `json:"note"`
+	WGPrivate    string  `json:"-"`
+	WGPublic     string  `json:"-"`
+	WGIndex      int     `json:"-"`
+	CreatedAt    int64   `json:"createdAt"`
+	LastOnlineAt int64   `json:"lastOnlineAt"`
+	IPLimit      int     `json:"ipLimit"`     // devices (IPs) at once, 0 = unlimited
+	PausedUntil  int64   `json:"pausedUntil"` // set when the user went over IPLimit
+	OwnerID      int64   `json:"ownerId"`     // admin who created the user (0 = owner)
+	TGChat       int64   `json:"-"`           // Telegram chat bound to this user
+	Notified     string  `json:"-"`           // warnings already sent (comma list)
+
+	// ResetUsage makes the next UpdateUser zero the period counters. Without
+	// it UpdateUser leaves them alone, so traffic counted meanwhile is kept.
+	ResetUsage bool `json:"-"`
 }
 
 // Used returns total consumed bytes for the current period.
@@ -251,6 +384,7 @@ const (
 	StatusLimited  = "limited"
 	StatusExpired  = "expired"
 	StatusDisabled = "disabled"
+	StatusPaused   = "paused" // too many devices at once; back after a short pause
 )
 
 // Status computes the user's current status.
@@ -262,6 +396,8 @@ func (u *User) Status(now int64) string {
 		return StatusLimited
 	case u.ExpireAt > 0 && now >= u.ExpireAt:
 		return StatusExpired
+	case u.PausedUntil > now:
+		return StatusPaused
 	case u.ExpireAt == 0 && u.DurationDays > 0 && u.FirstUseAt == 0:
 		return StatusPending
 	}
@@ -288,7 +424,8 @@ func (u *User) AllowsInbound(id int64) bool {
 }
 
 const userCols = `id,name,uuid,password,sub_token,enabled,data_limit,used_up,used_down,lifetime_used,expire_at,duration_days,
-	first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at`
+	first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at,
+	ip_limit,paused_until,owner_id,tg_chat,notified`
 
 type scanner interface{ Scan(dest ...any) error }
 
@@ -298,7 +435,8 @@ func scanUser(r scanner) (*User, error) {
 	var ids string
 	err := r.Scan(&u.ID, &u.Name, &u.UUID, &u.Password, &u.SubToken, &enabled, &u.DataLimit, &u.UsedUp, &u.UsedDown,
 		&u.LifetimeUsed, &u.ExpireAt, &u.DurationDays, &u.FirstUseAt, &u.ResetPeriod, &u.LastResetAt, &ids, &u.Note,
-		&u.WGPrivate, &u.WGPublic, &u.WGIndex, &u.CreatedAt, &u.LastOnlineAt)
+		&u.WGPrivate, &u.WGPublic, &u.WGIndex, &u.CreatedAt, &u.LastOnlineAt,
+		&u.IPLimit, &u.PausedUntil, &u.OwnerID, &u.TGChat, &u.Notified)
 	if err != nil {
 		return nil, err
 	}
@@ -337,6 +475,24 @@ func (s *Store) UserByID(id int64) (*User, error) {
 	return u, err
 }
 
+// UserByTG finds the user bound to a Telegram chat.
+func (s *Store) UserByTG(chat int64) (*User, error) {
+	u, err := scanUser(s.DB.QueryRow(`SELECT `+userCols+` FROM users WHERE tg_chat=? AND tg_chat<>0`, chat))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return u, err
+}
+
+// UserByName finds a user by name.
+func (s *Store) UserByName(name string) (*User, error) {
+	u, err := scanUser(s.DB.QueryRow(`SELECT `+userCols+` FROM users WHERE name=?`, name))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return u, err
+}
+
 // UserByToken loads a user by subscription token.
 func (s *Store) UserByToken(token string) (*User, error) {
 	u, err := scanUser(s.DB.QueryRow(`SELECT `+userCols+` FROM users WHERE sub_token=?`, token))
@@ -368,11 +524,13 @@ func (s *Store) CreateUser(u *User) error {
 		u.ResetPeriod = "none"
 	}
 	res, err := s.DB.Exec(`INSERT INTO users(name,uuid,password,sub_token,enabled,data_limit,used_up,used_down,lifetime_used,
-		expire_at,duration_days,first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		expire_at,duration_days,first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at,
+		ip_limit,paused_until,owner_id,tg_chat,notified)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		u.Name, u.UUID, u.Password, u.SubToken, b2i(u.Enabled), u.DataLimit, u.UsedUp, u.UsedDown, u.LifetimeUsed,
 		u.ExpireAt, u.DurationDays, u.FirstUseAt, u.ResetPeriod, u.LastResetAt, string(ids), u.Note,
-		u.WGPrivate, u.WGPublic, u.WGIndex, u.CreatedAt, u.LastOnlineAt)
+		u.WGPrivate, u.WGPublic, u.WGIndex, u.CreatedAt, u.LastOnlineAt,
+		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("a user named %q already exists", u.Name)
@@ -388,10 +546,15 @@ func (s *Store) UpdateUser(u *User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids, _ := json.Marshal(nonNil(u.InboundIDs))
-	_, err := s.DB.Exec(`UPDATE users SET name=?,uuid=?,password=?,sub_token=?,enabled=?,data_limit=?,used_up=?,used_down=?,
-		expire_at=?,duration_days=?,first_use_at=?,reset_period=?,last_reset_at=?,inbound_ids=?,note=? WHERE id=?`,
-		u.Name, u.UUID, u.Password, u.SubToken, b2i(u.Enabled), u.DataLimit, u.UsedUp, u.UsedDown,
-		u.ExpireAt, u.DurationDays, u.FirstUseAt, u.ResetPeriod, u.LastResetAt, string(ids), u.Note, u.ID)
+	reset := b2i(u.ResetUsage)
+	u.ResetUsage = false
+	_, err := s.DB.Exec(`UPDATE users SET name=?,uuid=?,password=?,sub_token=?,enabled=?,data_limit=?,
+		used_up=CASE WHEN ?=1 THEN 0 ELSE used_up END, used_down=CASE WHEN ?=1 THEN 0 ELSE used_down END,
+		expire_at=?,duration_days=?,first_use_at=?,reset_period=?,last_reset_at=?,inbound_ids=?,note=?,
+		ip_limit=?,paused_until=?,owner_id=?,tg_chat=?,notified=? WHERE id=?`,
+		u.Name, u.UUID, u.Password, u.SubToken, b2i(u.Enabled), u.DataLimit, reset, reset,
+		u.ExpireAt, u.DurationDays, u.FirstUseAt, u.ResetPeriod, u.LastResetAt, string(ids), u.Note,
+		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified, u.ID)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return fmt.Errorf("a user named %q already exists", u.Name)
 	}
@@ -673,11 +836,16 @@ type Event struct {
 	Message string `json:"message"`
 }
 
-// Log records an event.
+// Log records an event (and passes it to OnLog, e.g. the Telegram bot).
 func (s *Store) Log(kind, format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.DB.Exec(`INSERT INTO events(at,kind,message) VALUES(?,?,?)`, time.Now().Unix(), kind, fmt.Sprintf(format, args...))
+	s.DB.Exec(`INSERT INTO events(at,kind,message) VALUES(?,?,?)`, time.Now().Unix(), kind, msg)
+	hook := s.OnLog
+	s.mu.Unlock()
+	if hook != nil {
+		go hook(kind, msg)
+	}
 }
 
 // Events returns the latest events.

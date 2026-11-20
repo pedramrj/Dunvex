@@ -1,16 +1,14 @@
 ---
-name: Dunvex night map
+name: Dunvex night interchange
 mode: operate
 colors:
-  ground: "#0a1224"
-  rail: "#0c1630"
-  panel: "#101b36"
-  panel2: "#152443"
-  hair: "#223154"
-  hair2: "#2c3d64"
-  ink: "#eef1f6"
-  ink2: "#aab6cf"
-  ink3: "#8593b2"
+  ground: "#060a15"
+  panel: "#0e162c"
+  panel2: "#141f3b"
+  ink: "#f1f4fa"
+  ink2: "#a9b5cf"
+  ink3: "#7d8bab"
+  brand-azure: "#2f8cff (gradient #1f6bff → #35b8ff)"
   line-reality: "#f0474f"
   line-cdn: "#4c8dff"
   line-udp: "#f2a93b"
@@ -18,35 +16,50 @@ colors:
   state-online: "#3ddc97"
   state-warn: "#f2a93b"
   state-bad: "#ff5d73"
+  state-paused: "#9b7bff"
 type:
-  family: "Dunvex Sans = Vazirmatn (Persian, variable) + Fira Sans (Latin, 400–700), SIL OFL"
+  sans: "Dunvex Sans = Vazirmatn (Persian, variable) + Fira Sans (Latin 400–700), SIL OFL"
+  mono: "Dunvex Mono = Fira Code, for ports, addresses, keys and versions"
   base: 14px
   persian-line-height: 1.8
-  figures: tabular (font-feature-settings "tnum")
-radius: { control: 12px, panel: 16px, pill: 999px }
+  figures: tabular
+radius: { control: 12px, card: 20px, sheet-edge: 0, pill: 999px }
 ---
 
 # Dunvex design
 
-The panel is a **night metro map**. The server is the interchange and every protocol family is a coloured line leaving it.
+The identity comes from the owner's logo: a brushed-platinum **DV** with an electric-azure glow,
+"DUNVEX — Powered by Pedram" (`assets/branding/dunvex-logo.png`). The panel is the night around it:
+a deep midnight ground lit by soft azure light, with the four protocol lines as the only other colour.
 
 ## World
-- **Ground**: midnight enamel (`ground`, `rail`, `panel`). Dark is chosen for the use scene (operators checking a phone or laptop in the evening between messages), not by category.
-- **Signage**: porcelain `ink` for text and the primary button. The bright fill appears only on things you can press (primary button = porcelain plate with midnight text).
-- **Line inks** are data colours, never decoration: Reality = scarlet, CDN = cobalt, UDP/QUIC = amber, classic = green. Every place that names a protocol family uses its ink (map lines, protocol headings, legend, the user page's top bar).
-- **State colours** sit on top only where they mean something: online mint, warn amber, bad rose. Status always has a text label next to its dot.
+- **Ground**: `#060a15` with a fixed "aurora" (radial azure glows plus a faint map grid that fades out).
+- **Surfaces**: glass cards (two-stop navy gradient at ~80% opacity, 1px cool border, inner top highlight,
+  blur 16px) with a thin light along the top edge. Sheets use a stronger glass.
+- **Brand**: azure gradient on the primary button, the active nav marker and rings; platinum comes from
+  the logo artwork itself. The logo is shown through CSS viewports over the approved square PNG
+  (emblem, wordmark, credit, full), never cropped, redrawn or recoloured.
+- **Line inks** stay data colours: Reality scarlet, CDN cobalt, UDP/QUIC amber, classic green.
+- **States** always pair a colour with a text label (badge with dot): online mint, warn amber, bad rose, paused violet.
 
-## Signature move
-The **network map** on Overview: an SVG transit diagram. Lines leave the central interchange at 45°/90°. Stations are inbounds (ring = enabled, dashed = disabled, rose fill = error, porcelain core = traffic now). A porcelain dash flows along a line, faster with more traffic. An empty line is drawn faint and dashed, with a "+" terminus that opens "add protocol" for that family. On phones the map becomes vertical line strips; it is never shrunk into a miniature.
+## Signature
+The **network map** on Overview: the server is the interchange, each family a line, each inbound a station;
+a dash flows faster with more traffic. On phones it becomes vertical strips.
 
 ## Layout
-- Desktop: right-hand rail in RTL (left in LTR), 232px; content max 1440px; panels with a 16px radius and a hairline border, no nested cards.
-- Phone: top bar + bottom tab bar (4 tabs), rows instead of tables.
-- Side sheets (create/edit/detail) slide from the inline-end edge; they render in a portal so animated page containers cannot clip them.
-- Advanced options are always collapsed behind one "Advanced" disclosure.
+- Desktop: floating glass rail (256px) with the logo, nav and the admin card (role, 2FA shield).
+  Content max 1480px; Overview is a 12-column bento (live traffic, server health rings, KPI cards,
+  map, 30-day area chart, top users, cores, recent events).
+- Phone: glass top bar with emblem + wordmark, bottom tab bar (only the tabs the role can use).
+- Sheets slide from the inline end, rendered in a portal. Forms are grouped in labelled sections.
+- Settings: vertical tab list on desktop, pill tabs on phones; tabs depend on the role.
 
-## Type
-Persian lines use a 1.8 line-height and no letter-spacing. Numbers are tabular and bidi-isolated (`.num`, `<bdi dir="ltr">` for ports, URLs and keys). Persian digits are shown through `Intl.NumberFormat('fa-IR')`; data, inputs and the API stay Latin.
+## Data display
+- Charts: smooth area charts with gradient fills, download solid / upload dashed (never colour alone),
+  hover read-out with date and both values.
+- Rings for CPU / RAM / disk and user data; they turn amber at 75% and rose at 90%.
+- Persian digits via `Intl.NumberFormat('fa-IR')`; inputs, API and technical values stay Latin (`.mono`).
 
 ## Motion
-One entrance (`rise`: 8px translate, ease-out) that starts from a visible state, the sheet slide, the map flow, and an online pulse. Everything stops under `prefers-reduced-motion`.
+Card entrance (`rise`, 10px, staggered), sheet slide, map flow, online pulse, skeleton shimmer.
+All of it stops under `prefers-reduced-motion`.

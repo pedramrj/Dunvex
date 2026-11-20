@@ -10,6 +10,8 @@ dunvex-home/
 *.db
 *.db-wal
 *.db-shm
+# browser test scratch
+.playwright-mcp/
 # impeccable runtime
 .impeccable/questions/
 .impeccable/mocks/

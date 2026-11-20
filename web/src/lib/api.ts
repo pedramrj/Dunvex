@@ -10,9 +10,11 @@ export const VERSION = window.__DVX__?.version ?? "dev";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, msg: string) {
+  data: any;
+  constructor(status: number, msg: string, data?: any) {
     super(msg);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -39,13 +41,13 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
   } catch {
     data = text;
   }
-  if (!res.ok) throw new ApiError(res.status, (data && data.error) || res.statusText);
+  if (!res.ok) throw new ApiError(res.status, (data && data.error) || res.statusText, data);
   return data as T;
 }
 
 // ---------------------------------------------------------------- types
 
-export type Status = "active" | "pending" | "limited" | "expired" | "disabled";
+export type Status = "active" | "pending" | "limited" | "expired" | "disabled" | "paused";
 
 export interface User {
   id: number;
@@ -73,6 +75,47 @@ export interface User {
   speedUp: number;
   speedDown: number;
   daysLeft: number | null;
+  ipLimit: number;
+  pausedUntil: number;
+  ownerId: number;
+  devices: number;
+  owner?: string;
+  deviceList?: { ip: string; lastSeen: number }[];
+}
+
+export type Role = "owner" | "admin" | "reseller";
+
+export interface Admin {
+  id: number;
+  username: string;
+  role: Role;
+  totp: boolean;
+  maxUsers: number;
+  maxData: number;
+  enabled: boolean;
+  createdAt: number;
+  userCount?: number;
+  allocated?: number;
+}
+
+export interface Quota {
+  users: number;
+  maxUsers: number;
+  allocated: number;
+  maxData: number;
+}
+
+export interface Me {
+  admin: Admin;
+  version: string;
+  quota?: Quota;
+}
+
+export interface Event {
+  id: number;
+  at: number;
+  kind: string;
+  message: string;
 }
 
 export interface Field {
@@ -166,6 +209,9 @@ export interface SystemInfo {
 }
 
 export interface Overview {
+  role?: Role;
+  quota?: Quota;
+  devices: number;
   lines: Line[];
   users: number;
   online: number;

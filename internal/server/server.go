@@ -34,11 +34,22 @@ type Server struct {
 	St      *store.Store
 	Mgr     *engine.Manager
 	Sys     *sysinfo.Sampler
-	UI      fs.FS // built panel (index.html + assets)
+	UI      fs.FS  // built panel (index.html + assets)
 	Restart func() // asks the process to restart (after self-update / restore)
 
-	limMu sync.Mutex
-	fails map[string][]time.Time
+	Bot Bot // Telegram bot (optional)
+
+	limMu       sync.Mutex
+	fails       map[string][]time.Time
+	totpPending map[int64]string // admin id → secret waiting for its first code
+	totpUsed    map[int64]int64  // admin id → last accepted time step
+}
+
+// Bot is the Telegram side, as seen by the HTTP layer.
+type Bot interface {
+	Status() map[string]any
+	Reload()
+	Test() error
 }
 
 // Dirs.
@@ -98,7 +109,7 @@ func (s *Server) PublicBase(r *http.Request) string {
 		return b
 	}
 	scheme := "http"
-	if r != nil && r.TLS != nil {
+	if (r != nil && r.TLS != nil) || (r == nil && s.St.GetSetting("panel_tls", "false") == "true") {
 		scheme = "https"
 	}
 	host := ""
@@ -141,6 +152,8 @@ func (s *Server) Handler() http.Handler {
 			s.serveUI(w, r, strings.TrimPrefix(p, panel))
 		case strings.HasPrefix(p, sub+"_font/"):
 			s.serveFont(w, strings.TrimPrefix(p, sub+"_font/"))
+		case strings.HasPrefix(p, sub+"_brand/"):
+			s.serveBrand(w, strings.TrimPrefix(p, sub+"_brand/"))
 		case strings.HasPrefix(p, sub) && len(p) > len(sub):
 			s.serveSub(w, r, strings.TrimPrefix(p, sub))
 		default:
@@ -151,6 +164,23 @@ func (s *Server) Handler() http.Handler {
 
 // serveFont exposes the panel's embedded fonts to the public user page
 // (under the subscription path, so the panel path stays secret).
+// serveBrand exposes the logo files to the public user page.
+func (s *Server) serveBrand(w http.ResponseWriter, name string) {
+	ok := map[string]bool{"dunvex-logo-512.png": true, "favicon-64.png": true, "apple-touch-180.png": true, "icon-192.png": true}
+	if !ok[name] || s.UI == nil {
+		decoy(w)
+		return
+	}
+	b, err := fs.ReadFile(s.UI, "brand/"+name)
+	if err != nil {
+		decoy(w)
+		return
+	}
+	w.Header().Set("Content-Type", "image/png")
+	w.Header().Set("Cache-Control", "public, max-age=2592000")
+	w.Write(b)
+}
+
 func (s *Server) serveFont(w http.ResponseWriter, name string) {
 	prefix := map[string]string{"fa.woff2": "Vazirmatn-Variable", "en.woff2": "FiraSans-400", "en-bold.woff2": "FiraSans-600"}[name]
 	if prefix == "" || s.UI == nil {
@@ -270,7 +300,7 @@ func (s *Server) currentAdmin(r *http.Request) *store.Admin {
 		return nil
 	}
 	a, err := s.St.AdminByID(id)
-	if err != nil || pwStamp(a.PasswordHash) != f[2] {
+	if err != nil || !a.Enabled || pwStamp(a.PasswordHash) != f[2] {
 		return nil
 	}
 	return a

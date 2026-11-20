@@ -415,7 +415,7 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 		return "outbound", []obj{ss, st}
 	case "wireguard":
 		ep := obj{"type": "wireguard", "tag": tag, "address": []string{wgAddress(u) + "/32"}, "private_key": u.WGPrivate,
-			"mtu": max(in.Int("mtu"), 1280),
+			"mtu":   max(in.Int("mtu"), 1280),
 			"peers": []obj{{"address": host, "port": in.Port, "public_key": in.Str("publicKey"), "allowed_ips": []string{"0.0.0.0/0", "::/0"}}}}
 		return "endpoint", []obj{ep}
 	case "socks":

@@ -20,12 +20,16 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Install script + `dunvex` menu (status, restart, update, reset password, uninstall)
 - [x] Database backup and restore from the panel
 
-## Phase 2: Smart management (v1.1)
-- [ ] Add and remove users without restarting the core (Xray HandlerService)
-- [ ] Simultaneous IP/device limit per user
-- [ ] Telegram bot: admin management + user self-service with usage and expiry
-- [ ] Admin roles (owner / reseller with quota and credit)
-- [ ] Notifications for expiry and quota running out; two-factor login (TOTP)
+## Phase 2: Smart management (v1.1) ✅
+- [x] Live user changes on Xray through HandlerService (add, remove, limit, renew) with no restart;
+      a removed user who stays connected is cut off by one restart. sing-box has no user API, so it restarts (about 1 s)
+- [x] Device limit per user: addresses come from Xray's online-IP stats and the sing-box connection log;
+      a user above the limit for 2 minutes is paused for a few minutes (no IP bans, so shared mobile IPs are safe)
+- [x] Telegram bot: server status, users, one-line "new user", +30 days / +10 GB, enable/disable, link + QR,
+      backup, alerts, daily report; users link their chat from the subscription page and get 80%/95%/3-day/1-day warnings
+- [x] Admin roles: owner, admin (no server settings) and reseller (only their own users, user and data quota)
+- [x] Two-step login (TOTP) with replay protection; `dunvex admin` from SSH turns it off for recovery
+- [x] New panel design (logo, glass surfaces, live charts, rings, device lists) and user page
 
 ## Phase 3: More protocols (v1.2)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)

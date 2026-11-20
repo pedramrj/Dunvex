@@ -3,7 +3,7 @@ import { AlertTriangle, ChevronDown, Globe2, Plus, Radar, Sparkles, Trash2 } fro
 import { api, type Field, type Group, type Inbound, type Preset } from "../lib/api";
 import { bytes, cx, groupColor, groups } from "../lib/format";
 import { useI18n } from "../lib/i18n";
-import { Button, ConfirmButton, Empty, Input, Label, Select, Sheet, Spinner, Toggle, useToast } from "../components/ui";
+import { Badge, Button, ConfirmButton, Empty, Input, Label, SectionTitle, Select, Sheet, Skeleton, Toggle, useToast } from "../components/ui";
 import { PageHead, navigate } from "../App";
 import { shortName } from "../components/NetworkMap";
 
@@ -28,59 +28,77 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
     api<{ warning?: string }>(`inbounds/${i.id}`, { method: "PUT", body: { enabled } })
       .then((r) => { if (r.warning) toast(r.warning, "error"); load(); })
       .catch((e) => toast(e.message, "error"));
+  const errors = inbounds?.filter((i) => i.error).length ?? 0;
 
   return (
-    <div className="rise">
+    <div>
       <PageHead
         title={t("protocols")}
-        sub={inbounds && <span className="num">{n(inbounds.filter((i) => i.enabled).length)} / {n(inbounds.length)} {t("active")}</span>}
+        sub={inbounds && (
+          <span className="inline-flex flex-wrap gap-x-4 gap-y-1">
+            <span className="num">{n(inbounds.filter((i) => i.enabled).length)} / {n(inbounds.length)} {t("active")}</span>
+            <span className="num text-ink3">{t("traffic")}: {bytes(inbounds.reduce((s, i) => s + i.up + i.down, 0), lang)}</span>
+            {errors > 0 && <span className="text-bad num">{n(errors)} {t("error")}</span>}
+          </span>
+        )}
         action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add")}>{t("addProtocol")}</Button>}
       />
       {!inbounds ? (
-        <Spinner />
+        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40" />)}</div>
       ) : inbounds.length === 0 ? (
-        <div className="rounded-2xl border border-hair bg-panel">
-          <Empty icon={<Radar className="size-6" />} title={t("noLines")} action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add")}>{t("addProtocol")}</Button>} />
+        <div className="glass rounded-[20px]">
+          <Empty icon={<Radar className="size-7" />} title={t("noLines")} action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add")}>{t("addProtocol")}</Button>} />
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-7">
           {groups.map(({ id, color, label }) => {
             const list = inbounds.filter((i) => byId[i.preset]?.group === id);
             if (!list.length) return null;
             return (
               <section key={id}>
-                <h2 className="flex items-center gap-2.5 mb-2 text-[14px] font-semibold">
-                  <i className="h-2 w-7 rounded-full" style={{ background: color }} />
-                  {t(label)}
-                  <span className="text-ink3 font-normal num">{n(list.length)}</span>
-                </h2>
-                <ul className="rounded-2xl border border-hair bg-panel overflow-hidden">
+                <SectionTitle color={color} action={<button onClick={() => navigate("protocols", "add-" + id)} className="text-[12.5px] text-ink3 hover:text-ink inline-flex items-center gap-1"><Plus className="size-3.5" />{t("addProtocol")}</button>}>
+                  {t(label)} <span className="text-ink3 font-normal num">{n(list.length)}</span>
+                </SectionTitle>
+                <div className="stagger grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
                   {list.map((i) => {
                     const p = byId[i.preset];
+                    const state = !i.enabled ? "var(--color-ink3)" : i.error ? "var(--color-bad)" : color;
                     return (
-                      <li key={i.id} className="border-b border-hair last:border-b-0">
-                        <div className="flex items-center gap-4 px-4 py-3">
-                          <span className="size-4 rounded-full border-[4px] shrink-0 bg-ground" style={{ borderColor: !i.enabled ? "var(--color-ink3)" : i.error ? "var(--color-bad)" : color }} />
-                          <a href={`#/protocols/${i.id}`} className="min-w-0 flex-1">
-                            <div className="font-semibold truncate" dir="ltr">{i.remark || shortName[i.preset] || i.name}</div>
-                            <div className="text-[12.5px] text-ink3 truncate" dir="ltr">{p?.name} · <span className="num">:{i.port}</span> · {p?.engine === "singbox" ? "sing-box" : "Xray"}</div>
-                          </a>
-                          <div className="hidden sm:block text-end text-[12.5px] num">
-                            <div>{bytes(i.up + i.down, lang)}</div>
-                            <div className="text-ink3">{t("traffic")}</div>
+                      <article key={i.id} className={cx("glass edge rounded-[20px] overflow-hidden flex flex-col transition-[transform,border-color] duration-200 hover:-translate-y-0.5", !i.enabled && "opacity-70")}>
+                        <div className="h-1" style={{ background: i.enabled ? color : "var(--color-hair2)", boxShadow: i.enabled ? `0 0 18px ${color}` : undefined }} />
+                        <div className="p-4 flex flex-col gap-3 flex-1">
+                          <div className="flex items-start gap-3">
+                            <span className="grid place-items-center size-11 rounded-2xl shrink-0" style={{ background: `color-mix(in oklab, ${color} 14%, transparent)` }}>
+                              <span className="size-4 rounded-full border-[4px] bg-ground" style={{ borderColor: state }} />
+                            </span>
+                            <a href={`#/protocols/${i.id}`} className="min-w-0 flex-1 group">
+                              <div className="font-semibold truncate group-hover:text-white" dir="ltr">{i.remark || shortName[i.preset] || i.name}</div>
+                              <div className="text-[12px] text-ink3 truncate" dir="ltr">{p?.name}</div>
+                            </a>
+                            <Toggle checked={i.enabled} onChange={(v) => toggle(i, v)} />
                           </div>
-                          <Toggle checked={i.enabled} onChange={(v) => toggle(i, v)} />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge color={color}><span className="mono" dir="ltr">:{i.port}</span></Badge>
+                            <Badge color="var(--color-ink2)">{p?.engine === "singbox" ? "sing-box" : "Xray"}</Badge>
+                            {p?.network === "udp" && <Badge color="var(--color-udp)">UDP</Badge>}
+                            {p?.status === "beta" && <Badge color="var(--color-violet)">{t("beta")}</Badge>}
+                          </div>
+                          {i.error ? (
+                            <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-[#ffc2cc]">
+                              <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
+                              <bdi dir="ltr" className="break-words">{i.error}</bdi>
+                            </div>
+                          ) : (
+                            <div className="mt-auto grid grid-cols-2 gap-3 pt-3 border-t border-white/[.06] text-[12px]">
+                              <div><div className="text-ink3">{t("download")}</div><div className="num font-medium text-[13px]">{bytes(i.down, lang)}</div></div>
+                              <div><div className="text-ink3">{t("upload")}</div><div className="num font-medium text-[13px]">{bytes(i.up, lang)}</div></div>
+                            </div>
+                          )}
                         </div>
-                        {i.error && (
-                          <div className="flex gap-2 items-start px-4 pb-3 -mt-1 text-[12.5px] text-[#ffc2cc]">
-                            <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
-                            <bdi dir="ltr">{i.error}</bdi>
-                          </div>
-                        )}
-                      </li>
+                      </article>
                     );
                   })}
-                </ul>
+                </div>
               </section>
             );
           })}
@@ -133,11 +151,12 @@ function AddSheet({ open, group, presets, onClose, onDone }: { open: boolean; gr
                 <div className="grid sm:grid-cols-2 gap-2">
                   {list.map((p) => (
                     <button key={p.id} onClick={() => setPick(p)}
-                      className="text-start rounded-xl border border-hair2 bg-panel hover:border-ink3 hover:bg-panel2 px-3.5 py-3 transition-colors">
+                      style={{ borderInlineStartColor: g.color }}
+                      className="text-start rounded-2xl border border-white/10 border-s-[3px] bg-white/[.03] hover:bg-white/[.06] hover:border-white/20 px-4 py-3.5 transition-all duration-200 hover:-translate-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-[13.5px]" dir="ltr">{p.name}</span>
-                        {p.recommended && <Sparkles className="size-3.5 text-udp" aria-label={t("recommended")} />}
-                        {p.status === "beta" && <span className="text-[11px] text-ink3 border border-hair2 rounded px-1">{t("beta")}</span>}
+                        {p.recommended && <Badge color="var(--color-udp)" icon={<Sparkles className="size-3" />} className="h-5 text-[10.5px] px-2">{t("recommended")}</Badge>}
+                        {p.status === "beta" && <Badge color="var(--color-violet)" className="h-5 text-[10.5px] px-2">{t("beta")}</Badge>}
                       </div>
                       <p className="text-[12.5px] text-ink2 mt-1 leading-relaxed">{lang === "fa" ? p.descFa : p.desc}</p>
                       {p.needsDomain && <div className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] text-cdn"><Globe2 className="size-3.5" />{t("needsDomain")}</div>}
@@ -188,7 +207,7 @@ function EditSheet({ inbound, preset, onClose, onDone }: { inbound: Inbound; pre
       </>}>
       <div className="flex flex-col gap-5">
         <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? preset.descFa : preset.desc}</p>
-        {inbound.error && <div className="rounded-xl border border-[rgba(255,93,115,.4)] bg-[rgba(255,93,115,.07)] px-3 py-2 text-[13px]"><bdi dir="ltr">{inbound.error}</bdi></div>}
+        {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px]">{inbound.error}</bdi></div>}
         <div className="grid grid-cols-2 gap-3">
           <label><Label>{t("port")}</Label><Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="num" /></label>
           <label><Label>{t("remark")}</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} dir="ltr" /></label>
@@ -226,7 +245,7 @@ function Params({ fields, values, onChange, group }: { fields: Field[]; values: 
       <label key={f.key}>
         <Label>{label}</Label>
         <div className="flex gap-2">
-          <Input value={v ?? ""} type={f.type === "number" ? "number" : "text"} onChange={(e) => set(f.key, f.type === "number" ? +e.target.value : e.target.value)} dir="ltr" placeholder={f.type === "secret" ? "auto" : ""} className={f.type === "secret" ? "font-mono text-[12px]" : ""} />
+          <Input value={v ?? ""} type={f.type === "number" ? "number" : "text"} onChange={(e) => set(f.key, f.type === "number" ? +e.target.value : e.target.value)} dir="ltr" placeholder={f.type === "secret" ? "auto" : ""} className={f.type === "secret" ? "mono text-[12px]" : ""} />
           {f.key === "sni" && group === "reality" && <SniTest onPick={(d) => onChange({ ...values, sni: d, target: d + ":443" })} />}
         </div>
       </label>
@@ -236,7 +255,7 @@ function Params({ fields, values, onChange, group }: { fields: Field[]; values: 
     <div className="flex flex-col gap-4">
       {basic.map(render)}
       {advanced.length > 0 && (
-        <div className="rounded-xl border border-hair2">
+        <div className="rounded-2xl border border-white/10 bg-white/[.02]">
           <button type="button" onClick={() => setAdv(!adv)} className="w-full flex items-center justify-between h-11 px-3.5 text-[13.5px] text-ink2 hover:text-ink">
             {t("advanced")}
             <ChevronDown className={cx("size-4 transition-transform", adv && "rotate-180")} />
@@ -260,10 +279,10 @@ function SniTest({ onPick }: { onPick: (d: string) => void }) {
     <div className="relative">
       <Button type="button" loading={busy} onClick={run} icon={<Radar className="size-4" />}>{t("testSni")}</Button>
       {res && (
-        <div className="rise absolute z-10 mt-2 [inset-inline-end:0] w-72 max-h-72 overflow-auto rounded-xl border border-hair2 bg-panel2 p-1.5 shadow-[0_14px_40px_-12px_rgba(0,0,0,.7)]">
+        <div className="rise absolute z-10 mt-2 [inset-inline-end:0] w-72 max-h-72 overflow-auto rounded-2xl glass-strong p-1.5 shadow-[0_18px_44px_-12px_rgba(0,0,0,.8)]">
           {res.map((r) => (
             <button key={r.domain} type="button" disabled={!r.ok} onClick={() => { onPick(r.domain); setRes(null); }}
-              className="w-full flex items-center gap-2 h-9 px-2.5 rounded-lg text-[13px] hover:bg-panel disabled:opacity-45">
+              className="w-full flex items-center gap-2 h-10 px-2.5 rounded-xl text-[13px] hover:bg-white/[.06] disabled:opacity-45">
               <span className={cx("size-2 rounded-full", r.ok ? "bg-online" : "bg-bad")} />
               <span dir="ltr" className="truncate">{r.domain}</span>
               <span className="ms-auto num text-ink3">{r.ok ? `${n(r.latencyMs)}ms` : "✕"}</span>

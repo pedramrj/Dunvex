@@ -13,5 +13,9 @@ time and keep their own licenses:
     .github/workflows/release.yml.
 
 Bundled fonts (SIL Open Font License 1.1): Vazirmatn (Saber Rastikerdar),
-Fira Sans (Mozilla / Carrois). Licence texts in web/src/fonts/.
+Fira Sans (Mozilla / Carrois), Fira Code (The Fira Code Project Authors).
+Licence texts in web/src/fonts/.
+
+The Dunvex logo (assets/branding, web/public/brand) belongs to Pedram and is
+not covered by the Apache License.
 UI icons: Lucide (ISC). Go and npm dependencies keep their own licenses.

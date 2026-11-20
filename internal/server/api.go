@@ -15,6 +15,7 @@ import (
 	"rsc.io/qr"
 
 	"github.com/pedramrj/dunvex/internal/coremgr"
+	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/tlsmgr"
@@ -25,60 +26,59 @@ type handler func(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) apiMux() http.Handler {
 	mux := http.NewServeMux()
-	auth := func(h handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if s.currentAdmin(r) == nil {
-				fail(w, http.StatusUnauthorized, "login required")
-				return
-			}
-			if r.Method != http.MethodGet && r.Header.Get("X-Dunvex") != "1" {
-				fail(w, http.StatusForbidden, "missing request header")
-				return
-			}
-			h(w, r)
-		})
-	}
+	R, A, O := store.RoleReseller, store.RoleAdmin, store.RoleOwner
+	h := func(pattern, role string, fn handler) { mux.Handle(pattern, s.need(role, fn)) }
+
 	mux.HandleFunc("POST /login", s.login)
-	mux.Handle("POST /logout", auth(s.logout))
-	mux.Handle("GET /me", auth(s.me))
-	mux.Handle("PUT /account", auth(s.updateAccount))
+	h("POST /logout", R, s.logout)
+	h("GET /me", R, s.me)
+	h("PUT /account", R, s.updateAccount)
+	h("POST /account/2fa/setup", R, s.totpSetup)
+	h("POST /account/2fa/enable", R, s.totpEnable)
+	h("POST /account/2fa/disable", R, s.totpDisable)
 
-	mux.Handle("GET /overview", auth(s.overview))
-	mux.Handle("GET /events", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.St.Events(100)) }))
+	h("GET /overview", R, s.overview)
+	h("GET /events", A, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.St.Events(100)) })
 
-	mux.Handle("GET /users", auth(s.listUsers))
-	mux.Handle("POST /users", auth(s.createUsers))
-	mux.Handle("POST /users/bulk", auth(s.bulkUsers))
-	mux.Handle("GET /users/{id}", auth(s.getUser))
-	mux.Handle("PUT /users/{id}", auth(s.updateUser))
-	mux.Handle("DELETE /users/{id}", auth(s.deleteUser))
-	mux.Handle("POST /users/{id}/reset", auth(s.resetUser))
-	mux.Handle("POST /users/{id}/regenerate", auth(s.regenerateUser))
-	mux.Handle("GET /users/{id}/usage", auth(s.userUsage))
-	mux.Handle("GET /users/{id}/configs", auth(s.userConfigs))
+	h("GET /users", R, s.listUsers)
+	h("POST /users", R, s.createUsers)
+	h("POST /users/bulk", R, s.bulkUsers)
+	h("GET /users/{id}", R, s.getUser)
+	h("PUT /users/{id}", R, s.updateUser)
+	h("DELETE /users/{id}", R, s.deleteUser)
+	h("POST /users/{id}/reset", R, s.resetUser)
+	h("POST /users/{id}/regenerate", R, s.regenerateUser)
+	h("GET /users/{id}/usage", R, s.userUsage)
+	h("GET /users/{id}/configs", R, s.userConfigs)
 
-	mux.Handle("GET /presets", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, protocol.All()) }))
-	mux.Handle("GET /inbounds", auth(s.listInbounds))
-	mux.Handle("POST /inbounds", auth(s.createInbound))
-	mux.Handle("PUT /inbounds/{id}", auth(s.updateInbound))
-	mux.Handle("DELETE /inbounds/{id}", auth(s.deleteInbound))
+	h("GET /presets", A, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, protocol.All()) })
+	h("GET /inbounds", A, s.listInbounds)
+	h("POST /inbounds", A, s.createInbound)
+	h("PUT /inbounds/{id}", A, s.updateInbound)
+	h("DELETE /inbounds/{id}", A, s.deleteInbound)
+	h("POST /tools/sni", A, s.testSNI)
+	h("GET /tools/qr", R, s.qrCode)
 
-	mux.Handle("GET /settings", auth(s.getSettings))
-	mux.Handle("PUT /settings", auth(s.putSettings))
-	mux.Handle("POST /settings/cert", auth(s.obtainCert))
+	h("GET /admins", O, s.listAdmins)
+	h("POST /admins", O, s.createAdmin)
+	h("PUT /admins/{id}", O, s.updateAdminH)
+	h("DELETE /admins/{id}", O, s.deleteAdminH)
 
-	mux.Handle("GET /cores", auth(s.cores))
-	mux.Handle("POST /cores/{name}/install", auth(s.installCore))
-	mux.Handle("POST /cores/apply", auth(s.applyCores))
-	mux.Handle("GET /cores/{name}/logs", auth(s.coreLogs))
-	mux.Handle("GET /cores/{name}/config", auth(s.coreConfig))
+	h("GET /settings", O, s.getSettings)
+	h("PUT /settings", O, s.putSettings)
+	h("POST /settings/cert", O, s.obtainCert)
+	h("POST /settings/telegram/test", O, s.telegramTest)
 
-	mux.Handle("POST /tools/sni", auth(s.testSNI))
-	mux.Handle("GET /tools/qr", auth(s.qrCode))
-	mux.Handle("GET /backup", auth(s.backup))
-	mux.Handle("POST /restore", auth(s.restore))
-	mux.Handle("GET /update", auth(s.checkUpdate))
-	mux.Handle("POST /update", auth(s.selfUpdate))
+	h("GET /cores", A, s.cores)
+	h("POST /cores/{name}/install", O, s.installCore)
+	h("POST /cores/apply", A, s.applyCores)
+	h("GET /cores/{name}/logs", A, s.coreLogs)
+	h("GET /cores/{name}/config", O, s.coreConfig)
+
+	h("GET /backup", O, s.backup)
+	h("POST /restore", O, s.restore)
+	h("GET /update", O, s.checkUpdate)
+	h("POST /update", O, s.selfUpdate)
 	return mux
 }
 
@@ -90,17 +90,29 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusTooManyRequests, "too many attempts, try again in a few minutes")
 		return
 	}
-	var in struct{ Username, Password string }
+	var in struct{ Username, Password, Code string }
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
 		return
 	}
 	a, err := s.St.AdminByName(strings.TrimSpace(in.Username))
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(in.Password)) != nil {
+	if err != nil || !a.Enabled || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(in.Password)) != nil {
 		s.recordFailure(ip)
 		time.Sleep(600 * time.Millisecond)
 		fail(w, http.StatusUnauthorized, "wrong username or password")
 		return
+	}
+	if a.TOTPSecret != "" {
+		if strings.TrimSpace(in.Code) == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "enter the 6-digit code from your authenticator app", "need2fa": true})
+			return
+		}
+		if !s.totpOK(a, a.TOTPSecret, in.Code) {
+			s.recordFailure(ip)
+			time.Sleep(600 * time.Millisecond)
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "the code is not right", "need2fa": true})
+			return
+		}
 	}
 	s.issueSession(w, r, a)
 	s.St.Log("auth", "admin %s signed in from %s", a.Username, ip)
@@ -113,11 +125,16 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"admin": s.currentAdmin(r), "version": s.Version})
+	a := adminOf(r)
+	out := map[string]any{"admin": a, "version": s.Version}
+	if a.Role == store.RoleReseller {
+		out["quota"] = s.quota(a, 0)
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) updateAccount(w http.ResponseWriter, r *http.Request) {
-	a := s.currentAdmin(r)
+	a := adminOf(r)
 	var in struct{ Username, CurrentPassword, NewPassword string }
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -152,11 +169,20 @@ func (s *Server) updateAccount(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
+	a := adminOf(r)
+	if a.Role == store.RoleReseller {
+		s.resellerOverview(w, r, a)
+		return
+	}
 	users, _ := s.St.Users()
 	online := s.Mgr.OnlineUsers(60)
 	counts := map[string]int{}
 	for _, u := range users {
 		counts[u.Status(now.Unix())]++
+	}
+	devices := 0
+	for _, n := range s.Mgr.DeviceCounts() {
+		devices += n
 	}
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
@@ -191,6 +217,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		"lines":       lines,
 		"users":       len(users),
 		"online":      len(online),
+		"devices":     devices,
 		"statuses":    counts,
 		"today":       map[string]int64{"up": tu, "down": td},
 		"month":       map[string]int64{"up": mu, "down": md},
@@ -220,11 +247,14 @@ type userView struct {
 	SpeedUp  int64  `json:"speedUp"`
 	SpeedDn  int64  `json:"speedDown"`
 	DaysLeft *int   `json:"daysLeft"`
+	Devices  int    `json:"devices"`
+	Owner    string `json:"owner,omitempty"`
 }
 
 func (s *Server) view(r *http.Request, u *store.User, online map[int64]bool) userView {
 	now := time.Now().Unix()
 	v := userView{User: u, Status: u.Status(now), Online: online[u.ID], Used: u.Used(), SubURL: s.SubURL(r, u)}
+	v.Devices = len(s.Mgr.Devices(u.Name))
 	rate := s.Mgr.UserRate(u.ID)
 	v.SpeedUp, v.SpeedDn = rate.Up, rate.Down
 	if u.ExpireAt > 0 {
@@ -241,7 +271,7 @@ func (s *Server) view(r *http.Request, u *store.User, online map[int64]bool) use
 }
 
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.St.Users()
+	users, err := s.scopedUsers(adminOf(r))
 	if err != nil {
 		fail(w, 500, err.Error())
 		return
@@ -249,9 +279,19 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	online := s.Mgr.OnlineUsers(60)
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	status := r.URL.Query().Get("status")
+	owners := map[int64]string{}
+	if adminOf(r).Role != store.RoleReseller {
+		admins, _ := s.St.Admins()
+		for _, a := range admins {
+			if a.Role == store.RoleReseller {
+				owners[a.ID] = a.Username
+			}
+		}
+	}
 	out := []userView{}
 	for i := len(users) - 1; i >= 0; i-- {
 		v := s.view(r, users[i], online)
+		v.Owner = owners[users[i].OwnerID]
 		if q != "" && !strings.Contains(strings.ToLower(v.Name+" "+v.Note), q) {
 			continue
 		}
@@ -278,6 +318,8 @@ type userInput struct {
 	Note         *string  `json:"note"`
 	Enabled      *bool    `json:"enabled"`
 	UsedReset    bool     `json:"resetUsage"`
+	IPLimit      *int     `json:"ipLimit"`
+	Resume       bool     `json:"resume"` // end a device-limit pause now
 }
 
 func (in *userInput) apply(u *store.User) error {
@@ -334,10 +376,25 @@ func (in *userInput) apply(u *store.User) error {
 		}
 	}
 	if in.UsedReset {
-		u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+		u.UsedUp, u.UsedDown, u.LastResetAt, u.ResetUsage = 0, 0, time.Now().Unix(), true
+	}
+	if in.UsedReset || in.DataLimit != nil || in.DurationDays != nil || in.ExpireAt != nil {
+		u.Notified = "" // plan changed: warn again when it runs low
+	}
+	if in.IPLimit != nil {
+		if *in.IPLimit < 0 || *in.IPLimit > 100 {
+			return fmt.Errorf("device limit must be between 0 and 100")
+		}
+		u.IPLimit = *in.IPLimit
+	}
+	if in.Resume {
+		u.PausedUntil = 0
 	}
 	return nil
 }
+
+// NewUser returns a fresh user with new credentials (not yet saved).
+func (s *Server) NewUser(name string) *store.User { return s.newUser(name) }
 
 func (s *Server) newUser(name string) *store.User {
 	priv, pub := util.WireGuardKeys()
@@ -366,6 +423,18 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 	if base == "" {
 		base = "user" + util.RandomLower(4)
 	}
+	a := adminOf(r)
+	if a.Role == store.RoleReseller {
+		in.InboundIDs = nil // resellers hand out every protocol
+	}
+	var limit int64
+	if in.DataLimit != nil {
+		limit = *in.DataLimit
+	}
+	if err := s.checkQuota(a, count, limit, 0); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
 	online := map[int64]bool{}
 	var created []userView
 	for i := 1; i <= count; i++ {
@@ -374,6 +443,7 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 			name = fmt.Sprintf("%s-%d", base, i)
 		}
 		u := s.newUser(name)
+		u.OwnerID = a.ID
 		in2 := in
 		in2.Name = nil
 		if err := in2.apply(u); err != nil {
@@ -386,24 +456,25 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		created = append(created, s.view(r, u, online))
 	}
-	s.St.Log("user", "%d user(s) created (%s)", count, base)
+	s.St.Log("user", "%s created %d user(s) (%s)", a.Username, count, base)
 	s.Mgr.RequestApply()
 	writeJSON(w, 200, created)
 }
 
 func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
-	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+	writeJSON(w, 200, struct {
+		userView
+		DeviceList []engine.Device `json:"deviceList"`
+	}{s.view(r, u, s.Mgr.OnlineUsers(60)), s.Mgr.Devices(u.Name)})
 }
 
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
 	var in userInput
@@ -411,7 +482,15 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad request")
 		return
 	}
+	a := adminOf(r)
+	if a.Role == store.RoleReseller {
+		in.InboundIDs = nil
+	}
 	if err := in.apply(u); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if err := s.checkQuota(a, 1, u.DataLimit, u.ID); err != nil {
 		fail(w, 400, err.Error())
 		return
 	}
@@ -424,9 +503,8 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
 	s.St.DeleteUser(u.ID)
@@ -436,21 +514,19 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resetUser(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
-	u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+	u.UsedUp, u.UsedDown, u.LastResetAt, u.PausedUntil, u.Notified, u.ResetUsage = 0, 0, time.Now().Unix(), 0, "", true
 	s.St.UpdateUser(u)
 	s.Mgr.RequestApply()
 	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
 }
 
 func (s *Server) regenerateUser(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
 	u.UUID, u.Password, u.SubToken = util.UUID(), util.RandomString(20), util.RandomString(22)
@@ -472,9 +548,10 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := 0
+	a := adminOf(r)
 	for _, id := range in.IDs {
 		u, err := s.St.UserByID(id)
-		if err != nil {
+		if err != nil || !owns(a, u) {
 			continue
 		}
 		switch in.Action {
@@ -483,7 +560,7 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		case "disable":
 			u.Enabled = false
 		case "reset":
-			u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+			u.UsedUp, u.UsedDown, u.LastResetAt, u.PausedUntil, u.Notified, u.ResetUsage = 0, 0, time.Now().Unix(), 0, "", true
 		case "extend":
 			if in.Days > 0 {
 				base := time.Now().Unix()
@@ -497,8 +574,13 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if in.Bytes > 0 && u.DataLimit > 0 {
+				if err := s.checkQuota(a, 1, u.DataLimit+in.Bytes, u.ID); err != nil {
+					fail(w, 400, err.Error())
+					return
+				}
 				u.DataLimit += in.Bytes
 			}
+			u.Notified = ""
 		case "delete":
 			s.St.DeleteUser(u.ID)
 			n++
@@ -510,12 +592,15 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		s.St.UpdateUser(u)
 		n++
 	}
-	s.St.Log("user", "bulk %s on %d user(s)", in.Action, n)
+	s.St.Log("user", "%s: bulk %s on %d user(s)", a.Username, in.Action, n)
 	s.Mgr.RequestApply()
 	writeJSON(w, 200, map[string]int{"affected": n})
 }
 
 func (s *Server) userUsage(w http.ResponseWriter, r *http.Request) {
+	if s.userFor(w, r) == nil {
+		return
+	}
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
 	if days <= 0 || days > 400 {
 		days = 30
@@ -558,9 +643,8 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 }
 
 func (s *Server) userConfigs(w http.ResponseWriter, r *http.Request) {
-	u, err := s.St.UserByID(pathID(r))
-	if err != nil {
-		fail(w, 404, "user not found")
+	u := s.userFor(w, r)
+	if u == nil {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"subUrl": s.SubURL(r, u), "configs": s.configsFor(u)})
@@ -748,7 +832,8 @@ func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
 
 var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
 	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
-	"sub_info_entry", "announce", "panel_tls"}
+	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes",
+	"tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_backup", "tg_user_bot", "tg_api"}
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	all := s.St.AllSettings()
@@ -757,7 +842,8 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		out[k] = all[k]
 	}
 	defaults := map[string]string{"sub_title": "Dunvex", "sub_update_hours": "12", "block_torrent": "true",
-		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true"}
+		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true",
+		"ip_pause_minutes": "10", "tg_lang": "fa", "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
 	for k, v := range defaults {
 		if out[k] == "" {
 			out[k] = v
@@ -769,6 +855,12 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		if t, err := tlsmgr.Expiry(env.CertFile); err == nil {
 			info["certExpiry"] = t.Unix()
 		}
+	}
+	if t := out["tg_token"]; len(t) > 10 {
+		out["tg_token"] = t[:6] + strings.Repeat("•", 8) + t[len(t)-4:] // never sent back in full
+	}
+	if s.Bot != nil {
+		info["telegram"] = s.Bot.Status()
 	}
 	writeJSON(w, 200, map[string]any{"settings": out, "info": info})
 }
@@ -790,6 +882,16 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		v = strings.TrimSpace(v)
 		switch k {
+		case "tg_token":
+			if strings.Contains(v, "•") {
+				continue // the masked value came back unchanged
+			}
+		case "ip_pause_minutes", "tg_daily_hour":
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 || (k == "tg_daily_hour" && n > 23) || n > 1440 {
+				fail(w, 400, "invalid number for "+k)
+				return
+			}
 		case "panel_port":
 			p, err := strconv.Atoi(v)
 			if err != nil || p < 1 || p > 65535 {
@@ -828,6 +930,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.St.Log("settings", "settings updated")
 	s.Mgr.RequestApply()
+	if s.Bot != nil {
+		s.Bot.Reload()
+	}
 	if needRestart && s.Restart != nil {
 		go func() { time.Sleep(time.Second); s.Restart() }()
 	}

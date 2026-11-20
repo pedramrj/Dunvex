@@ -44,12 +44,17 @@ type Manager struct {
 	userRate    map[int64]Sample
 	inRate      map[int64]Sample
 	badPorts    map[int]string // ports another program holds: those inbounds are skipped
+
+	dev       *devices
+	liveGone  map[string]int64 // users removed live from Xray → when
+	lastKick  int64
+	overSince map[int64]int64 // user id → first moment over the device limit
 }
 
 // NewManager wires a manager for the given home directory.
 func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env) *Manager {
 	os.MkdirAll(runDir, 0o700)
-	return &Manager{
+	m := &Manager{
 		Store:       st,
 		Xray:        &Core{Name: "xray", BinDir: binDir, ConfigPath: filepath.Join(runDir, "xray.json"), APIPort: 62789},
 		SingBox:     &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
@@ -61,7 +66,42 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		userRate:    map[int64]Sample{},
 		inRate:      map[int64]Sample{},
 		badPorts:    map[int]string{},
+		dev:         newDevices(),
+		liveGone:    map[string]int64{},
+		overSince:   map[int64]int64{},
 	}
+	m.Xray.Live = m.xrayLive
+	m.SingBox.OnLine = m.dev.singboxLine
+	return m
+}
+
+func (m *Manager) xrayAPI() string { return "127.0.0.1:" + strconv.Itoa(m.Xray.APIPort) }
+
+// xrayLive applies user-only changes to the running Xray through its API.
+func (m *Manager) xrayLive(old, cfg []byte) bool {
+	ops, gone, ok := xrayUserDiff(old, cfg)
+	if !ok {
+		return false
+	}
+	if len(ops) == 0 {
+		return true
+	}
+	if err := applyUserOps(m.xrayAPI(), ops); err != nil {
+		log.Printf("live user change failed, restarting xray: %v", err)
+		return false
+	}
+	now := time.Now().Unix()
+	m.mu.Lock()
+	for _, op := range ops {
+		if op.add != nil {
+			delete(m.liveGone, op.email)
+		}
+	}
+	for _, g := range gone {
+		m.liveGone[g] = now
+	}
+	m.mu.Unlock()
+	return true
 }
 
 // RequestApply schedules a config rebuild (debounced).
@@ -196,11 +236,11 @@ func (m *Manager) xrayConfig(inbounds []obj) obj {
 		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "outboundTag": "block"})
 	}
 	return obj{
-		"log": obj{"loglevel": "warning", "access": "none"},
-		"api": obj{"tag": "api", "listen": "127.0.0.1:" + strconv.Itoa(m.Xray.APIPort), "services": []string{"StatsService", "HandlerService"}},
+		"log":   obj{"loglevel": "warning", "access": "none"},
+		"api":   obj{"tag": "api", "listen": "127.0.0.1:" + strconv.Itoa(m.Xray.APIPort), "services": []string{"StatsService", "HandlerService"}},
 		"stats": obj{},
 		"policy": obj{
-			"levels": obj{"0": obj{"statsUserUplink": true, "statsUserDownlink": true, "handshake": 4, "connIdle": 300}},
+			"levels": obj{"0": obj{"statsUserUplink": true, "statsUserDownlink": true, "statsUserOnline": true, "handshake": 4, "connIdle": 300}},
 			"system": obj{"statsInboundUplink": true, "statsInboundDownlink": true},
 		},
 		"inbounds": inbounds,
@@ -218,7 +258,7 @@ func (m *Manager) singboxConfig(inbounds []obj, tags, users []string) obj {
 		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "action": "reject"})
 	}
 	cfg := obj{
-		"log":       obj{"level": "warn", "timestamp": true},
+		"log":       obj{"level": "info", "timestamp": true}, // info: connection lines feed the device list
 		"inbounds":  inbounds,
 		"outbounds": []obj{{"type": "direct", "tag": "direct"}},
 		"route":     obj{"rules": rules, "final": "direct"},
@@ -322,10 +362,19 @@ func (m *Manager) Errors() (map[int64]string, map[string]string) {
 // It returns true when a user's status changed and configs must be rebuilt.
 func (m *Manager) collect() bool {
 	raw := map[string]int64{}
+	xr := map[string]int64{}
 	if m.Xray.Running() {
-		if s, err := QueryStats("127.0.0.1:"+strconv.Itoa(m.Xray.APIPort), "xray.app.stats.command.StatsService", true); err == nil {
+		if s, err := QueryStats(m.xrayAPI(), "xray.app.stats.command.StatsService", true); err == nil {
 			for k, v := range s {
 				raw[k] += v
+				xr[k] = v
+			}
+		}
+		if ips, err := xrayOnlineIPs(m.xrayAPI()); err == nil {
+			for name, list := range ips {
+				for _, e := range list {
+					m.dev.see(name, e.IP, e.LastSeen)
+				}
 			}
 		}
 	}
@@ -413,7 +462,28 @@ func (m *Manager) collect() bool {
 		m.userRate[uid] = Sample{T: now.Unix(), Up: t.Up / interval, Down: t.Down / interval}
 	}
 	active := m.activeNames
+	// a user removed live keeps open connections until they close; if one is
+	// still moving traffic, restart Xray once to cut it off
+	kick := ""
+	for name, at := range m.liveGone {
+		switch {
+		case now.Unix()-at > 900 || active[name]:
+			delete(m.liveGone, name)
+		case now.Unix()-at >= 20 && xr["user>>>"+name+">>>traffic>>>uplink"]+xr["user>>>"+name+">>>traffic>>>downlink"] > 0:
+			kick = name
+		}
+	}
+	if kick != "" && now.Unix()-m.lastKick >= 60 {
+		m.lastKick = now.Unix()
+		m.liveGone = map[string]int64{}
+	} else {
+		kick = ""
+	}
 	m.mu.Unlock()
+	if kick != "" {
+		m.Store.Log("core", "%s was still connected after losing access; Xray restarted to disconnect it", kick)
+		m.Xray.Restart()
+	}
 
 	// first connection starts the timer of "pending" users
 	changed := false
@@ -428,12 +498,67 @@ func (m *Manager) collect() bool {
 	}
 	// detect users that crossed their limits
 	fresh, _ := m.Store.Users()
+	if m.enforceDevices(fresh, now.Unix()) {
+		changed = true
+	}
 	for _, u := range fresh {
 		if u.CanConnect(now.Unix()) != active[u.Name] {
 			changed = true
 		}
 	}
 	return changed
+}
+
+// Device limit: an address counts while it opened a connection in the last
+// minute. A user above the limit for two minutes straight is paused for a few
+// minutes. The window ignores short overlaps such as a phone moving from
+// Wi-Fi to mobile data.
+const (
+	deviceWindow = 60
+	deviceGrace  = 120
+)
+
+func (m *Manager) enforceDevices(users []*store.User, now int64) bool {
+	counts := m.dev.counts(now - deviceWindow)
+	pause := int64(10)
+	if v, err := strconv.Atoi(m.Store.GetSetting("ip_pause_minutes", "10")); err == nil && v > 0 {
+		pause = int64(v)
+	}
+	changed := false
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range users {
+		n := counts[u.Name]
+		if u.IPLimit <= 0 || !u.CanConnect(now) || n <= u.IPLimit {
+			delete(m.overSince, u.ID)
+			continue
+		}
+		first := m.overSince[u.ID]
+		if first == 0 {
+			m.overSince[u.ID] = now
+			continue
+		}
+		if now-first < deviceGrace {
+			continue
+		}
+		delete(m.overSince, u.ID)
+		u.PausedUntil = now + pause*60
+		if err := m.Store.UpdateUser(u); err == nil {
+			m.Store.Log("limit", "%s used %d devices at once (limit %d) and is paused for %d minutes", u.Name, n, u.IPLimit, pause)
+			changed = true
+		}
+	}
+	return changed
+}
+
+// Devices returns the addresses a user connected from in the last 5 minutes.
+func (m *Manager) Devices(name string) []Device {
+	return m.dev.list(name, time.Now().Unix()-300)
+}
+
+// DeviceCounts returns, per user name, addresses seen in the last 5 minutes.
+func (m *Manager) DeviceCounts() map[string]int {
+	return m.dev.counts(time.Now().Unix() - 300)
 }
 
 // maintenance performs periodic resets and pruning; returns true if configs must change.
@@ -466,7 +591,7 @@ func (m *Manager) maintenance() bool {
 		}
 		if now.After(next) {
 			wasLimited := u.Status(now.Unix()) == store.StatusLimited
-			u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, now.Unix()
+			u.UsedUp, u.UsedDown, u.LastResetAt, u.ResetUsage, u.Notified = 0, 0, now.Unix(), true, ""
 			m.Store.UpdateUser(u)
 			m.Store.Log("user", "%s usage reset (%s)", u.Name, u.ResetPeriod)
 			if wasLimited {
@@ -474,6 +599,15 @@ func (m *Manager) maintenance() bool {
 			}
 		}
 	}
+	// a paused user whose pause ended can connect again
+	for _, u := range users {
+		if u.PausedUntil > 0 && u.PausedUntil <= now.Unix() {
+			u.PausedUntil = 0
+			m.Store.UpdateUser(u)
+			changed = true
+		}
+	}
+	m.dev.prune(now.Unix() - 3600)
 	if now.Minute() == 0 {
 		m.Store.PruneUsage(now.AddDate(0, 0, -400).Unix())
 	}

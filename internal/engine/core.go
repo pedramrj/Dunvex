@@ -28,6 +28,11 @@ type Core struct {
 	BinDir     string
 	ConfigPath string
 	APIPort    int
+	// Live, when set, tries to apply a changed config to the running process
+	// without a restart and reports whether that worked.
+	Live func(old, cfg []byte) bool
+	// OnLine sees every log line; returning true keeps the line out of Logs().
+	OnLine func(line string) bool
 
 	opMu      sync.Mutex // serialises Apply/Restart/Stop so only one process ever runs
 	mu        sync.Mutex
@@ -159,15 +164,18 @@ func (c *Core) Apply(cfg []byte) error {
 		c.stop()
 		return nil
 	}
+	old, _ := os.ReadFile(c.ConfigPath)
+	if bytes.Equal(old, cfg) && c.Running() {
+		return nil
+	}
 	if err := c.Test(cfg); err != nil {
 		c.mu.Lock()
 		c.lastErr = err.Error()
 		c.mu.Unlock()
 		return err
 	}
-	old, _ := os.ReadFile(c.ConfigPath)
-	if bytes.Equal(old, cfg) && c.Running() {
-		return nil
+	if c.Live != nil && old != nil && c.Running() && c.Live(old, cfg) {
+		return os.WriteFile(c.ConfigPath, cfg, 0o600)
 	}
 	if err := os.WriteFile(c.ConfigPath, cfg, 0o600); err != nil {
 		return err
@@ -274,7 +282,10 @@ func (c *Core) readLogs(r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
-		line := sc.Text()
+		line := ansiRe.ReplaceAllString(sc.Text(), "")
+		if c.OnLine != nil && c.OnLine(line) {
+			continue
+		}
 		c.mu.Lock()
 		c.logs = append(c.logs, line)
 		if len(c.logs) > 400 {

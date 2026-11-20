@@ -1,6 +1,6 @@
 <div align="center">
 
-# Dunvex
+<img src="web/public/brand/dunvex-logo-512.png" alt="Dunvex" width="240">
 
 **A light, all-in-one VPN panel: every line, one interchange.**
 Xray + sing-box · 26 ready protocols · per-user accounting · one-line install
@@ -33,6 +33,10 @@ Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: 
   post-quantum VLESS Encryption, Hysteria2, TUIC v5, WireGuard, AnyTLS, ShadowTLS v3, NaiveProxy,
   Shadowsocks 2022, Trojan, VMess, mKCP, SOCKS5, HTTP. See [docs/PROTOCOLS.md](docs/PROTOCOLS.md).
 - **Users**: data limit, expiry, start-on-first-connection, daily/weekly/monthly reset, per-protocol access, bulk actions.
+- **Live changes**: adding, limiting or renewing a user reaches Xray at once, without disconnecting anyone else.
+- **Device limit**: set how many devices may connect at once; the panel shows each user's connected addresses.
+- **Admins**: owner, admin and reseller roles (resellers manage only their own users, within a user and data quota), two-step login (TOTP).
+- **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
 - **Dashboard**: live network map, CPU/RAM/disk/network, 30-day usage, top users, core health (Persian & English).
@@ -63,6 +67,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 ### امکانات
 - **۲۶ پروتکل آماده** که همه با هسته‌های واقعی تست شده‌اند (فهرست کامل در [docs/PROTOCOLS.md](docs/PROTOCOLS.md)).
 - **کاربران**: حجم، تاریخ انقضا، شروع از اولین اتصال، صفر شدن دوره‌ای، محدودیت پروتکل، عملیات گروهی.
+- **تغییر زنده**: ساختن، محدود کردن یا تمدید کاربر بدون قطع شدن بقیه اعمال می‌شود.
+- **محدودیت دستگاه**: تعداد دستگاه هم‌زمان هر کاربر، با نمایش IPهای متصل.
+- **مدیران**: نقش مالک، مدیر و نماینده فروش (با سقف کاربر و حجم) و ورود دو مرحله‌ای.
+- **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
 - **داشبورد** با نقشهٔ زندهٔ شبکه، منابع سرور و نمودار مصرف (فارسی و انگلیسی).
