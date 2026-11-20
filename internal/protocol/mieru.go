@@ -49,7 +49,9 @@ func mieruDefaults(params map[string]any) {
 
 // MieruServer is mita's configuration for an inbound and its users; nil when
 // nobody may use it (mita refuses to serve without users, so it stays off).
-func MieruServer(p *Preset, in *store.Inbound, users []*store.User, listen string) ([]byte, error) {
+// egress, when set, is a local SOCKS5 address all traffic leaves through
+// (Xray's routing inbound), so the server's routing rules apply to Mieru too.
+func MieruServer(p *Preset, in *store.Inbound, users []*store.User, listen, egress string) ([]byte, error) {
 	type user struct {
 		Name     string `json:"name"`
 		Password string `json:"password"`
@@ -77,6 +79,13 @@ func MieruServer(p *Preset, in *store.Inbound, users []*store.User, listen strin
 	}
 	if listen != "" {
 		cfg["listenIPAddress"] = listen
+	}
+	if host, port, err := net.SplitHostPort(egress); err == nil {
+		n, _ := strconv.Atoi(port)
+		cfg["egress"] = map[string]any{
+			"proxies": []map[string]any{{"name": "dunvex-router", "protocol": "SOCKS5_PROXY_PROTOCOL", "host": host, "port": n}},
+			"rules":   []map[string]any{{"ipRanges": []string{"*"}, "domainNames": []string{"*"}, "action": "PROXY", "proxyNames": []string{"dunvex-router"}}},
+		}
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }

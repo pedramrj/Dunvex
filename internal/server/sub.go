@@ -222,7 +222,14 @@ func (s *Server) clashProfile(u *store.User, now int64) []byte {
 	sel, _ := json.Marshal(append([]string{"⚡ Auto"}, names...))
 	fmt.Fprintf(&b, "  - {\"name\":\"🚀 Dunvex\",\"type\":\"select\",\"proxies\":%s}\n", sel)
 	group("⚡ Auto", "url-test", `,"url":"https://www.gstatic.com/generate_204","interval":300,"tolerance":50`)
-	b.WriteString("rules:\n  - GEOIP,private,DIRECT,no-resolve\n  - MATCH,🚀 Dunvex\n")
+	b.WriteString("rules:\n  - GEOIP,private,DIRECT,no-resolve\n")
+	if ir := s.iranDirect(); ir != nil {
+		// Iranian sites go straight from the device
+		for _, r := range ir.clashRules() {
+			b.WriteString("  - " + r + "\n")
+		}
+	}
+	b.WriteString("  - MATCH,🚀 Dunvex\n")
 	return b.Bytes()
 }
 
@@ -251,26 +258,41 @@ func (s *Server) singboxProfile(u *store.User, now int64) []byte {
 		{"type": "urltest", "tag": "auto", "outbounds": tags, "url": "https://www.gstatic.com/generate_204", "interval": "5m"},
 	}, outbounds...)
 	all = append(all, obj{"type": "direct", "tag": "direct"})
+	dns := obj{
+		"servers": []obj{
+			{"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+			{"type": "local", "tag": "local"},
+		},
+		"final": "remote",
+	}
+	rules := []obj{
+		{"action": "sniff"},
+		{"protocol": "dns", "action": "hijack-dns"},
+		{"ip_is_private": true, "outbound": "direct"},
+	}
+	if ir := s.iranDirect(); ir != nil {
+		// Iranian sites go straight from the device and are resolved by its own DNS,
+		// so Iranian CDNs answer with their Iranian addresses
+		dr := ir.singboxDomains()
+		dr["server"] = "local"
+		dns["rules"] = []obj{dr}
+		r := ir.singboxDomains()
+		r["outbound"] = "direct"
+		rules = append(rules, r)
+		if len(ir.cidr4) > 0 {
+			rules = append(rules, obj{"ip_cidr": ir.cidr4, "outbound": "direct"})
+		}
+	}
 	cfg := obj{
 		"log": obj{"level": "warn"},
-		"dns": obj{
-			"servers": []obj{
-				{"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
-				{"type": "local", "tag": "local"},
-			},
-			"final": "remote",
-		},
+		"dns": dns,
 		"inbounds": []obj{
 			{"type": "tun", "tag": "tun-in", "address": []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"}, "auto_route": true, "strict_route": true},
 			{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080},
 		},
 		"outbounds": all,
 		"route": obj{
-			"rules": []obj{
-				{"action": "sniff"},
-				{"protocol": "dns", "action": "hijack-dns"},
-				{"ip_is_private": true, "outbound": "direct"},
-			},
+			"rules":                   rules,
 			"final":                   "proxy",
 			"auto_detect_interface":   true,
 			"default_domain_resolver": "local",

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/util"
 )
@@ -53,6 +54,14 @@ func TestMieruOnRealMita(t *testing.T) {
 		return u
 	}
 	sara, reza := mk("sara"), mk("reza")
+	// with DUNVEX_CORE_DIR the routing rules are on: traffic leaves through Xray
+	routed := os.Getenv("DUNVEX_CORE_DIR") != ""
+	if routed {
+		copyCores(t, os.Getenv("DUNVEX_CORE_DIR"), bin)
+		if _, err := routing.Save(st, routing.Settings{BlockDomains: []string{"example.org"}, Iran: routing.IranDirect, Warp: routing.WarpOff}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	p := protocol.Get(preset)
 	port := freeUDP(31890)
 	if err := st.CreateInbound(&store.Inbound{Preset: p.ID, Port: port, Enabled: true, Params: protocol.Defaults(p, nil, "")}); err != nil {
@@ -63,7 +72,9 @@ func TestMieruOnRealMita(t *testing.T) {
 	env := protocol.Env{Host: "127.0.0.1"}
 	m := NewManager(st, bin, filepath.Join(dir, "run"), func() protocol.Env { return env })
 	m.Xray.APIPort, m.SingBox.APIPort, m.MTG.APIPort = nextFree(41890), nextFree(41900), nextFree(41910)
+	m.RouterPort, m.WarpTestPort = nextFree(41960), nextFree(41970)
 	defer m.Mita.Stop()
+	defer m.Xray.Stop()
 	if err := m.Apply(); err != nil {
 		t.Fatalf("apply: %v | %v", err, m.Mita.Logs())
 	}
@@ -132,6 +143,15 @@ func TestMieruOnRealMita(t *testing.T) {
 		t.Fatalf("no internet through Mieru: %v\nclient: %s\nserver: %v", err, clientLog(), m.Mita.Logs())
 	}
 	t.Logf("traffic leaves as %s", exit)
+	if routed {
+		if code, _ := fetch(socks, "https://example.org/"); code != "000" {
+			t.Errorf("example.org was not blocked: the traffic did not go through the routing (%s)", code)
+		}
+		if !waitPort(m.RouterPort) {
+			t.Errorf("the routing inbound is not listening")
+		}
+		t.Log("the traffic follows the server's routing rules")
+	}
 
 	// usage per user and the online state come from mita's counters
 	m.collect()

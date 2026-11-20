@@ -59,6 +59,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
+- **Routing and WARP (v1.14)**: block ads, adult sites, torrents or your own domains; Iranian sites direct, blocked
+  or through WARP on the server, and straight from the phone in sing-box and Clash subscriptions; one click registers a
+  free Cloudflare WARP device for chosen sites (AI, Google, Netflix…) or for everything. The rules cover Mieru and
+  TrustTunnel too. See [docs/ROUTING.md](docs/ROUTING.md).
 - **Sales (v1.13)**: plans sold in a web shop, through a Renew button on every user page and in the Telegram bot.
   Payment by card to card (receipt photo, approved with one tap), ZarinPal (verified online, with a test mode) or
   USDT on TRON (found on the chain automatically). Resellers top up a wallet and pay for each user from it, with
@@ -130,6 +134,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
+- **مسیریابی و WARP (نسخهٔ ۱.۱۴)**: مسدود کردن تبلیغات، سایت‌های بزرگسال، تورنت یا دامنه‌های دلخواه؛ سایت‌های ایرانی
+  روی سرور مستقیم، مسدود یا از WARP، و روی گوشی کاربر بیرون از VPN (اشتراک sing-box و Clash)؛ ثبت WARP رایگان کلادفلر
+  با یک کلیک برای سایت‌های انتخابی (هوش مصنوعی، گوگل، نتفلیکس…) یا همهٔ ترافیک. Mieru و TrustTunnel هم از همین قانون‌ها
+  پیروی می‌کنند. راهنما: [docs/ROUTING.md](docs/ROUTING.md).
 - **فروش (نسخهٔ ۱.۱۳)**: فروش پلن در فروشگاه وب، با دکمهٔ «تمدید» روی صفحهٔ هر کاربر و داخل ربات تلگرام. پرداخت با
   کارت‌به‌کارت (عکس رسید و تأیید با یک دکمه)، درگاه زرین‌پال (تأیید آنلاین، با حالت آزمایشی) یا تتر روی شبکهٔ ترون (پیدا شدن
   خودکار روی بلاکچین). نماینده‌ها کیف پولشان را شارژ می‌کنند و هزینهٔ هر کاربر با تخفیف خودشان از آن کم می‌شود.

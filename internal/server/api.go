@@ -105,6 +105,13 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /settings/cert", O, s.obtainCert)
 	h("POST /settings/telegram/test", O, s.telegramTest)
 
+	h("GET /routing", O, s.getRouting)
+	h("PUT /routing", O, s.putRouting)
+	h("POST /routing/warp", O, s.registerWarp)
+	h("DELETE /routing/warp", O, s.removeWarp)
+	h("POST /routing/warp/license", O, s.warpLicense)
+	h("POST /routing/warp/check", O, s.checkWarp)
+
 	h("GET /cores", A, s.cores)
 	h("POST /cores/{name}/install", O, s.installCore)
 	h("POST /cores/apply", A, s.applyCores)

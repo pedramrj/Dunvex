@@ -16,8 +16,10 @@ import (
 	"github.com/pedramrj/dunvex/internal/awg"
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/util"
+	"github.com/pedramrj/dunvex/internal/warp"
 )
 
 type obj = map[string]any
@@ -49,6 +51,10 @@ type Manager struct {
 	ClientOf func(string) string
 	// OnApplied runs after every apply, so other servers can be brought in line.
 	OnApplied func()
+	// RouterPort and WarpTestPort are the loopback SOCKS inbounds of the routing.
+	RouterPort, WarpTestPort int
+	// WarpClient registers WARP devices (nil: Cloudflare's API).
+	WarpClient *warp.Client
 
 	applyCh chan struct{}
 	applyMu sync.Mutex
@@ -88,24 +94,26 @@ type Manager struct {
 func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env) *Manager {
 	os.MkdirAll(runDir, 0o700)
 	m := &Manager{
-		Store:       st,
-		Xray:        &Core{Name: "xray", BinDir: binDir, ConfigPath: filepath.Join(runDir, "xray.json"), APIPort: 62789},
-		SingBox:     &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
-		MTG:         &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
-		AWG:         awg.New(binDir, "dvxawg0"),
-		Mita:        &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
-		TT:          &Core{Name: "trusttunnel", BinDir: binDir, ConfigPath: filepath.Join(runDir, "tt-vpn.toml"), APIPort: 62792},
-		Env:         env,
-		applyCh:     make(chan struct{}, 1),
-		inboundErrs: map[int64]string{},
-		coreErrs:    map[string]string{},
-		online:      map[int64]int64{},
-		userRate:    map[int64]Sample{},
-		inRate:      map[int64]Sample{},
-		badPorts:    map[int]string{},
-		dev:         newDevices(),
-		liveGone:    map[string]int64{},
-		overSince:   map[int64]int64{},
+		Store:        st,
+		Xray:         &Core{Name: "xray", BinDir: binDir, ConfigPath: filepath.Join(runDir, "xray.json"), APIPort: 62789},
+		SingBox:      &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
+		MTG:          &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
+		AWG:          awg.New(binDir, "dvxawg0"),
+		Mita:         &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
+		TT:           &Core{Name: "trusttunnel", BinDir: binDir, ConfigPath: filepath.Join(runDir, "tt-vpn.toml"), APIPort: 62792},
+		Env:          env,
+		RouterPort:   RouterPort,
+		WarpTestPort: WarpTestPort,
+		applyCh:      make(chan struct{}, 1),
+		inboundErrs:  map[int64]string{},
+		coreErrs:     map[string]string{},
+		online:       map[int64]int64{},
+		userRate:     map[int64]Sample{},
+		inRate:       map[int64]Sample{},
+		badPorts:     map[int]string{},
+		dev:          newDevices(),
+		liveGone:     map[string]int64{},
+		overSince:    map[int64]int64{},
 	}
 	m.Xray.Live = m.xrayLive
 	m.Mita.Live = m.mitaLive
@@ -251,12 +259,17 @@ func (m *Manager) build() (b built, err error) {
 	}
 	env := m.Env()
 	now := time.Now().Unix()
+	rp := m.routePlan()
+	router := "" // Mieru and TrustTunnel leave through Xray when routing rules are on
+	if rp.useRouter() {
+		router = rp.routerAddr()
+	}
 	shared := 0
 	if m.SharedPort != nil {
 		shared = m.SharedPort()
 	}
 	b.errs, b.active, b.routes = map[int64]string{}, map[string]bool{}, map[string]edge.Target{}
-	used := map[int]bool{m.Xray.APIPort: true, m.SingBox.APIPort: true, shared: true}
+	used := map[int]bool{m.Xray.APIPort: true, m.SingBox.APIPort: true, shared: true, m.RouterPort: true, m.WarpTestPort: true}
 	m.mu.Lock()
 	for _, in := range inbounds {
 		used[in.Port] = true
@@ -316,13 +329,13 @@ func (m *Manager) build() (b built, err error) {
 				continue
 			}
 			// nil while nobody may use it: without users the endpoint lets anyone in
-			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort), in.ID
+			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort, router), in.ID
 		case "mita":
 			if b.mitaIn != 0 {
 				b.errs[in.ID] = "only one Mieru (TCP or UDP) can run on a server: it serves every user on its port"
 				continue
 			}
-			cfg, e := protocol.MieruServer(p, in, us, env.Listen)
+			cfg, e := protocol.MieruServer(p, in, us, env.Listen, router)
 			if e != nil {
 				b.errs[in.ID] = e.Error()
 				continue
@@ -390,8 +403,8 @@ func (m *Manager) build() (b built, err error) {
 			}
 		}
 	}
-	if len(xin) > 0 {
-		b.xray, _ = json.MarshalIndent(m.xrayConfig(xin), "", "  ")
+	if mitaOrTT := b.mita != nil || b.tt != nil; len(xin) > 0 || (mitaOrTT && rp.useRouter()) {
+		b.xray, _ = json.MarshalIndent(m.xrayConfig(xin, rp, mitaOrTT), "", "  ")
 	}
 	// TLS for an unknown name goes to the first shared Reality inbound (lowest id),
 	// which forwards it to its real target: the port behaves like plain Reality
@@ -408,19 +421,14 @@ func (m *Manager) build() (b built, err error) {
 	}
 	if len(sin) > 0 {
 		sort.Strings(sUsers)
-		b.singbox, _ = json.MarshalIndent(m.singboxConfig(sin, sTags, sUsers), "", "  ")
+		b.singbox, _ = json.MarshalIndent(m.singboxConfig(sin, sTags, sUsers, rp), "", "  ")
 	}
 	return
 }
 
-func (m *Manager) xrayConfig(inbounds []obj) obj {
-	rules := []obj{}
-	if _, err := os.Stat(filepath.Join(m.Xray.BinDir, "geoip.dat")); err == nil {
-		rules = append(rules, obj{"ip": []string{"geoip:private"}, "outboundTag": "block"})
-	}
-	if m.Store.GetSetting("block_torrent", "true") == "true" {
-		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "outboundTag": "block"})
-	}
+func (m *Manager) xrayConfig(inbounds []obj, rp *routePlan, mitaOrTT bool) obj {
+	rules, outbounds, extra, strategy := rp.xrayRouting(m.Store.GetSetting("block_torrent", "true") == "true", mitaOrTT)
+	inbounds = append(inbounds, extra...)
 	return obj{
 		"log":   obj{"loglevel": "warning", "access": "none"},
 		"api":   obj{"tag": "api", "listen": "127.0.0.1:" + strconv.Itoa(m.Xray.APIPort), "services": []string{"StatsService", "HandlerService"}},
@@ -429,25 +437,36 @@ func (m *Manager) xrayConfig(inbounds []obj) obj {
 			"levels": obj{"0": obj{"statsUserUplink": true, "statsUserDownlink": true, "statsUserOnline": true, "handshake": 4, "connIdle": 300}},
 			"system": obj{"statsInboundUplink": true, "statsInboundDownlink": true},
 		},
-		"inbounds": inbounds,
-		"outbounds": []obj{
-			{"protocol": "freedom", "tag": "direct"},
-			{"protocol": "blackhole", "tag": "block"},
-		},
-		"routing": obj{"domainStrategy": "AsIs", "rules": rules},
+		"inbounds":  inbounds,
+		"outbounds": outbounds,
+		"routing":   obj{"domainStrategy": strategy, "rules": rules},
 	}
 }
 
-func (m *Manager) singboxConfig(inbounds []obj, tags, users []string) obj {
-	rules := []obj{{"action": "sniff"}, {"ip_is_private": true, "action": "reject"}}
-	if m.Store.GetSetting("block_torrent", "true") == "true" {
-		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "action": "reject"})
+func (m *Manager) singboxConfig(inbounds []obj, tags, users []string, rp *routePlan) obj {
+	torrent := m.Store.GetSetting("block_torrent", "true") == "true"
+	rules, ruleSets, endpoints, final, resolver, err := m.singboxRouting(rp, torrent)
+	if err != nil {
+		// the site lists could not be read: keep the basic rules rather than stop the core
+		log.Printf("sing-box routing: %v", err)
+		rules, ruleSets, endpoints, final, resolver, _ = m.singboxRouting(&routePlan{set: routing.Defaults()}, torrent)
+	}
+	route := obj{"rules": rules, "final": final}
+	if len(ruleSets) > 0 {
+		route["rule_set"] = ruleSets
 	}
 	cfg := obj{
 		"log":       obj{"level": "info", "timestamp": true}, // info: connection lines feed the device list
 		"inbounds":  inbounds,
 		"outbounds": []obj{{"type": "direct", "tag": "direct"}},
-		"route":     obj{"rules": rules, "final": "direct"},
+		"route":     route,
+	}
+	if len(endpoints) > 0 {
+		cfg["endpoints"] = endpoints
+	}
+	if resolver {
+		cfg["dns"] = obj{"servers": []obj{{"type": "local", "tag": "local"}}}
+		route["default_domain_resolver"] = "local"
 	}
 	if m.SingBox.HasTag("with_v2ray_api") {
 		cfg["experimental"] = obj{"v2ray_api": obj{

@@ -41,6 +41,8 @@ type Server struct {
 
 	Bot Bot // Telegram bot (optional)
 
+	WarpAPI string // Cloudflare's WARP API ("" = the real one; tests point it elsewhere)
+
 	Bill     *billing.Service // the shop (made on first use when nil)
 	billOnce sync.Once
 	hits     map[string][]time.Time // shop rate limits (under limMu)

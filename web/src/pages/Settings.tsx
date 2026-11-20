@@ -115,10 +115,9 @@ function OwnerSettings({ tab }: { tab: TabId }) {
             <label><Label hint={<span className="mono">{info.effectiveHost}</span>}>{t("host")}</Label><Input dir="ltr" value={s.host ?? ""} placeholder={info.publicIp} onChange={(e) => set("host", e.target.value)} /></label>
           </div>
           <div className="mt-5 flex flex-col gap-4">
-            <Toggle checked={s.block_torrent !== "false"} onChange={(v) => set("block_torrent", String(v))} label={t("blockTorrent")} />
             <label className="max-w-xs"><Label>{t("pauseMinutes")}</Label><Input type="number" min={1} className="num" value={s.ip_pause_minutes ?? "10"} onChange={(e) => set("ip_pause_minutes", e.target.value)} /></label>
           </div>
-          <SaveBar keys={["domain", "host", "block_torrent", "ip_pause_minutes"]} />
+          <SaveBar keys={["domain", "host", "ip_pause_minutes"]} />
         </Panel>
         <Panel icon={<ShieldCheck className="size-4" />} title={t("certificate")}
           action={<Badge color={info.selfSigned ? "var(--color-ink2)" : "var(--color-online)"}>{info.selfSigned ? (lang === "fa" ? "خودامضا" : "Self-signed") : "TLS ✓"}</Badge>}>

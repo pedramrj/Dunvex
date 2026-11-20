@@ -71,6 +71,7 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/backup` | O | Download the database |
 | GET / POST | `/update` | O | Check for, or install, a new Dunvex version |
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |
+| GET / PUT | `/routing` | O | Blocking, Iranian sites and WARP; the rest is in [ROUTING.md](ROUTING.md) |
 | GET | `/billing/plans` · `/billing/orders` · `/wallet` | R | Plans, orders and your wallet; the rest is in [BILLING.md](BILLING.md) |
 
 Signed-in panel only (not API keys): `/me`, `/account`, `/account/2fa/*`, `/account/sessions` (list,

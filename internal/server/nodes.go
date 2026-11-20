@@ -158,6 +158,7 @@ func (h *nodeHub) round() {
 func (s *Server) desired(n *store.Node) node.State {
 	st := node.State{Inbounds: []*store.Inbound{}, Users: []node.User{}, Settings: map[string]string{
 		"block_torrent": s.St.GetSetting("block_torrent", "true"),
+		"routing":       s.St.GetSetting("routing", ""),
 	}}
 	inbounds, _ := s.St.Inbounds()
 	for _, in := range inbounds {

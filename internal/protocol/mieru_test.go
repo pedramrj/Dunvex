@@ -29,7 +29,7 @@ func TestMieru(t *testing.T) {
 		}
 
 		// the server: one port, the users with a password, the traffic pattern seed
-		raw, err := MieruServer(p, in, []*store.User{sara, {Name: "nopass"}}, "203.0.113.5")
+		raw, err := MieruServer(p, in, []*store.User{sara, {Name: "nopass"}}, "203.0.113.5", "")
 		if err != nil {
 			t.Fatal(err)
 		}

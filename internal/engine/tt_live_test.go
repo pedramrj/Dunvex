@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/util"
 )
@@ -81,6 +82,14 @@ func TestTrustTunnelOnRealEndpoint(t *testing.T) {
 		return u
 	}
 	sara, reza := mk("sara"), mk("reza")
+	// with DUNVEX_CORE_DIR the routing rules are on: traffic leaves through Xray
+	routed := os.Getenv("DUNVEX_CORE_DIR") != ""
+	if routed {
+		copyCores(t, os.Getenv("DUNVEX_CORE_DIR"), bin)
+		if _, err := routing.Save(st, routing.Settings{BlockDomains: []string{"example.org"}, Iran: routing.IranDirect, Warp: routing.WarpOff}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	p := protocol.Get("trusttunnel")
 	port := freeUDP(34890)
 	params := protocol.Defaults(p, map[string]any{"protocol": or(os.Getenv("DUNVEX_TT_PROTOCOL"), "http2")}, "")
@@ -95,7 +104,9 @@ func TestTrustTunnelOnRealEndpoint(t *testing.T) {
 	env := protocol.Env{Host: host}
 	m := NewManager(st, bin, filepath.Join(dir, "run"), func() protocol.Env { return env })
 	m.Xray.APIPort, m.SingBox.APIPort, m.MTG.APIPort, m.TT.APIPort = nextFree(41890), nextFree(41900), nextFree(41910), nextFree(41940)
+	m.RouterPort, m.WarpTestPort = nextFree(41960), nextFree(41970)
 	defer m.TT.Stop()
+	defer m.Xray.Stop()
 	if err := m.Apply(); err != nil {
 		t.Fatalf("apply: %v\n%s", err, strings.Join(m.TT.Logs(), "\n"))
 	}
@@ -222,6 +233,15 @@ address = "127.0.0.1:%d"
 		t.Logf("%s: traffic leaves as %s", what, exit)
 	}
 	works("first connection")
+	if routed {
+		if code, _ := fetch(socks, "https://example.org/"); code != "000" {
+			t.Errorf("example.org was not blocked: the traffic did not go through the routing (%s)", code)
+		}
+		if !waitPort(m.RouterPort) {
+			t.Errorf("the routing inbound is not listening")
+		}
+		t.Log("the traffic follows the server's routing rules")
+	}
 	if b, _, err := m.ttGet("/clients"); err == nil {
 		t.Logf("/clients: %s", b)
 	}
