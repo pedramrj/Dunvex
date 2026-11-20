@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/util"
@@ -363,11 +364,16 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 		"Support": s.St.GetSetting("support_url", ""), "Announce": s.St.GetSetting("announce", ""),
 		"Days": daysText(v.DaysLeft), "Pending": v.Status == store.StatusPending,
 		"FontBase": s.SubPath() + "_font/", "RingColor": template.CSS(ringColor(pct)), "PctCSS": template.CSS(fmt.Sprintf("%.1f", pct)),
-		"Brand": s.SubPath() + "_brand/", "Paused": "", "DevLimit": "", "Bot": "",
+		"Brand": s.SubPath() + "_brand/", "Paused": "", "DevLimit": "", "Bot": "", "Renew": "",
 		"Accent": template.CSS(accentOr(s.St.GetSetting("sub_accent", ""))),
 	}
 	if u.PausedUntil > now {
 		data["Paused"] = time.Unix(u.PausedUntil, 0).Format("15:04")
+	}
+	if billing.LoadSettings(s.St).Shop {
+		if plans, _ := s.St.Plans(true); len(plans) > 0 {
+			data["Renew"] = s.ShopPath() + "?renew=" + u.SubToken
+		}
 	}
 	if u.IPLimit > 0 {
 		data["DevLimit"] = fmt.Sprint(u.IPLimit)

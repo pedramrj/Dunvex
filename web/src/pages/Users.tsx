@@ -3,10 +3,10 @@ import {
   CalendarClock, CalendarPlus, Copy, Download, ExternalLink, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
   Users as UsersIcon, Wifi,
 } from "lucide-react";
-import { api, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Status, type User } from "../lib/api";
+import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type User, type WalletInfo } from "../lib/api";
 import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
-import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
+import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
   Skeleton, StatusBadge, Tabs, Toggle, useToast, ContextMenu, useConfirm, type MenuItem, EventMsg } from "../components/ui";
 import { UsageChart } from "../components/charts";
 import { PageHead, can, eventMeta, navigate, useSession } from "../App";
@@ -301,16 +301,30 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
       : { name: "", count: 1, gb: 30, days: 30, startOnFirstUse: true, resetPeriod: "none", inboundIds: [], note: "", ipLimit: 0 };
   const [f, setF] = useState<FormState>(init);
   const [daysTouched, setDaysTouched] = useState(false);
+  // plans: a new user can come from one; a reseller whose wallet is on must pick one
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
+  const [planId, setPlanId] = useState(0);
+  const mustPlan = !isAdmin && !!wallet?.enabled;
   useEffect(() => {
     if (open) {
       setF(init());
       setDaysTouched(false);
+      setPlanId(0);
       if (isAdmin) api<Inbound[]>("inbounds").then(setInbounds).catch(() => {});
+      if (!user) {
+        api<Plan[]>("billing/plans").then((ps) => {
+          const sale = isAdmin ? ps : ps.filter((p) => p.enabled);
+          setPlans(sale);
+          if (!isAdmin) api<WalletInfo>("wallet").then((w) => { setWallet(w); if (w.enabled && sale.length) setPlanId(sale[0].id); }).catch(() => {});
+        }).catch(() => {});
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((x) => ({ ...x, [k]: v }));
 
+  const chosen = plans.find((p) => p.id === planId);
   const submit = () => {
     setBusy(true);
     const body: Record<string, unknown> = { name: f.name, dataLimit: Math.round(f.gb * GB), resetPeriod: f.resetPeriod, note: f.note, ipLimit: f.ipLimit };
@@ -320,6 +334,7 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
       body.startOnFirstUse = f.startOnFirstUse;
     }
     if (!user) body.count = f.count;
+    if (!user && planId) body.planId = planId;
     const req = user ? api<User>(`users/${user.id}`, { method: "PUT", body }) : api<User[]>("users", { body }).then((list) => list[0]);
     req.then((u) => { toast(t("saved")); onSaved(u); }).catch((e) => toast(e.message, "error")).finally(() => setBusy(false));
   };
@@ -336,7 +351,23 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
           <label className="block mt-3"><Label>{t("note")}</Label><Input value={f.note} onChange={(e) => set("note", e.target.value)} /></label>
         </FormSection>
 
-        <FormSection title={t("plan")}>
+        {!user && plans.length > 0 && (
+          <FormSection title={t("choosePlan")}>
+            <Select value={String(planId)} onChange={(v) => setPlanId(+v)}
+              options={[...(mustPlan ? [] : [{ value: "0", label: t("planNone") }]), ...plans.map((p) => ({ value: String(p.id), label: p.name }))]} />
+            {chosen && <PlanFacts p={chosen} />}
+            {chosen && mustPlan && wallet && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+                <span>{t("price")}: <b className="num">{money((chosen.resellerPrice ?? chosen.price) * f.count)}</b> {wallet.currency}</span>
+                <span className="text-ink3">{t("balance")}: <span className="num">{money(wallet.balance)}</span></span>
+                <span className="text-ink3 basis-full">{t("planRequired")}</span>
+              </div>
+            )}
+          </FormSection>
+        )}
+        {mustPlan && plans.length === 0 && <div className="rounded-2xl border border-warn/40 bg-warn/[.08] px-4 py-3 text-[13px]">{t("noPlans")}</div>}
+
+        {!chosen && <FormSection title={t("plan")}>
           <Label hint={f.gb > 0 ? `${n(f.gb)} ${t("gb")}` : t("unlimited")}>{t("dataLimit")}</Label>
           <Segmented value={[10, 30, 50, 100, 200, 0].includes(f.gb) ? f.gb : -1} onChange={(v) => v >= 0 && set("gb", v)}
             options={[10, 30, 50, 100, 200].map((g) => ({ value: g, label: `${n(g)} ${t("gb")}` })).concat([{ value: 0, label: t("unlimited") }])} />
@@ -355,16 +386,16 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
             <Label>{t("resetPeriod")}</Label>
             <Select value={f.resetPeriod} onChange={(v) => set("resetPeriod", v as FormState["resetPeriod"])} options={(["none", "daily", "weekly", "monthly"] as const).map((p) => ({ value: p, label: t(p) }))} />
           </label>
-        </FormSection>
+        </FormSection>}
 
-        <FormSection title={t("limits")}>
+        {!chosen && <FormSection title={t("limits")}>
           <Label hint={f.ipLimit > 0 ? n(f.ipLimit) : t("unlimited")}>{t("deviceLimit")}</Label>
           <Segmented value={[0, 1, 2, 3, 5].includes(f.ipLimit) ? f.ipLimit : -1} onChange={(v) => v >= 0 && set("ipLimit", v)}
             options={[{ value: 0, label: t("unlimited") }, ...[1, 2, 3, 5].map((d) => ({ value: d, label: n(d) }))]} />
           <p className="text-[12.5px] text-ink3 mt-2">{t("deviceLimitHint")}</p>
-        </FormSection>
+        </FormSection>}
 
-        {isAdmin && inbounds.length > 0 && (
+        {isAdmin && !chosen && inbounds.length > 0 && (
           <FormSection title={t("access")}>
             <Segmented value={f.inboundIds.length ? "some" : "all"} onChange={(v) => set("inboundIds", v === "all" ? [] : inbounds.map((i) => i.id))}
               options={[{ value: "all", label: t("allProtocols") }, { value: "some", label: t("onlyThese") }]} />
@@ -384,6 +415,61 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
         )}
       </div>
     </Sheet>
+  );
+}
+
+/** gives a user a plan: days add to the time left, data left is kept;
+ * a reseller with a wallet pays for it */
+function RenewDialog({ open, user, plans, onClose, onDone }: { open: boolean; user: User; plans: Plan[]; onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { me } = useSession();
+  const reseller = !can(me.admin.role, "admin");
+  const [planId, setPlanId] = useState(0);
+  const [wallet, setWallet] = useState<WalletInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setPlanId((id) => (plans.some((p) => p.id === id) ? id : plans[0]?.id ?? 0));
+    if (reseller) api<WalletInfo>("wallet").then(setWallet).catch(() => {});
+  }, [open, plans, reseller]);
+  const p = plans.find((x) => x.id === planId);
+  const pays = reseller && !!wallet?.enabled;
+  const go = () => {
+    setBusy(true);
+    api<User>(`users/${user.id}/renew`, { method: "POST", body: { planId } })
+      .then(() => { toast(t("renewed")); onDone(); })
+      .catch((e) => toast(e.message, "error"))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Dialog open={open} onClose={onClose} title={<>{t("renewWithPlan")} · <bdi dir="ltr">{user.name}</bdi></>}
+      footer={<><Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} disabled={!p} onClick={go}>{t("renewWithPlan")}</Button></>}>
+      <label className="block"><Label>{t("choosePlan")}</Label>
+        <Select value={String(planId)} onChange={(v) => setPlanId(+v)} options={plans.map((x) => ({ value: String(x.id), label: x.name }))} /></label>
+      {p && <PlanFacts p={p} />}
+      <p className="text-[12.5px] text-ink3 mt-3">{t("renewHint")}</p>
+      {p && pays && wallet && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+          <span>{t("price")}: <b className="num">{money(p.resellerPrice ?? p.price)}</b> {wallet.currency}</span>
+          <span className="text-ink3">{t("balance")}: <span className="num">{money(wallet.balance)}</span></span>
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
+/** what a plan gives, in one line of chips */
+function PlanFacts({ p }: { p: Plan }) {
+  const { t, n } = useI18n();
+  const chip = "inline-flex items-center rounded-full bg-fg/[.05] border border-hair px-2.5 h-7 text-[12.5px]";
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      <span className={chip}>{p.dataLimit > 0 ? `${n(+(p.dataLimit / GB).toFixed(2))} ${t("gb")}` : t("unlimited")}</span>
+      <span className={chip}>{p.days > 0 ? `${n(p.days)} ${t("days")}` : t("never")}</span>
+      <span className={chip}>{t("deviceLimit")}: {p.ipLimit > 0 ? n(p.ipLimit) : t("unlimited")}</span>
+      {p.days > 0 && p.startOnFirstUse && <span className={chip}>{t("startOnFirst")}</span>}
+    </div>
   );
 }
 
@@ -415,6 +501,11 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
   const [activity, setActivity] = useState<Event[] | null>(null);
   const confirm = useConfirm();
   const { me } = useSession();
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [renew, setRenew] = useState(false);
+  useEffect(() => {
+    api<Plan[]>("billing/plans").then((ps) => setPlans(can(me.admin.role, "admin") ? ps : ps.filter((p) => p.enabled))).catch(() => {});
+  }, [me.admin.role]);
   useEffect(() => {
     api<{ subUrl: string; configs: ConfigEntry[] }>(`users/${u.id}/configs`).then(setCfg).catch(() => {});
   }, [u.id, u.subToken]);
@@ -442,6 +533,7 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
       footer={
         <div className="flex flex-wrap gap-2 w-full">
           <Button size="sm" icon={<Pencil className="size-4" />} onClick={() => setEdit(true)}>{t("edit")}</Button>
+          {plans.length > 0 && <Button size="sm" variant="soft" icon={<CalendarPlus className="size-4" />} onClick={() => setRenew(true)}>{t("renewWithPlan")}</Button>}
           <Button size="sm" icon={<RotateCcw className="size-4" />} onClick={() => act(`users/${cur.id}/reset`)}>{t("resetUsage")}</Button>
           <Button size="sm" icon={<Power className="size-4" />} onClick={() => act(`users/${cur.id}`, "PUT", { enabled: !cur.enabled })}>{cur.enabled ? t("disable") : t("enable")}</Button>
           <Button size="sm" icon={<KeyRound className="size-4" />} onClick={async () => { if (await confirm({ title: t("regenerate"), body: t("regenerateHint") })) act(`users/${cur.id}/regenerate`); }}>{t("regenerate")}</Button>
@@ -449,6 +541,7 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
           <ConfirmButton icon={<Trash2 className="size-4" />} onConfirm={() => api(`users/${cur.id}`, { method: "DELETE" }).then(() => { onChanged(); onClose(); })}>{t("delete")}</ConfirmButton>
         </div>
       }>
+      <RenewDialog open={renew} user={cur} plans={plans} onClose={() => setRenew(false)} onDone={() => { setRenew(false); onChanged(); }} />
       <div className="flex flex-col gap-5">
         {cur.status === "paused" && (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-violet/40 bg-violet/[.08] px-4 py-3 text-[13.5px]">

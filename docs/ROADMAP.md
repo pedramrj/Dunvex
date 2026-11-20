@@ -79,6 +79,14 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Usage from nodes is counted exactly once (acknowledged batches), with online status, devices and limits
 - [x] Servers page with each node's health, cores, speed and errors; nodes going offline appear as alerts
 
+## Sales (v1.13) ✅
+- [x] Plans (data, days, devices, protocols) sold in a web shop, a Renew button on the user page and the Telegram bot
+- [x] Card to card with receipt photos approved in the panel or the bot; ZarinPal with online verification and test
+      mode; USDT on TRON with a unique amount per order, found on TronGrid automatically
+- [x] Reseller wallets: top-ups, a discount, every user created or renewed from a plan is paid from the balance,
+      refunds when a user cannot be created; the owner sees and changes every wallet
+- [x] Each order is paid exactly once; unpaid orders expire; sales numbers on the Sales page. See [BILLING.md](BILLING.md)
+
 ## Phase 3: More protocols
 - [x] XDNS DNS tunnel for shutdowns, with the DNS records explained in the panel (v1.9)
 - [x] Telegram proxy (MTProto, mtg) that can share port 443 by SNI (v1.9)

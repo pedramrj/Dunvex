@@ -123,6 +123,7 @@ export interface Admin {
   createdAt: number;
   userCount?: number;
   allocated?: number;
+  balance?: number;
 }
 
 export interface Quota {
@@ -368,3 +369,93 @@ export function saveText(name: string, text: string) {
 }
 
 export const qrURL = (text: string) => BASE + "tools/qr?text=" + encodeURIComponent(text);
+
+// ---------------------------------------------------------------- billing
+
+export interface Plan {
+  id: number;
+  name: string;
+  note: string;
+  price: number;
+  dataLimit: number;
+  days: number;
+  ipLimit: number;
+  inboundIds: number[];
+  startOnFirstUse: boolean;
+  enabled: boolean;
+  sort: number;
+  createdAt: number;
+  resellerPrice?: number;
+}
+
+export type OrderStatus = "pending" | "review" | "paid" | "rejected" | "cancelled" | "expired";
+export type PayMethod = "card" | "zarinpal" | "usdt" | "wallet" | "manual";
+
+export interface Order {
+  id: number;
+  code: string;
+  kind: "new" | "renew" | "topup";
+  planId: number;
+  planName: string;
+  userId: number;
+  adminId: number;
+  amount: number;
+  method: PayMethod;
+  status: OrderStatus;
+  contact: string;
+  tgChat: number;
+  receipt: string;
+  receiptNote: string;
+  payRef: string;
+  cryptoAmount: string;
+  note: string;
+  createdAt: number;
+  paidAt: number;
+  doneAt: number;
+  userName: string;
+  adminName: string;
+  page: string;
+}
+
+export interface BankCard { number: string; holder: string; bank: string }
+
+export interface BillingSettings {
+  shop: boolean;
+  bot: boolean;
+  title: string;
+  currency: string;
+  support: string;
+  card: boolean;
+  cards: BankCard[];
+  zarinpal: boolean;
+  zarinpalMerchant: string;
+  zarinpalSandbox: boolean;
+  usdt: boolean;
+  usdtAddress: string;
+  usdtRate: number;
+  tronApiKey: string;
+  wallet: boolean;
+  discount: number;
+  orderHours: number;
+}
+
+export interface BillingSummary {
+  settings: BillingSettings;
+  shopUrl: string;
+  methods: PayMethod[] | null;
+  stats: { todayCount: number; todayTotal: number; monthCount: number; monthTotal: number; review: number };
+}
+
+export interface WalletTx { id: number; adminId: number; amount: number; balance: number; orderId: number; note: string; at: number }
+
+export interface WalletInfo {
+  enabled: boolean;
+  balance: number;
+  discount: number;
+  methods: PayMethod[] | null;
+  currency: string;
+  transactions: WalletTx[];
+}
+
+/** 150000 → "150,000" (Latin digits, as on the shop) */
+export const money = (v: number) => Math.round(v).toLocaleString("en-US");

@@ -85,7 +85,8 @@ footer{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
   </div>
 </div>
 {{if .Announce}}<div class="alert note"><i></i><div>{{.Announce}}</div></div>{{end}}
-{{if .Reason}}<div class="alert bad"><i></i><div><b>{{.Reason}}</b><span>برای تمدید با پشتیبانی تماس بگیرید.</span></div></div>{{end}}
+{{if .Reason}}<div class="alert bad"><i></i><div><b>{{.Reason}}</b><span>{{if .Renew}}با دکمهٔ «تمدید» همین حالا تمدیدش کنید.{{else}}برای تمدید با پشتیبانی تماس بگیرید.{{end}}</span></div></div>{{end}}
+{{if .Renew}}<div class="card glass tg"><span>تمدید یا خرید حجم بیشتر</span><a class="btn" href="{{safeURL .Renew}}">تمدید</a></div>{{end}}
 {{if .Paused}}<div class="alert vio"><i></i><div>از تعداد مجاز دستگاه هم‌زمان بیشتر وصل شده بودید؛ اتصال تا ساعت <b dir="ltr">{{.Paused}}</b> متوقف است و بعد خودکار برمی‌گردد.</div></div>{{end}}
 
 <div class="card glass">

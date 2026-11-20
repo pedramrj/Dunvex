@@ -116,10 +116,11 @@ var addedColumns = []struct{ table, column, def string }{
 	{"admins", "max_data", "INTEGER NOT NULL DEFAULT 0"},
 	{"admins", "enabled", "INTEGER NOT NULL DEFAULT 1"},
 	{"inbounds", "node_id", "INTEGER NOT NULL DEFAULT 0"},
+	{"admins", "balance", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func (s *Store) migrate() error {
-	for _, m := range append(append(migrations, accessTables...), nodeTables...) {
+	for _, m := range append(append(append(migrations, accessTables...), nodeTables...), billingTables...) {
 		if _, err := s.DB.Exec(m); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
@@ -207,6 +208,7 @@ type Admin struct {
 	MaxUsers     int    `json:"maxUsers"`
 	MaxData      int64  `json:"maxData"` // bytes a reseller may hand out in total (0 = unlimited)
 	Enabled      bool   `json:"enabled"`
+	Balance      int64  `json:"balance"` // wallet, in the shop's currency (changed only by WalletMove)
 }
 
 // Can reports whether the admin's role reaches the given role.
@@ -215,12 +217,12 @@ func (a *Admin) Can(role string) bool {
 	return rank[a.Role] >= rank[role]
 }
 
-const adminCols = `id,username,password_hash,created_at,role,totp_secret,max_users,max_data,enabled`
+const adminCols = `id,username,password_hash,created_at,role,totp_secret,max_users,max_data,enabled,balance`
 
 func scanAdmin(r scanner) (*Admin, error) {
 	a := &Admin{}
 	var enabled int
-	if err := r.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt, &a.Role, &a.TOTPSecret, &a.MaxUsers, &a.MaxData, &enabled); err != nil {
+	if err := r.Scan(&a.ID, &a.Username, &a.PasswordHash, &a.CreatedAt, &a.Role, &a.TOTPSecret, &a.MaxUsers, &a.MaxData, &enabled, &a.Balance); err != nil {
 		return nil, err
 	}
 	a.Enabled, a.TOTP = enabled == 1, a.TOTPSecret != ""

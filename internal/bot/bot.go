@@ -21,6 +21,7 @@ import (
 
 	"rsc.io/qr"
 
+	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
@@ -35,6 +36,8 @@ type Deps struct {
 	SubURL  func(u *store.User) string
 	NewUser func(name string) *store.User
 	Version string
+	Bill    *billing.Service // the shop (nil: no selling in the bot)
+	ShopURL func() string    // the web shop's address
 }
 
 // Bot polls Telegram and answers. It is safe to Reload at any time.
@@ -73,6 +76,9 @@ func (b *Bot) Start() {
 		b.onEvent(kind, msg)
 	}
 	b.Reload()
+	if b.d.Bill != nil {
+		b.d.Bill.OnEvent(b.onOrder)
+	}
 	go b.ticker()
 }
 
@@ -268,8 +274,13 @@ func (b *Bot) sendQR(chat int64, text, caption string, kb keyboard) error {
 type update struct {
 	ID      int64 `json:"update_id"`
 	Message *struct {
-		ID   int64  `json:"message_id"`
-		Text string `json:"text"`
+		ID      int64  `json:"message_id"`
+		Text    string `json:"text"`
+		Caption string `json:"caption"`
+		Photo   []struct {
+			FileID   string `json:"file_id"`
+			FileSize int64  `json:"file_size"`
+		} `json:"photo"`
 		Chat struct {
 			ID   int64  `json:"id"`
 			Type string `json:"type"`
@@ -351,6 +362,12 @@ func (b *Bot) handle(u update) {
 		return
 	}
 	if m := u.Message; m != nil && m.Chat.Type == "private" {
+		if len(m.Photo) > 0 { // a receipt: the largest size is the last
+			if !b.onReceipt(m.Chat.ID, m.Photo[len(m.Photo)-1].FileID, strings.TrimSpace(m.Caption)) {
+				b.onText(m.Chat.ID, "")
+			}
+			return
+		}
 		b.onText(m.Chat.ID, strings.TrimSpace(m.Text))
 	}
 }
@@ -372,14 +389,17 @@ func (b *Bot) onText(chat int64, text string) {
 			b.sendUserCard(chat, u)
 			return
 		}
-		b.send(chat, fmt.Sprintf(b.t("unknown"), chat), nil)
+		b.greet(chat)
 		return
 	}
 	if !admin {
+		if text != "" && b.onReceipt(chat, "", text) {
+			return
+		}
 		if u, err := b.d.St.UserByTG(chat); err == nil && b.userBot {
 			b.sendUserCard(chat, u)
 		} else {
-			b.send(chat, fmt.Sprintf(b.t("unknown"), chat), nil)
+			b.greet(chat)
 		}
 		return
 	}
@@ -420,8 +440,21 @@ func (b *Bot) bindUser(chat int64, token string) bool {
 }
 
 func (b *Bot) sendUserCard(chat int64, u *store.User) {
-	b.sendQR(chat, b.d.SubURL(u), b.userText(u, false)+"\n\n<code>"+esc(b.d.SubURL(u))+"</code>",
-		keyboard{{{Text: b.t("refresh"), Data: "me"}}})
+	kb := keyboard{{{Text: b.t("refresh"), Data: "me"}}}
+	if b.shopOn() {
+		kb = append(kb, []button{{Text: b.t("b_renew"), Data: "sh:r"}})
+	}
+	b.sendQR(chat, b.d.SubURL(u), b.userText(u, false)+"\n\n<code>"+esc(b.d.SubURL(u))+"</code>", kb)
+}
+
+// greet answers a chat Dunvex does not know: the shop when it sells here,
+// otherwise how to link a subscription.
+func (b *Bot) greet(chat int64) {
+	if b.shopOn() {
+		b.send(chat, b.t("shop_hello"), b.buyerMenu(chat))
+		return
+	}
+	b.send(chat, fmt.Sprintf(b.t("unknown"), chat), nil)
 }
 
 // ---------------------------------------------------------------- buttons
@@ -431,6 +464,7 @@ func (b *Bot) mainMenu() keyboard {
 		{{Text: b.t("b_status"), Data: "st"}, {Text: b.t("b_users"), Data: "ul:0"}},
 		{{Text: b.t("b_new"), Data: "new"}, {Text: b.t("b_find"), Data: "find"}},
 		{{Text: b.t("b_online"), Data: "on"}, {Text: b.t("b_backup"), Data: "bk"}},
+		{{Text: b.t("b_orders"), Data: "ol"}},
 	}
 }
 
@@ -443,7 +477,13 @@ func (b *Bot) onButton(chat, msg int64, data string) {
 		}
 		return
 	}
+	if b.onShopButton(chat, msg, data) {
+		return
+	}
 	if !b.isAdmin(chat) {
+		return
+	}
+	if b.onOrderAdmin(chat, msg, data) {
 		return
 	}
 	parts := strings.Split(data, ":")

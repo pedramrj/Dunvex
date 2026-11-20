@@ -59,6 +59,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
+- **Sales (v1.13)**: plans sold in a web shop, through a Renew button on every user page and in the Telegram bot.
+  Payment by card to card (receipt photo, approved with one tap), ZarinPal (verified online, with a test mode) or
+  USDT on TRON (found on the chain automatically). Resellers top up a wallet and pay for each user from it, with
+  their own discount. See [docs/BILLING.md](docs/BILLING.md).
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
 - **Several servers (v1.8)**: run `install.sh node` on another server and paste its token under Servers › Add server.
@@ -126,6 +130,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
+- **فروش (نسخهٔ ۱.۱۳)**: فروش پلن در فروشگاه وب، با دکمهٔ «تمدید» روی صفحهٔ هر کاربر و داخل ربات تلگرام. پرداخت با
+  کارت‌به‌کارت (عکس رسید و تأیید با یک دکمه)، درگاه زرین‌پال (تأیید آنلاین، با حالت آزمایشی) یا تتر روی شبکهٔ ترون (پیدا شدن
+  خودکار روی بلاکچین). نماینده‌ها کیف پولشان را شارژ می‌کنند و هزینهٔ هر کاربر با تخفیف خودشان از آن کم می‌شود.
+  راهنما: [docs/BILLING.md](docs/BILLING.md).
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
 - **چند سرور (نسخهٔ ۱.۸)**: روی سرور دیگر `install.sh node` را اجرا کنید و توکنش را در «سرورها › افزودن سرور» بگذارید.

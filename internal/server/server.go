@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/protocol"
@@ -39,6 +40,10 @@ type Server struct {
 	Restart func() // asks the process to restart (after self-update / restore)
 
 	Bot Bot // Telegram bot (optional)
+
+	Bill     *billing.Service // the shop (made on first use when nil)
+	billOnce sync.Once
+	hits     map[string][]time.Time // shop rate limits (under limMu)
 
 	limMu       sync.Mutex
 	fails       map[string][]time.Time
@@ -162,6 +167,10 @@ func (s *Server) Handler() http.Handler {
 			s.serveFont(w, strings.TrimPrefix(p, sub+"_font/"))
 		case strings.HasPrefix(p, sub+"_brand/"):
 			s.serveBrand(w, strings.TrimPrefix(p, sub+"_brand/"))
+		case p == sub+"shop":
+			http.Redirect(w, r, sub+"shop/", http.StatusMovedPermanently)
+		case strings.HasPrefix(p, sub+"shop/"):
+			s.serveShop(w, r, strings.TrimPrefix(p, sub+"shop/"))
 		case strings.HasPrefix(p, sub) && len(p) > len(sub):
 			s.serveSub(w, r, strings.TrimPrefix(p, sub))
 		default:

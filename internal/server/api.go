@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"rsc.io/qr"
 
+	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
@@ -67,6 +68,24 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /users/{id}/regenerate", R, s.regenerateUser)
 	h("GET /users/{id}/usage", R, s.userUsage)
 	h("GET /users/{id}/configs", R, s.userConfigs)
+	h("POST /users/{id}/renew", R, s.renewUser)
+
+	h("GET /billing", A, s.billingSummary)
+	h("PUT /billing/settings", O, s.putBillingSettings)
+	h("GET /billing/plans", R, s.listPlans)
+	h("POST /billing/plans", A, s.savePlan)
+	h("PUT /billing/plans/{id}", A, s.savePlan)
+	h("DELETE /billing/plans/{id}", A, s.deletePlan)
+	h("GET /billing/orders", R, s.listOrders)
+	h("POST /billing/orders/{id}/approve", A, s.approveOrder)
+	h("POST /billing/orders/{id}/reject", A, s.rejectOrder)
+	h("POST /billing/orders/{id}/cancel", A, s.cancelOrder)
+	h("GET /billing/orders/{id}/receipt", A, s.orderReceipt)
+	h("GET /billing/wallets", O, s.listWallets)
+	h("GET /billing/wallets/{id}", O, s.walletHistory)
+	h("POST /billing/wallets/{id}", O, s.adjustWallet)
+	h("GET /wallet", R, s.myWallet)
+	h("POST /wallet/topup", R, s.topUp)
 
 	h("GET /presets", A, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, protocol.All()) })
 	h("GET /inbounds", A, s.listInbounds)
@@ -346,6 +365,7 @@ type userInput struct {
 	UsedReset    bool     `json:"resetUsage"`
 	IPLimit      *int     `json:"ipLimit"`
 	Resume       bool     `json:"resume"` // end a device-limit pause now
+	PlanID       int64    `json:"planId"` // new users from a plan (resellers' wallets pay for it)
 }
 
 func (in *userInput) apply(u *store.User) error {
@@ -457,9 +477,31 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 	if in.DataLimit != nil {
 		limit = *in.DataLimit
 	}
+	p, err := s.planFor(a, in.PlanID)
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if p != nil {
+		limit = p.DataLimit
+	}
 	if err := s.checkQuota(a, count, limit, 0); err != nil {
 		fail(w, 400, err.Error())
 		return
+	}
+	var unitCost int64 // what each user cost the reseller's wallet
+	if p != nil && a.Role == store.RoleReseller && billing.LoadSettings(s.St).Wallet {
+		cost, err := s.bill().WalletBuy(a, p, count, nil)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		unitCost = cost / int64(count)
+	}
+	refund := func(missing int) {
+		if unitCost > 0 && missing > 0 {
+			s.St.WalletMove(a.ID, unitCost*int64(missing), 0, fmt.Sprintf("refund: %d user(s) not created", missing))
+		}
 	}
 	online := map[int64]bool{}
 	var created []userView
@@ -473,10 +515,18 @@ func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
 		in2 := in
 		in2.Name = nil
 		if err := in2.apply(u); err != nil {
+			refund(count - i + 1)
 			fail(w, 400, err.Error())
 			return
 		}
+		if p != nil {
+			billing.ApplyPlan(u, p, time.Now().Unix(), false)
+			if a.Role == store.RoleReseller {
+				u.InboundIDs = nil // resellers hand out every protocol
+			}
+		}
 		if err := s.St.CreateUser(u); err != nil {
+			refund(count - i + 1)
 			fail(w, 400, err.Error())
 			return
 		}

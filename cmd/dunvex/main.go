@@ -21,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/bot"
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/edge"
@@ -273,8 +274,12 @@ func serve(home string) error {
 	for i := 0; i < 30 && sys.PublicIP() == "" && st.GetSetting("host", "") == "" && st.GetSetting("domain", "") == ""; i++ {
 		time.Sleep(200 * time.Millisecond)
 	}
-	tg := bot.New(bot.Deps{St: st, Mgr: mgr, Sys: sys, Version: Version, NewUser: srv.NewUser,
-		SubURL: func(u *store.User) string { return srv.SubURL(nil, u) }})
+	bill := &billing.Service{St: st, NewUser: srv.NewUser, Apply: mgr.RequestApply, ReceiptDir: srv.ReceiptDir()}
+	srv.Bill = bill
+	go bill.Run(ctx)
+	tg := bot.New(bot.Deps{St: st, Mgr: mgr, Sys: sys, Version: Version, NewUser: srv.NewUser, Bill: bill,
+		SubURL:  func(u *store.User) string { return srv.SubURL(nil, u) },
+		ShopURL: func() string { return srv.ShopURL(nil) }})
 	srv.Bot = tg
 	tg.Start()
 

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#080c13"><meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/png" href="{{.Brand}}favicon-64.png">
+<title>{{.Title}}</title>
+<style>
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}fa.woff2") format("woff2");font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F,U+06F0-06F9}
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en.woff2") format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en-bold.woff2") format("woff2");font-weight:600 700;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
+:root{--bg:#080c13;--surface:#111c30;--surface2:#172238;--text:#f4f7ff;--muted:#9aaac2;--dim:#7487a5;--line:#26344a;--accent:{{.Accent}};--cyan:#24cfd2;--ok:#25c99a;--bad:#f06b78;--violet:#a48bff;--warnc:#f0b85b;--logo:none}
+@media (prefers-color-scheme:light){:root{--bg:#f3f6fb;--surface:#ffffff;--surface2:#f6f8fc;--text:#0b1324;--muted:#4a5b77;--dim:#5b6b85;--line:#dde4ef;--ok:#0b7a5c;--bad:#b8324a;--warnc:#8a5a0f;--violet:#6a4fd6;--cyan:#0c7c7f;--logo:brightness(.55) contrast(1.35)}}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;min-height:100vh;color:var(--text);font:15px/1.8 "Dunvex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(50rem 30rem at 50% -12%,color-mix(in oklab,var(--accent) 20%,transparent),transparent 62%),radial-gradient(34rem 24rem at 95% 0%,color-mix(in oklab,var(--cyan) 9%,transparent),transparent 60%),var(--bg)}
+::selection{background:color-mix(in oklab,var(--accent) 40%,transparent)}
+.wrap{max-width:760px;margin:0 auto;padding:24px 16px 56px}
+.brand{display:flex;flex-direction:column;align-items:center;gap:6px;margin:4px 0 20px;text-decoration:none}
+.lg{background:url("{{.Brand}}dunvex-logo-512.png") no-repeat}
+.lg-em{height:56px;aspect-ratio:1.454;background-size:132.7% auto;background-position:56.63% 34.44%;filter:drop-shadow(0 8px 24px rgba(47,140,255,.35))}
+.lg-wm{filter:var(--logo);width:140px;aspect-ratio:8.482;background-size:104.85% auto;background-position:53.45% 80.32%}
+h1{margin:0 0 4px;font-size:24px;line-height:1.4;text-align:center}
+.lead{color:var(--muted);text-align:center;margin:0 0 18px;font-size:14px}
+.glass{background:linear-gradient(180deg,var(--surface),var(--surface2));border:1px solid var(--line);box-shadow:inset 0 1px 0 color-mix(in oklab,#fff 6%,transparent),0 24px 60px -36px rgba(0,0,0,.6)}
+.card{border-radius:22px;padding:18px;margin-top:14px}
+.card h2{font-size:15px;margin:0 0 12px;font-weight:700;display:flex;align-items:center;gap:10px}
+.card h2 i{width:22px;height:4px;border-radius:9px;background:linear-gradient(90deg,var(--accent),var(--cyan));box-shadow:0 0 10px var(--accent)}
+.plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.plan{border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:10px;position:relative;overflow:hidden}
+.plan::before{content:"";position:absolute;inset-inline:20px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,color-mix(in oklab,var(--accent) 80%,#fff),transparent)}
+.plan h3{margin:0;font-size:17px;line-height:1.5}
+.price{font-size:24px;font-weight:700;line-height:1.3}
+.price small{font-size:13px;font-weight:500;color:var(--muted);margin-inline-start:4px}
+.facts{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;color:var(--muted);font-size:13.5px}
+.facts b{color:var(--text);font-weight:600}
+.plan .btn{margin-top:auto}
+.muted{color:var(--muted);font-size:13px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:2px 12px;font-size:13px;line-height:1.8;color:var(--muted)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;box-shadow:0 0 10px currentColor}
+.ok{color:var(--ok);border-color:color-mix(in oklab,var(--ok) 35%,transparent);background:color-mix(in oklab,var(--ok) 9%,transparent)}
+.bad{color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,transparent);background:color-mix(in oklab,var(--bad) 9%,transparent)}
+.warn{color:var(--warnc);border-color:color-mix(in oklab,var(--warnc) 35%,transparent);background:color-mix(in oklab,var(--warnc) 9%,transparent)}
+.vio{color:var(--violet);border-color:color-mix(in oklab,var(--violet) 40%,transparent);background:color-mix(in oklab,var(--violet) 9%,transparent)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px;align-items:center}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:600;min-width:0;overflow-wrap:anywhere}
+.row{display:flex;gap:10px;align-items:center}
+.ltr{direction:ltr;unicode-bidi:isolate}
+input,textarea{font:inherit}
+.field{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.field label{font-size:13px;color:var(--muted)}
+.in{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:14px;padding:0 14px;height:46px}
+.in:focus{border-color:var(--accent);outline:none}
+.copy{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:14px;padding:0 14px;height:46px;direction:ltr;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.methods{display:grid;gap:10px}
+.method{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:16px;padding:14px;cursor:pointer;background:color-mix(in oklab,var(--text) 2%,transparent)}
+.method:has(input:checked){border-color:var(--accent);background:color-mix(in oklab,var(--accent) 10%,transparent)}
+.method input{margin-top:6px;accent-color:var(--accent)}
+.method b{display:block}
+.method span{color:var(--muted);font-size:13px}
+button,.btn{background:linear-gradient(135deg,color-mix(in oklab,var(--accent) 75%,#fff),var(--accent));color:#fff;border:0;border-radius:14px;height:46px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;box-shadow:0 10px 30px -12px color-mix(in oklab,var(--accent) 80%,transparent),inset 0 1px 0 rgba(255,255,255,.25);transition:filter .2s,transform .1s}
+button:hover,.btn:hover{filter:brightness(1.1)}
+button:active,.btn:active{transform:scale(.97)}
+.btn.ghost{background:color-mix(in oklab,var(--text) 4%,transparent);border:1px solid var(--line);color:var(--text);font-weight:500;box-shadow:none}
+.wide{width:100%;margin-top:14px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.qr{width:200px;height:200px;margin:14px auto 0;display:block;background:#fff;border-radius:18px;padding:9px}
+.qr svg{width:100%;height:100%}
+.alert{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 16px;margin-top:14px;border:1px solid;line-height:1.9;font-weight:500;color:var(--text)}
+.alert>i{flex:none;width:9px;height:9px;border-radius:50%;margin-top:.72em;background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.alert.bad>i{background:var(--bad)}.alert.ok>i{background:var(--ok)}.alert.warn>i{background:var(--warnc)}
+.alert>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.alert span{color:var(--muted)}
+.alert.note{background:color-mix(in oklab,var(--accent) 9%,transparent);border-color:color-mix(in oklab,var(--accent) 35%,transparent)}
+.cards{display:flex;flex-direction:column;gap:10px}
+.bank{border:1px solid var(--line);border-radius:16px;padding:12px 14px}
+.bank .row{margin-top:6px}
+.big{font-size:20px;font-weight:700}
+.back{display:inline-block;margin-top:18px;color:var(--muted);font-size:13px}
+footer{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body><div class="wrap">
+<a class="brand" href="{{.Base}}" aria-label="{{.Title}}"><div class="lg lg-em" role="img" aria-label="Dunvex"></div><div class="lg lg-wm"></div></a>
+
+{{if eq .Mode "plans"}}
+<h1>{{if .Renew}}تمدید اشتراک{{else}}{{.Title}}{{end}}</h1>
+<p class="lead">{{if .Renew}}پلنی را برای <bdi>{{.Renew}}</bdi> انتخاب کنید؛ روزها به زمان باقی‌مانده اضافه می‌شود و حجم مانده از بین نمی‌رود.{{else}}پلن خود را انتخاب کنید؛ بعد از پرداخت، لینک اشتراک همین‌جا آماده است.{{end}}</p>
+{{if .Err}}<div class="alert bad"><i></i><div>{{.Err}}</div></div>{{end}}
+{{if .Plans}}
+<div class="plans">
+{{range .Plans}}<div class="plan glass">
+  <h3>{{.Name}}</h3>
+  <div class="price"><span class="ltr">{{.Price}}</span><small>{{$.Currency}}</small></div>
+  <ul class="facts">
+    <li>حجم: <b>{{.Data}}</b></li>
+    <li>مدت: <b>{{.Days}}</b></li>
+    {{if .Devices}}<li>دستگاه هم‌زمان: <b class="ltr">{{.Devices}}</b></li>{{end}}
+    {{if .Start}}<li>شروع با اولین اتصال</li>{{end}}
+  </ul>
+  {{if .Note}}<div class="muted">{{.Note}}</div>{{end}}
+  <a class="btn" href="{{$.Base}}buy?plan={{.ID}}{{if $.RenewToken}}&amp;renew={{$.RenewToken}}{{end}}">{{if $.Renew}}تمدید با این پلن{{else}}خرید{{end}}</a>
+</div>{{end}}
+</div>
+{{else}}<div class="alert note"><i></i><div>فعلاً پلنی برای فروش نیست.</div></div>{{end}}
+{{end}}
+
+{{if eq .Mode "buy"}}
+<h1>{{if .Renew}}تمدید {{.Plan.Name}}{{else}}خرید {{.Plan.Name}}{{end}}</h1>
+<p class="lead"><span class="ltr">{{.Plan.Price}}</span> {{.Currency}} · {{.Plan.Data}} · {{.Plan.Days}}</p>
+{{if .Err}}<div class="alert bad"><i></i><div>{{.Err}}</div></div>{{end}}
+<form class="card glass" method="post" action="{{.Base}}order">
+  <h2><i></i>روش پرداخت</h2>
+  <input type="hidden" name="plan" value="{{.Plan.ID}}">
+  {{if .RenewToken}}<input type="hidden" name="renew" value="{{.RenewToken}}">{{end}}
+  <div class="methods">
+  {{range $i, $m := .Methods}}<label class="method"><input type="radio" name="method" value="{{$m.ID}}" {{if eq $i 0}}checked{{end}} required><div><b>{{$m.Name}}</b><span>{{$m.Note}}</span></div></label>{{end}}
+  </div>
+  {{if not .Methods}}<div class="alert bad"><i></i><div>روش پرداختی فعال نیست.</div></div>{{end}}
+  <div class="field"><label for="contact">شماره تماس یا آیدی تلگرام (برای پیگیری، اختیاری)</label>
+    <input class="in ltr" id="contact" name="contact" maxlength="120" autocomplete="tel" placeholder="@username"></div>
+  {{if .Methods}}<button class="wide" type="submit">ادامه و پرداخت</button>{{end}}
+</form>
+<a class="back" href="{{.Base}}{{if .RenewToken}}?renew={{.RenewToken}}{{end}}">بازگشت به پلن‌ها</a>
+{{end}}
+
+{{if eq .Mode "order"}}{{with .Order}}
+<h1>سفارش <bdi class="ltr">{{.Code}}</bdi></h1>
+<p class="lead">{{.What}}</p>
+{{if $.Err}}<div class="alert bad"><i></i><div>{{$.Err}}</div></div>{{end}}
+{{if $.Msg}}<div class="alert ok"><i></i><div>{{$.Msg}}</div></div>{{end}}
+<div class="card glass">
+  <dl class="kv">
+    <dt>وضعیت</dt><dd><span class="chip {{.StatusClass}}"><i class="dot"></i>{{.StatusText}}</span></dd>
+    <dt>مبلغ</dt><dd><span class="ltr">{{.Amount}}</span> {{$.Currency}}</dd>
+    <dt>پرداخت</dt><dd>{{.MethodName}}</dd>
+    {{if .Note}}<dt>توضیح</dt><dd>{{.Note}}</dd>{{end}}
+  </dl>
+</div>
+
+{{if .ShowCards}}
+<div class="card glass">
+  <h2><i></i>کارت‌به‌کارت</h2>
+  <p class="muted">مبلغ <b class="ltr">{{.Amount}}</b> {{$.Currency}} را به یکی از کارت‌های زیر واریز کنید و رسید را بفرستید.</p>
+  <div class="cards">
+  {{range $i, $c := .Cards}}<div class="bank">
+    <div class="muted">{{$c.Holder}}{{if $c.Bank}} · {{$c.Bank}}{{end}}</div>
+    <div class="row"><input class="copy" id="card{{$i}}" readonly value="{{group $c.Number}}" data-copy="{{$c.Number}}"><button type="button" onclick="cp('card{{$i}}',this)">کپی</button></div>
+  </div>{{end}}
+  </div>
+  <form method="post" action="{{$.Base}}o/{{.Token}}/receipt" enctype="multipart/form-data">
+    <div class="field"><label for="receipt">عکس رسید (JPG، PNG یا WebP، تا ۵ مگابایت)</label><input class="in" id="receipt" type="file" name="receipt" accept="image/jpeg,image/png,image/webp" style="padding-top:10px"></div>
+    <div class="field"><label for="note">یا شمارهٔ پیگیری / چهار رقم آخر کارت</label><input class="in ltr" id="note" name="note" maxlength="200"></div>
+    <button class="wide" type="submit">ارسال رسید</button>
+  </form>
+</div>
+{{end}}
+
+{{if eq .Status "review"}}<div class="alert note"><i></i><div><b>رسید شما رسید.</b><span>بعد از تأیید، همین صفحه به‌روز می‌شود{{if .TG}} و در تلگرام هم خبرتان می‌کنیم{{end}}.</span></div></div>{{end}}
+
+{{if .ShowZarinpal}}
+<div class="card glass">
+  <h2><i></i>پرداخت آنلاین</h2>
+  <p class="muted">با درگاه زرین‌پال پرداخت کنید؛ بعد از پرداخت به همین صفحه برمی‌گردید.</p>
+  <a class="btn wide" href="{{$.Base}}o/{{.Token}}/pay">پرداخت <span class="ltr">{{.Amount}}</span> {{$.Currency}}</a>
+</div>
+{{end}}
+
+{{if .ShowUSDT}}
+<div class="card glass">
+  <h2><i></i>USDT روی شبکهٔ ترون (TRC20)</h2>
+  <p class="muted">دقیقاً همین مقدار را بفرستید؛ سه رقم آخر سفارش شما را مشخص می‌کند. تا دو ساعت منتظر می‌مانیم و پرداخت خودکار تأیید می‌شود.</p>
+  <div class="field"><label>مقدار</label><div class="row"><input class="copy big" id="amt" readonly value="{{.CryptoAmount}}"><button type="button" onclick="cp('amt',this)">کپی</button></div></div>
+  <div class="field"><label>آدرس (فقط TRC20)</label><div class="row"><input class="copy" id="addr" readonly value="{{.Address}}"><button type="button" onclick="cp('addr',this)">کپی</button></div></div>
+  <div class="qr" aria-label="QR">{{.AddressQR}}</div>
+</div>
+{{end}}
+
+{{if .SubURL}}
+<div class="alert ok"><i></i><div><b>پرداخت تأیید شد.</b><span>{{if eq .Kind "renew"}}اشتراک تمدید شد.{{else}}اشتراک شما آماده است؛ لینک را در برنامه وارد کنید.{{end}}</span></div></div>
+<div class="card glass">
+  <h2><i></i>لینک اشتراک</h2>
+  <div class="row"><input class="copy" id="sub" readonly value="{{.SubURL}}"><button type="button" onclick="cp('sub',this)">کپی</button></div>
+  <div class="qr">{{.SubQR}}</div>
+  <a class="btn ghost wide" href="{{.SubURL}}">صفحهٔ اشتراک من</a>
+</div>
+{{end}}
+{{if eq .Status "paid"}}{{if eq .Kind "topup"}}<div class="alert ok"><i></i><div><b>کیف پول شارژ شد.</b><span>به پنل برگردید.</span></div></div>{{end}}{{end}}
+{{if or (eq .Status "expired") (eq .Status "cancelled")}}<a class="btn wide" href="{{$.Base}}">سفارش تازه</a>{{end}}
+<p class="muted" style="margin-top:14px">این صفحه را نگه دارید؛ با آن وضعیت سفارش را می‌بینید.</p>
+{{end}}{{end}}
+
+{{if eq .Mode "closed"}}<h1>{{.Title}}</h1><div class="alert note"><i></i><div>فروشگاه فعلاً بسته است.</div></div>{{end}}
+
+{{if .Support}}<div class="card glass row" style="justify-content:space-between;flex-wrap:wrap"><span>سؤال دارید؟</span><a class="btn ghost" href="{{safeURL .Support}}" rel="noopener">پشتیبانی</a></div>{{end}}
+<footer>Dunvex · Powered by Pedram</footer>
+</div>
+<script>
+function cp(id,b){var e=document.getElementById(id);e.select();try{navigator.clipboard.writeText(e.dataset.copy||e.value)}catch(_){document.execCommand('copy')}var t=b.textContent;b.textContent='✓';setTimeout(function(){b.textContent=t},1200)}
+{{if .Poll}}(function(){var s="{{.Order.Status}}";setInterval(function(){fetch("{{.Base}}o/{{.Order.Token}}/status").then(function(r){return r.json()}).then(function(j){if(j.status!==s)location.reload()}).catch(function(){})},8000)})();{{end}}
+</script>
+</body></html>
