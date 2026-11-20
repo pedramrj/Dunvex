@@ -145,6 +145,9 @@ func (s *Server) subLinks(u *store.User, now int64) []string {
 		out = append(out, dummyLink(statusLine(u, now)))
 	}
 	for _, c := range s.configsFor(u) {
+		if strings.HasPrefix(c.Link, "tg://") {
+			continue // the Telegram proxy opens in Telegram, not in VPN apps (it is on the user page)
+		}
 		out = append(out, c.Link)
 	}
 	return out

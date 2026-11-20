@@ -38,6 +38,9 @@ func TestAllPresetsAcceptedByCores(t *testing.T) {
 		if p.ID == "hysteria2" || p.ID == "hysteria2-sb" {
 			params["obfs"] = true
 		}
+		if p.ID == "vless-xdns" {
+			params["xdnsDomain"] = "t.example.com"
+		}
 		in := &store.Inbound{Preset: p.ID, Port: port, Enabled: true, Params: protocol.Defaults(p, params, "example.com")}
 		port++
 		if err := st.CreateInbound(in); err != nil {

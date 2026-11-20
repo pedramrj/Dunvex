@@ -166,6 +166,17 @@ func XrayInbound(p *Preset, in *store.Inbound, users []*store.User, env Env) (ob
 	case "kcp":
 		stream["network"] = "kcp"
 		stream["kcpSettings"] = obj{"mtu": 1350, "tti": 20, "uplinkCapacity": 12, "downlinkCapacity": 100}
+	case "xdns":
+		// mKCP inside DNS queries (Xray finalmask). The server MTU fits a TXT
+		// answer; clients need none. The domain's NS record points here.
+		dom := XDNSDomain(in)
+		if dom == "" {
+			return nil, fmt.Errorf("%s needs its tunnel domain (an NS record that points to this server)", p.Name)
+		}
+		stream["network"] = "kcp"
+		stream["kcpSettings"] = obj{"mtu": 900, "tti": 200, "uplinkCapacity": 5, "downlinkCapacity": 20}
+		// EDNS0 1232: answers carry ~930 bytes in TXT, which the MTU of 900 fits
+		stream["finalmask"] = obj{"udp": []obj{{"type": "xdns", "settings": obj{"domains": []obj{{"names": []string{dom}, "edns0": 1232}}}}}}
 	case "hysteria":
 		stream["network"] = "hysteria"
 		stream["hysteriaSettings"] = obj{"version": 2}

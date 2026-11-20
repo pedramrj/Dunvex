@@ -121,6 +121,14 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 
 // ---------------------------------------------------------------- add
 
+/** Setup steps some protocols need before they work. */
+function PresetHelp({ id }: { id: string }) {
+  const { t } = useI18n();
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : null;
+  if (!key) return null;
+  return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
+}
+
 /** The server a protocol runs on, when there is more than one. */
 function ServerPick({ nodes, value, onChange }: { nodes: NodeView[]; value: string; onChange: (v: string) => void }) {
   const { t } = useI18n();
@@ -191,6 +199,7 @@ function AddSheet({ open, group, presets, nodes, onClose, onDone }: { open: bool
       ) : (
         <div className="flex flex-col gap-5">
           <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? pick.descFa : pick.desc}</p>
+          <PresetHelp id={pick.id} />
           {nodes.length > 0 && (
             <div className="grid sm:grid-cols-2 gap-3 items-end">
               <ServerPick nodes={nodes} value={server} onChange={setServer} />
@@ -235,6 +244,7 @@ function EditSheet({ inbound, preset, nodes, onClose, onDone }: { inbound: Inbou
       </>}>
       <div className="flex flex-col gap-5">
         <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? preset.descFa : preset.desc}</p>
+        <PresetHelp id={preset.id} />
         {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px]">{inbound.error}</bdi></div>}
         {nodes.length > 0 && <div className="grid sm:grid-cols-2 gap-3"><ServerPick nodes={nodes} value={server} onChange={setServer} /></div>}
         <div className="grid grid-cols-2 gap-3">

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -188,7 +189,7 @@ func (a *Agent) Status() Status {
 	env := a.Env()
 	st := Status{
 		Version: a.Version, Epoch: a.St.GetSetting(keyEpoch, ""), Hostname: snap.Hostname, PublicIP: a.Sys.PublicIP(),
-		CertSHA256: env.CertSHA256, Cores: []engine.Status{a.Mgr.Xray.Status(), a.Mgr.SingBox.Status()},
+		CertSHA256: env.CertSHA256, Cores: a.Mgr.CoreStatuses(),
 		CoreErrors: cerr, InboundErrors: ierr, CPU: snap.CPU, MemUsed: snap.MemUsed, MemTotal: snap.MemTotal,
 		DiskUsed: snap.DiskUsed, DiskTotal: snap.DiskTotal, Uptime: snap.Uptime, NetUp: snap.NetUp, NetDown: snap.NetDown,
 		Users: len(users), Inbounds: len(inbounds), Time: time.Now().Unix(),
@@ -224,8 +225,15 @@ func (a *Agent) state(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) Apply(s State) error {
 	for _, in := range s.Inbounds {
 		in.NodeID = 0 // on the node itself every inbound is local
-		if protocol.Get(in.Preset) == nil {
+		p := protocol.Get(in.Preset)
+		if p == nil {
 			return fmt.Errorf("this node does not know the protocol %q; update it", in.Preset)
+		}
+		// mtg arrives with the first Telegram proxy
+		if p.Engine == "mtg" && in.Enabled && !a.Mgr.MTG.Installed() {
+			if _, err := coremgr.InstallMTG(a.Mgr.MTG.BinDir); err != nil {
+				log.Printf("node: mtg: %v", err) // the status reports it as a core error
+			}
 		}
 	}
 	users := make([]*store.User, 0, len(s.Users))

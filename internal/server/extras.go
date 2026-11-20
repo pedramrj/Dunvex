@@ -35,15 +35,8 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Version   string `json:"version"`
 	}
 	cores := []core{}
-	for _, st := range []struct {
-		name string
-		s    func() (bool, bool, string)
-	}{
-		{"xray", func() (bool, bool, string) { x := s.Mgr.Xray.Status(); return x.Installed, x.Running, x.Version }},
-		{"sing-box", func() (bool, bool, string) { x := s.Mgr.SingBox.Status(); return x.Installed, x.Running, x.Version }},
-	} {
-		inst, run, ver := st.s()
-		cores = append(cores, core{st.name, inst, run, ver})
+	for _, x := range s.Mgr.CoreStatuses() {
+		cores = append(cores, core{x.Name, x.Installed, x.Running, x.Version})
 	}
 	ierr, cerr := s.Mgr.Errors()
 	problems := 0

@@ -4,7 +4,9 @@ package protocol
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"sort"
+	"strings"
 
 	"github.com/pedramrj/dunvex/internal/util"
 )
@@ -61,6 +63,9 @@ var (
 	fCC        = Field{Key: "congestion", Label: "Congestion control", LabelFa: "کنترل ازدحام", Type: "select", Options: []string{"bbr", "cubic", "new_reno"}}
 	fHandshake = Field{Key: "handshake", Label: "Handshake server", LabelFa: "سرور دست‌دهی", Type: "text"}
 	fMasq      = Field{Key: "masquerade", Label: "Masquerade site", LabelFa: "سایت پوششی", Type: "text", Advanced: true}
+	fXDNS      = Field{Key: "xdnsDomain", Label: "Tunnel domain (its NS record points to this server)", LabelFa: "دامنهٔ تونل (رکورد NS آن به این سرور اشاره می‌کند)", Type: "text"}
+	fResolver  = Field{Key: "resolver", Label: "DNS resolver in links (direct = straight to this server)", LabelFa: "DNS در لینک‌ها (direct = مستقیم به همین سرور)", Type: "select", Options: []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "direct"}}
+	fFakeTLS   = Field{Key: "sni", Label: "Fake TLS domain (the proxy looks like this site)", LabelFa: "دامنهٔ پوششی TLS (پراکسی شبیه این سایت دیده می‌شود)", Type: "text"}
 )
 
 var presets = []*Preset{
@@ -173,6 +178,17 @@ var presets = []*Preset{
 		Security: "none", Status: "ready", proto: "shadowsocks",
 		Desc: "Compatible with Outline and old clients.", DescFa: "سازگار با Outline و کلاینت‌های قدیمی.",
 		Fields: []Field{fSSClassic}},
+	// ------------------------------------------------------------ shutdowns and Telegram
+	{ID: "vless-xdns", Name: "VLESS · XDNS (DNS tunnel)", Engine: "xray", Group: "udp", Network: "udp", DefaultPort: 53,
+		Security: "none", Status: "beta", proto: "vless", transport: "xdns",
+		Desc:   "For internet shutdowns: traffic hidden in ordinary DNS queries that go through public resolvers. Slow, but often the last thing that still works. Needs a domain whose NS record points to this server; Xray-based apps.",
+		DescFa: "برای قطعی اینترنت: ترافیک داخل درخواست‌های DNS معمولی پنهان می‌شود و از DNSهای عمومی رد می‌شود. کند است، اما اغلب آخرین چیزی است که هنوز کار می‌کند. یک دامنه لازم دارد که رکورد NS آن به این سرور اشاره کند؛ برای برنامه‌های مبتنی بر Xray.",
+		Fields: []Field{fXDNS, fResolver}},
+	{ID: "mtproto", Name: "MTProto · Telegram proxy", Engine: "mtg", Group: "classic", Network: "tcp", DefaultPort: 443,
+		Security: "faketls", Status: "ready", proto: "mtproto",
+		Desc:   "A proxy inside Telegram itself: users add it with one tap, no VPN app needed. It looks like an HTTPS visit to the site you choose, and can share port 443. One per server; one link for everyone, so usage is not counted per user.",
+		DescFa: "پراکسی داخل خود تلگرام: کاربر با یک لمس اضافه‌اش می‌کند و برنامهٔ VPN لازم نیست. شبیه بازدید HTTPS از سایتی است که انتخاب می‌کنید و می‌تواند پورت ۴۴۳ را شریک شود. هر سرور یکی؛ یک لینک برای همه، پس مصرف هر کاربر جدا شمرده نمی‌شود.",
+		Fields: []Field{fFakeTLS}},
 	{ID: "vmess-kcp", Name: "VMess · mKCP", Engine: "xray", Group: "udp", Network: "udp", DefaultPort: 8390,
 		Security: "none", Status: "beta", proto: "vmess", transport: "kcp",
 		Desc: "UDP transport for unstable links.", DescFa: "ترابری UDP برای لینک‌های ناپایدار.",
@@ -207,6 +223,15 @@ func Get(id string) *Preset { return byID[id] }
 
 // DefaultReality is the default REALITY camouflage site.
 const DefaultReality = "www.speedtest.net"
+
+// DefaultFakeTLS is the default site an MTProto proxy looks like.
+const DefaultFakeTLS = "storage.googleapis.com"
+
+// MTProtoSecret is the proxy's secret: "ee" (fake TLS), 16 random bytes kept in
+// the inbound, then the fake domain, all in hex. Changing the domain changes it.
+func MTProtoSecret(key, domain string) string {
+	return "ee" + key + hex.EncodeToString([]byte(strings.ToLower(strings.TrimSpace(domain))))
+}
 
 // Defaults fills missing parameters for a new inbound of the given preset.
 func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
@@ -255,6 +280,13 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		}
 	case "tuic":
 		set("congestion", "bbr")
+	case "vless-xdns":
+		set("resolver", "8.8.8.8")
+	case "mtproto":
+		set("sni", DefaultFakeTLS)
+		if k, _ := params["mtKey"].(string); len(k) != 32 {
+			params["mtKey"] = util.RandomHex(16)
+		}
 	case "shadowsocks-2022":
 		set("method", "2022-blake3-aes-128-gcm")
 		n := ssKeyLen(str(params["method"]))

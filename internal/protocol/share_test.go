@@ -22,7 +22,7 @@ func TestPortConflict(t *testing.T) {
 	}{
 		{"second Reality, other SNI, on the panel port", 443, xhttp, "dl.google.com", ""},
 		{"second Reality, same SNI", 443, xhttp, "WWW.Microsoft.com", "already uses the SNI"},
-		{"TLS protocol on the panel port", 443, ws, "", "only Reality and UDP"},
+		{"TLS protocol on the panel port", 443, ws, "", "only Reality, the Telegram proxy and UDP"},
 		{"UDP on the panel port", 443, hy, "", ""},
 		{"Reality without SNI on the panel port", 443, xhttp, "", "needs an SNI"},
 		{"UDP next to UDP", 4444, Get("tuic"), "", "already used by Hysteria2"},

@@ -57,6 +57,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 			}
 		case "kcp":
 			q.Set("type", "kcp")
+		case "xdns":
+			q.Set("type", "kcp")
+			q.Set("fm", xdnsMask(in, env))
 		}
 	}
 	addSecurity := func() {
@@ -100,7 +103,17 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		}
 		addTransport()
 		addSecurity()
+		if p.transport == "xdns" {
+			h, port := xdnsTarget(in, env)
+			return "vless://" + u.UUID + "@" + hostPort(h, port) + "?" + q.Encode() + frag
+		}
 		return "vless://" + u.UUID + "@" + hostPort(host, in.Port) + "?" + q.Encode() + frag
+	case "mtproto":
+		// opens straight in Telegram; one secret for everyone
+		q.Set("server", host)
+		q.Set("port", strconv.Itoa(in.Port))
+		q.Set("secret", MTProtoSecret(in.Str("mtKey"), in.Str("sni")))
+		return "tg://proxy?" + q.Encode()
 	case "trojan":
 		addTransport()
 		addSecurity()

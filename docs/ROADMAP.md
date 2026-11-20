@@ -79,9 +79,12 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Usage from nodes is counted exactly once (acknowledged batches), with online status, devices and limits
 - [x] Servers page with each node's health, cores, speed and errors; nodes going offline appear as alerts
 
-## Phase 3: More protocols (v1.9)
-- [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
-- [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
+## Phase 3: More protocols
+- [x] XDNS DNS tunnel for shutdowns, with the DNS records explained in the panel (v1.9)
+- [x] Telegram proxy (MTProto, mtg) that can share port 443 by SNI (v1.9)
+- [ ] AmneziaWG (2.0 and 3.1 differ and clients must match; needs a TUN device and NAT on the server)
+- [ ] Mieru (mita server), TrustTunnel (AdGuard)
+- [ ] dnstt / Slipstream (XDNS covers DNS tunnels for Xray apps), xICMP
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)

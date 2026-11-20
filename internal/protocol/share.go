@@ -14,7 +14,13 @@ import (
 
 // CanSharePanelPort reports whether a preset may use the panel's port.
 func CanSharePanelPort(p *Preset) bool {
-	return p != nil && (p.Network == "udp" || p.Security == "reality")
+	return p != nil && (p.Network == "udp" || SNIRouted(p))
+}
+
+// SNIRouted reports whether the edge router can tell this protocol apart by
+// the server name in its TLS hello: Reality, and the Telegram proxy's fake TLS.
+func SNIRouted(p *Preset) bool {
+	return p != nil && p.Network == "tcp" && (p.Security == "reality" || p.Security == "faketls")
 }
 
 // SharedSNI is the server name that routes a shared Reality inbound.
@@ -30,11 +36,11 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 	}
 	onPanel := port == panelPort
 	if onPanel && !CanSharePanelPort(p) {
-		return fmt.Sprintf("port %d is the panel's port: only Reality and UDP protocols can share it", port)
+		return fmt.Sprintf("port %d is the panel's port: only Reality, the Telegram proxy and UDP protocols can share it", port)
 	}
 	sni = strings.ToLower(strings.TrimSpace(sni))
 	if onPanel && p.Network == "tcp" && sni == "" {
-		return "a Reality inbound on the panel's port needs an SNI"
+		return "a protocol on the panel's port needs an SNI (server name)"
 	}
 	for _, in := range list {
 		if in.ID == except || in.Port != port {
@@ -47,7 +53,7 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 		if p != nil && q.Network != p.Network {
 			continue // TCP and UDP on one port number do not clash
 		}
-		if onPanel && p != nil && p.Security == "reality" && q.Security == "reality" {
+		if onPanel && SNIRouted(p) && SNIRouted(q) {
 			if SharedSNI(in) == sni {
 				return fmt.Sprintf("%s on port %d already uses the SNI %s; pick another SNI", q.Name, port, sni)
 			}

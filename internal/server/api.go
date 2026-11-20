@@ -253,7 +253,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		"live":        s.Mgr.Live(),
 		"system":      s.Sys.Get(),
 		"history":     s.Sys.History(),
-		"cores":       []any{s.Mgr.Xray.Status(), s.Mgr.SingBox.Status()},
+		"cores":       s.Mgr.CoreStatuses(),
 		"coreErrors":  cerr,
 		"inboundErrs": len(ierr),
 		"inbounds":    len(inbounds),
@@ -802,6 +802,21 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, msg)
 		return
 	}
+	if p.Engine == "mtg" {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has a Telegram proxy; one per server")
+				return
+			}
+		}
+		// mtg arrives with the first Telegram proxy (older installs do not have it)
+		if in.NodeID == 0 && !s.Mgr.MTG.Installed() {
+			if _, err := coremgr.InstallMTG(s.Mgr.MTG.BinDir); err != nil {
+				fail(w, 502, "could not download mtg (the Telegram proxy): "+err.Error())
+				return
+			}
+		}
+	}
 	if in.NodeID == 0 && p.NeedsDomain && strings.TrimSpace(s.St.GetSetting("domain", "")) == "" {
 		fail(w, 400, p.Name+" needs a domain. Set your domain in Settings first.")
 		return
@@ -1061,7 +1076,7 @@ func (s *Server) obtainCert(w http.ResponseWriter, r *http.Request) {
 func (s *Server) cores(w http.ResponseWriter, r *http.Request) {
 	_, cerr := s.Mgr.Errors()
 	writeJSON(w, 200, map[string]any{
-		"cores":  []any{s.Mgr.Xray.Status(), s.Mgr.SingBox.Status()},
+		"cores":  s.Mgr.CoreStatuses(),
 		"errors": cerr,
 		"stats":  map[string]bool{"sing-box": s.Mgr.SingBox.HasTag("with_v2ray_api"), "xray": true},
 	})
@@ -1081,6 +1096,10 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 		s.Mgr.SingBox.Stop()
 		ver, err = coremgr.InstallSingBox(binDir)
 		s.Mgr.SingBox.ResetVersion()
+	case "mtg":
+		s.Mgr.MTG.Stop()
+		ver, err = coremgr.InstallMTG(binDir)
+		s.Mgr.MTG.ResetVersion()
 	default:
 		fail(w, 404, "unknown core")
 		return
@@ -1096,8 +1115,9 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) applyCores(w http.ResponseWriter, r *http.Request) {
 	s.Mgr.ClearPortErrors()
-	s.Mgr.Xray.Restart()
-	s.Mgr.SingBox.Restart()
+	for _, c := range s.Mgr.Cores() {
+		c.Restart()
+	}
 	if err := s.Mgr.Apply(); err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -1106,10 +1126,7 @@ func (s *Server) applyCores(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) core(name string) interface{ Logs() []string } {
-	if name == "sing-box" {
-		return s.Mgr.SingBox
-	}
-	return s.Mgr.Xray
+	return s.Mgr.CoreByName(name)
 }
 
 func (s *Server) coreLogs(w http.ResponseWriter, r *http.Request) {
@@ -1123,11 +1140,15 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if r.PathValue("name") == "sing-box" {
+	switch r.PathValue("name") {
+	case "sing-box":
 		w.Write(orEmpty(sb))
-		return
+	case "mtg":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(s.Mgr.MTGConfig())
+	default:
+		w.Write(orEmpty(x))
 	}
-	w.Write(orEmpty(x))
 }
 
 func orEmpty(b []byte) []byte {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/util"
 )
 
 type obj = map[string]any
@@ -31,6 +33,7 @@ type Manager struct {
 	Store   *store.Store
 	Xray    *Core
 	SingBox *Core
+	MTG     *Core // the Telegram (MTProto) proxy
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -69,6 +72,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		Store:       st,
 		Xray:        &Core{Name: "xray", BinDir: binDir, ConfigPath: filepath.Join(runDir, "xray.json"), APIPort: 62789},
 		SingBox:     &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
+		MTG:         &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
 		Env:         env,
 		applyCh:     make(chan struct{}, 1),
 		inboundErrs: map[int64]string{},
@@ -144,6 +148,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.collect()
 			m.Xray.Stop()
 			m.SingBox.Stop()
+			m.MTG.Stop()
 			return
 		case <-m.applyCh:
 			time.Sleep(1500 * time.Millisecond) // coalesce bursts of edits
@@ -185,6 +190,7 @@ func (m *Manager) SNIRoutes() (map[string]edge.Target, error) {
 // built is one generation of core configs plus the edge router's SNI table.
 type built struct {
 	xray, singbox []byte
+	mtg           []byte // the Telegram proxy (one per server)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -243,8 +249,8 @@ func (m *Manager) build() (b built, err error) {
 		// a TCP inbound on the panel's port is reached through the edge router
 		listen, sni := 0, ""
 		if shared > 0 && in.Port == shared && p.Network == "tcp" {
-			if p.Security != "reality" {
-				b.errs[in.ID] = fmt.Sprintf("port %d is the panel's port: only Reality protocols can share it; choose another port", in.Port)
+			if !protocol.SNIRouted(p) {
+				b.errs[in.ID] = fmt.Sprintf("port %d is the panel's port: only Reality and the Telegram proxy can share it; choose another port", in.Port)
 				continue
 			}
 			if sni = protocol.SharedSNI(in); sni == "" {
@@ -273,11 +279,29 @@ func (m *Manager) build() (b built, err error) {
 			}
 		}
 		switch p.Engine {
+		case "mtg":
+			if b.mtg != nil {
+				b.errs[in.ID] = "only one Telegram proxy can run on a server"
+				continue
+			}
+			bind, pp := net.JoinHostPort(or(env.Listen, "0.0.0.0"), strconv.Itoa(in.Port)), false
+			if listen > 0 {
+				bind, pp = "127.0.0.1:"+strconv.Itoa(listen), true
+				b.routes[sni] = edge.Target{Addr: bind, ProxyHeader: true}
+			}
+			b.mtg = mtgConfig(protocol.MTProtoSecret(in.Str("mtKey"), in.Str("sni")), bind, pp, m.MTG.APIPort)
 		case "xray":
 			ib, e := protocol.XrayInbound(p, in, us, env)
 			if e != nil {
 				b.errs[in.ID] = e.Error()
 				continue
+			}
+			if p.Network == "udp" && in.Port == 53 && env.Listen == "" {
+				// systemd-resolved holds 127.0.0.53:53, so "every address" cannot
+				// be bound; the address facing the internet can
+				if ip := util.OutboundIP(); ip != "" {
+					ib["listen"] = ip
+				}
 			}
 			if listen > 0 {
 				ib["listen"], ib["port"] = "127.0.0.1", listen
@@ -317,6 +341,9 @@ func (m *Manager) build() (b built, err error) {
 	// TLS for an unknown name goes to the first shared Reality inbound (lowest id),
 	// which forwards it to its real target: the port behaves like plain Reality
 	for _, in := range inbounds {
+		if p := protocol.Get(in.Preset); p == nil || p.Security != "reality" {
+			continue // the Telegram proxy only answers its own domain
+		}
 		if sni := protocol.SharedSNI(in); in.Port == shared && sni != "" {
 			if t, ok := b.routes[sni]; ok {
 				b.routes[edge.Fallback] = t
@@ -384,7 +411,7 @@ func (m *Manager) Apply() error {
 	if err != nil {
 		return err
 	}
-	xcfg, scfg := b.xray, b.singbox
+	xcfg, scfg, tcfg := b.xray, b.singbox, b.mtg
 	m.collect() // save counters before a restart wipes them
 	cerrs := map[string]string{}
 	for attempt := 0; attempt < 6; attempt++ {
@@ -393,7 +420,7 @@ func (m *Manager) Apply() error {
 		for _, c := range []struct {
 			core *Core
 			cfg  []byte
-		}{{m.Xray, xcfg}, {m.SingBox, scfg}} {
+		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}} {
 			if e := c.core.Apply(c.cfg); e != nil {
 				cerrs[c.core.Name] = e.Error()
 				continue
@@ -414,7 +441,7 @@ func (m *Manager) Apply() error {
 		if b, err = m.build(); err != nil {
 			return err
 		}
-		xcfg, scfg = b.xray, b.singbox
+		xcfg, scfg, tcfg = b.xray, b.singbox, b.mtg
 	}
 	if m.OnRoutes != nil {
 		m.OnRoutes(b.routes)

@@ -115,6 +115,12 @@ func nodeInit(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ sing-box", v)
 		}
+		fmt.Println("• Downloading mtg (Telegram proxy) ...")
+		if v, err := coremgr.InstallMTG(binDir); err != nil {
+			fmt.Println("  ! mtg:", err)
+		} else {
+			fmt.Println("  ✓ mtg", v)
+		}
 	}
 	tok, err := node.Init(st, filepath.Join(home, "certs"), nodeHost(st), nodePort(st), false)
 	if err != nil {

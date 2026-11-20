@@ -365,3 +365,32 @@ func InstallGeoIP(dir string) (string, error) {
 	}
 	return "", fmt.Errorf("%s is not published with %s yet", GeoIPFile, r.Tag)
 }
+
+// InstallMTG downloads the latest mtg (MTProto proxy for Telegram, by
+// 9seconds, MIT) into binDir. Its release archives hold one binary in a folder.
+func InstallMTG(binDir string) (string, error) {
+	r, err := latest("9seconds/mtg")
+	if err != nil {
+		return "", err
+	}
+	ver := strings.TrimPrefix(r.Tag, "v")
+	arch := goarch()
+	if arch == "arm" {
+		arch = "armv7"
+	}
+	want := fmt.Sprintf("mtg-%s-%s-%s.tar.gz", ver, runtime.GOOS, arch)
+	for _, a := range r.Assets {
+		if a.Name != want {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		if err := extractTarGz(data, binDir, map[string]string{"mtg": exe("mtg"), "mtg.exe": "mtg.exe"}); err != nil {
+			return "", err
+		}
+		return ver, nil
+	}
+	return "", fmt.Errorf("no mtg build for %s/%s in %s", runtime.GOOS, arch, r.Tag)
+}

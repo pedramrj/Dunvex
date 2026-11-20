@@ -384,6 +384,9 @@ func (m *model) runService(i int) tea.Cmd {
 				return "", err
 			}
 			sv, err := coremgr.InstallSingBox(binDir)
+			if err == nil {
+				coremgr.InstallMTG(binDir) // the Telegram proxy rides along; it is optional
+			}
 			shell("systemctl", "start", "dunvex")
 			return "Xray " + xv + " · sing-box " + sv, err
 		})

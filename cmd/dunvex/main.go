@@ -381,6 +381,12 @@ func setup(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ sing-box", v)
 		}
+		fmt.Println("• Downloading mtg (Telegram proxy) ...")
+		if v, err := coremgr.InstallMTG(binDir); err != nil {
+			fmt.Println("  ! mtg:", err)
+		} else {
+			fmt.Println("  ✓ mtg", v)
+		}
 		fmt.Println("• Downloading GeoIP country data ...")
 		if src, err := coremgr.InstallGeoIP(home); err != nil {
 			fmt.Println("  ! GeoIP:", err)
@@ -531,6 +537,11 @@ func core(home string, args []string) error {
 		return fmt.Errorf("sing-box: %w", err)
 	}
 	fmt.Println("✓ sing-box", v)
+	if v, err := coremgr.InstallMTG(binDir); err != nil {
+		fmt.Println("! mtg:", err)
+	} else {
+		fmt.Println("✓ mtg", v)
+	}
 	if src, err := coremgr.InstallGeoIP(home); err != nil {
 		fmt.Println("! GeoIP:", err)
 	} else {

@@ -239,3 +239,17 @@ func FreeUDPPort(port int) bool {
 	u.Close()
 	return true
 }
+
+// OutboundIP is the local address this machine uses to reach the internet
+// (no packet is sent). Behind NAT it is the private address the public one maps to.
+func OutboundIP() string {
+	c, err := net.Dial("udp", "8.8.8.8:53")
+	if err != nil {
+		return ""
+	}
+	defer c.Close()
+	if a, ok := c.LocalAddr().(*net.UDPAddr); ok && !a.IP.IsLoopback() {
+		return a.IP.String()
+	}
+	return ""
+}

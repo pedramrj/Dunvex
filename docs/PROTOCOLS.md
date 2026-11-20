@@ -1,6 +1,6 @@
 # Protocols (research as of November 2026)
 
-Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
+Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, mtg **v2.3.0**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
 Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experimental · 🗺 = on the roadmap
 
 ## Xray-core
@@ -23,7 +23,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | WireGuard | Userspace, per-user peers | ✅ | Per-user stats via email |
 | SOCKS5 / HTTP | With authentication | ✅ | |
 | MASQUE | CONNECT-IP over HTTP/3 | 🗺 | New in Xray 26; few clients |
-| XDNS | DNS tunnel (FinalMask + mKCP) | 🗺 | Needs an NS record; for shutdowns |
+| XDNS | DNS tunnel (FinalMask + mKCP) | ✅ | For shutdowns: VLESS over mKCP inside DNS queries (EDNS0 1232, server MTU 900). Needs a domain whose NS record points to the server; links dial a public resolver (8.8.8.8 by default) or the server directly, with the mask in the `fm` parameter. On port 53 Dunvex binds the outward address, beside systemd-resolved. Tested end to end with real Xray (direct mode) |
 | XICMP | ICMP tunnel | 🗺 | |
 | Sudoku | FinalMask obfuscation, TCP/UDP | 🗺 | |
 | XDRIVE | Tunnel through cloud storage (S3/Drive) | 🗺 | Newest Xray feature (26.10) |
@@ -47,7 +47,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | AmneziaWG 2.0 | WireGuard with junk packets and header obfuscation | 🗺 |
 | Mieru | TCP/UDP with no fixed pattern | 🗺 |
 | TrustTunnel (AdGuard) | HTTP/2/3 VPN that looks like normal traffic | 🗺 |
-| MTProto (mtg) | Telegram proxy with FakeTLS | 🗺 |
+| MTProto (mtg) | Telegram proxy with FakeTLS | ✅ mtg 2.3.0 (MIT): one per server, one `tg://proxy` link for everyone (no per-user usage). Can share port 443 by SNI; probes see the fake domain's real site. Downloaded with the first Telegram proxy |
 | dnstt / Slipstream / VayDNS | DNS tunnels; the only working path in the February 2026 shutdown | 🗺 |
 | paqet | KCP over raw TCP packets (bypasses the OS stack) | 🗺 |
 | AIVPN | UDP disguised as STUN/QUIC/video calls | 🗺 |

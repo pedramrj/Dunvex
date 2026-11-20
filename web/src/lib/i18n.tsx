@@ -453,6 +453,8 @@ const fa = {
   deleteKeyBody: "هر اسکریپتی که از این کلید استفاده می‌کند فوراً قطع می‌شود.",
   keyExpires: "تا",
   keyRules: "کلیدها نمی‌توانند حساب‌ها، نشست‌ها یا کلیدهای دیگر را مدیریت کنند.",
+  xdnsHelp: "پیش از ساخت، در DNS دامنه‌تان دو رکورد بسازید: یک رکورد A مثل ns.example.com که به IP این سرور اشاره کند، و یک رکورد NS مثل t.example.com که به ns.example.com اشاره کند. سپس t.example.com را دامنهٔ تونل بگذارید. نام رکورد A نباید زیرمجموعهٔ نام رکورد NS باشد. پورت ۵۳ (UDP) باید باز باشد.",
+  mtprotoHelp: "کاربران لینک tg:// را باز می‌کنند یا در تلگرام از «تنظیمات › داده و حافظه › پروکسی» اضافه‌اش می‌کنند. همه یک لینک دارند؛ برای قطع دسترسی یک نفر، پروتکل را از نو بسازید.",
   fullAccess: "دسترسی کامل",
 };
 
@@ -908,6 +910,8 @@ const en: Dict = {
   deleteKeyBody: "Any script using this key stops working at once.",
   keyExpires: "until",
   keyRules: "Keys cannot manage accounts, sessions or other keys.",
+  xdnsHelp: "Before creating it, add two records in your domain's DNS: an A record such as ns.example.com pointing to this server's IP, and an NS record such as t.example.com pointing to ns.example.com. Then use t.example.com as the tunnel domain. The A record's name must not be under the NS record's name. UDP port 53 must be open.",
+  mtprotoHelp: "Users open the tg:// link, or add it in Telegram under Settings › Data and storage › Proxy. Everyone shares one link; to cut someone off, create the protocol again.",
   fullAccess: "Full access",
 };
 

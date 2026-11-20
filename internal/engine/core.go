@@ -70,7 +70,11 @@ func (c *Core) Version() string {
 	if v != "" || !c.Installed() {
 		return v
 	}
-	out, err := exec.Command(c.Bin(), "version").CombinedOutput()
+	arg := "version"
+	if c.Name == "mtg" {
+		arg = "--version"
+	}
+	out, err := exec.Command(c.Bin(), arg).CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -85,6 +89,8 @@ func (c *Core) Version() string {
 	}
 	f := strings.Fields(lines[0])
 	switch {
+	case c.Name == "mtg" && len(f) >= 1:
+		v = f[0] // "2.3.0 (go1.x, …)"
 	case c.Name == "xray" && len(f) >= 2:
 		v = f[1]
 	case len(f) >= 3:
@@ -140,9 +146,12 @@ func (c *Core) Test(cfg []byte) error {
 	}
 	defer os.Remove(tmp)
 	var cmd *exec.Cmd
-	if c.Name == "xray" {
+	switch c.Name {
+	case "xray":
 		cmd = exec.Command(c.Bin(), "run", "-test", "-c", tmp)
-	} else {
+	case "mtg":
+		return nil // mtg has no check command; Dunvex writes its few lines itself
+	default:
 		cmd = exec.Command(c.Bin(), "check", "-c", tmp)
 	}
 	cmd.Env = c.env()
@@ -210,6 +219,9 @@ func (c *Core) start() error {
 	defer c.mu.Unlock()
 	c.killStale()
 	cmd := exec.Command(c.Bin(), "run", "-c", c.ConfigPath)
+	if c.Name == "mtg" {
+		cmd = exec.Command(c.Bin(), "run", c.ConfigPath)
+	}
 	cmd.Env = c.env()
 	cmd.Dir = c.BinDir
 	pr, pw := io.Pipe()
