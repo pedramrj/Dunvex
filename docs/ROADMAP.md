@@ -45,7 +45,11 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] `dunvex menu`: full-screen control centre with live status and the common server tasks
 - [x] Offline install from a local binary (`DUNVEX_BINARY`), `dunvex qr`
 
-## Phase 3: More protocols (v1.4)
+## SSH control centre (v1.4) ✅
+- [x] Full-screen menu (Bubble Tea): gradient header, panes, live dashboard, users, protocols, logs, backups, service,
+      network and login + QR; command palette, dialogs, toasts, mouse; works down to 80×24
+
+## Phase 3: More protocols (v1.5)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)

@@ -7,18 +7,18 @@ import (
 	"rsc.io/qr"
 )
 
-// printQR draws a scannable QR code with half blocks (two modules per line).
-func printQR(text, indent string) error {
+// qrLines draws a scannable QR code with half blocks (two modules per line).
+func qrLines(text string) []string {
 	c, err := qr.Encode(text, qr.M)
 	if err != nil {
-		return err
+		return []string{"(QR: " + err.Error() + ")"}
 	}
 	const quiet = 2
 	n := c.Size
 	dark := func(x, y int) bool { return x >= 0 && y >= 0 && x < n && y < n && c.Black(x, y) }
+	out := []string{}
 	for y := -quiet; y < n+quiet; y += 2 {
 		var b strings.Builder
-		b.WriteString(indent)
 		for x := -quiet; x < n+quiet; x++ {
 			fg, bg := 231, 231
 			if dark(x, y) {
@@ -30,7 +30,14 @@ func printQR(text, indent string) error {
 			fmt.Fprintf(&b, "\x1b[38;5;%d;48;5;%dm▀", fg, bg)
 		}
 		b.WriteString("\x1b[0m")
-		fmt.Println(b.String())
+		out = append(out, b.String())
+	}
+	return out
+}
+
+func printQR(text, indent string) error {
+	for _, l := range qrLines(text) {
+		fmt.Println(indent + l)
 	}
 	return nil
 }

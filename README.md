@@ -28,9 +28,10 @@ The first install already serves **VLESS Reality** and **Hysteria2**: add a user
 Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: `uninstall`.
 
 The installer shows the DV logo, a live step log with download progress and checksum check, and ends with the
-login details and a QR code of the panel address. `dunvex menu` is a full-screen control centre (arrow keys) with
-live service, core, CPU, RAM, disk, network and user status, plus restart, users, live logs, admin reset, panel port,
-backup, updates and network tuning. Plain output: `DUNVEX_PLAIN=1`. GitHub blocked on the server? Copy the binary over
+login details and a QR code of the panel address. `dunvex menu` is a full-screen control centre built with Bubble Tea:
+a gradient Dunvex header, navigation, a live dashboard (big CPU/RAM/disk numbers, download and upload charts,
+24-hour traffic, users, protocols, recent events), users, protocols, live logs, backups, service actions, network and
+a login card with QR code. Ctrl+P opens a command palette; risky actions ask first; mouse works too. Plain output: `DUNVEX_PLAIN=1`. GitHub blocked on the server? Copy the binary over
 and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 
 ### What you get

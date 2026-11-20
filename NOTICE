@@ -40,6 +40,7 @@ Bundled fonts (SIL Open Font License 1.1, licence texts in web/src/fonts/):
   - Geist (Vercel, with basement.studio)
   - JetBrains Mono (The JetBrains Mono Project Authors)
 
+SSH menu: Bubble Tea, Lip Gloss and Bubbles by Charm (MIT).
 Panel libraries: React (MIT), Motion (MIT), Magic UI components (MIT),
 Lucide icons (ISC), clsx (MIT), tailwind-merge (MIT), GSAP (Standard License,
 see above). World map land shapes: Natural Earth (public domain) via world-atlas.
