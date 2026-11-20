@@ -59,7 +59,7 @@ latest_tag() {
 fetch_binary() {
   local tag="$1" tmp
   tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' RETURN
+  trap 'rm -rf "$tmp"; trap - RETURN' RETURN
   local name="dunvex-linux-$ARCH.tar.gz"
   local url
   url=$(gh_url "https://github.com/$REPO/releases/download/$tag/$name")
