@@ -44,7 +44,15 @@ WireGuard keys on the server. Then choose what goes through it:
 
 **Check the connection** loads Cloudflare's trace page through WARP and shows the address the internet sees.
 A **WARP+ key** from the 1.1.1.1 app can be added. **Remove WARP** turns its rules off and deletes the device at
-Cloudflare. WARP runs inside the cores in user space: it creates no network interface or routing table on the server.
+Cloudflare.
+
+WARP runs over **MASQUE** (HTTP/3 on UDP 443), the transport of Cloudflare's current apps: since 2026 Cloudflare no
+longer answers WARP's WireGuard from many networks, data centres among them. The tunnel is carried by
+[usque](https://github.com/Diniboy1123/usque) (MIT), downloaded from its GitHub release and checked against the
+published SHA-256 when WARP is turned on. It runs as a local SOCKS proxy that only the server can reach; Xray and
+sing-box send WARP traffic to it, so both share one connection. It creates no network interface or routing table.
+A device made by v1.14.0 or v1.14.1 (WireGuard) is moved to MASQUE with **Move to MASQUE** in the panel or
+`dunvex warp on`.
 
 Each node registers its own WARP device the first time the panel's rules need it (one device cannot be used from
 two servers at once).

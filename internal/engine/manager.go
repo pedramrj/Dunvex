@@ -40,6 +40,7 @@ type Manager struct {
 	AWG     *awg.Server // AmneziaWG (its own interface)
 	Mita    *Core       // the Mieru server
 	TT      *Core       // the TrustTunnel endpoint
+	Usque   *Core       // Cloudflare WARP over MASQUE, a local SOCKS proxy (APIPort)
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -55,6 +56,8 @@ type Manager struct {
 	RouterPort, WarpTestPort int
 	// WarpClient registers WARP devices (nil: Cloudflare's API).
 	WarpClient *warp.Client
+	// InstallUsque downloads usque when a MASQUE device needs it (nil: never).
+	InstallUsque func() error
 
 	applyCh chan struct{}
 	applyMu sync.Mutex
@@ -101,6 +104,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		AWG:          awg.New(binDir, "dvxawg0"),
 		Mita:         &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
 		TT:           &Core{Name: "trusttunnel", BinDir: binDir, ConfigPath: filepath.Join(runDir, "tt-vpn.toml"), APIPort: 62792},
+		Usque:        &Core{Name: "usque", BinDir: binDir, ConfigPath: filepath.Join(runDir, "usque.json"), APIPort: 62797},
 		Env:          env,
 		RouterPort:   RouterPort,
 		WarpTestPort: WarpTestPort,
@@ -182,6 +186,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.MTG.Stop()
 			m.Mita.Stop()
 			m.TT.Stop()
+			m.Usque.Stop()
 			m.AWG.Stop()
 			return
 		case <-m.applyCh:
@@ -230,6 +235,7 @@ type built struct {
 	tt            *protocol.TTServer // TrustTunnel (one per server)
 	ttIn          int64              // its inbound
 	awg           *awgPlan           // AmneziaWG (one per server)
+	usque         []byte             // WARP over MASQUE (nil: not running)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -260,6 +266,9 @@ func (m *Manager) build() (b built, err error) {
 	env := m.Env()
 	now := time.Now().Unix()
 	rp := m.routePlan()
+	if rp.acct != nil && rp.acct.Masque() {
+		b.usque = rp.acct.UsqueConfig()
+	}
 	router := "" // Mieru and TrustTunnel leave through Xray when routing rules are on
 	if rp.useRouter() {
 		router = rp.routerAddr()
@@ -269,7 +278,7 @@ func (m *Manager) build() (b built, err error) {
 		shared = m.SharedPort()
 	}
 	b.errs, b.active, b.routes = map[int64]string{}, map[string]bool{}, map[string]edge.Target{}
-	used := map[int]bool{m.Xray.APIPort: true, m.SingBox.APIPort: true, shared: true, m.RouterPort: true, m.WarpTestPort: true}
+	used := map[int]bool{m.Xray.APIPort: true, m.SingBox.APIPort: true, shared: true, m.RouterPort: true, m.WarpTestPort: true, m.Usque.APIPort: true}
 	m.mu.Lock()
 	for _, in := range inbounds {
 		used[in.Port] = true
@@ -445,11 +454,11 @@ func (m *Manager) xrayConfig(inbounds []obj, rp *routePlan, mitaOrTT bool) obj {
 
 func (m *Manager) singboxConfig(inbounds []obj, tags, users []string, rp *routePlan) obj {
 	torrent := m.Store.GetSetting("block_torrent", "true") == "true"
-	rules, ruleSets, endpoints, final, resolver, err := m.singboxRouting(rp, torrent)
+	rules, ruleSets, endpoints, outs, final, resolver, err := m.singboxRouting(rp, torrent)
 	if err != nil {
 		// the site lists could not be read: keep the basic rules rather than stop the core
 		log.Printf("sing-box routing: %v", err)
-		rules, ruleSets, endpoints, final, resolver, _ = m.singboxRouting(&routePlan{set: routing.Defaults()}, torrent)
+		rules, ruleSets, endpoints, outs, final, resolver, _ = m.singboxRouting(&routePlan{set: routing.Defaults()}, torrent)
 	}
 	route := obj{"rules": rules, "final": final}
 	if len(ruleSets) > 0 {
@@ -458,7 +467,7 @@ func (m *Manager) singboxConfig(inbounds []obj, tags, users []string, rp *routeP
 	cfg := obj{
 		"log":       obj{"level": "info", "timestamp": true}, // info: connection lines feed the device list
 		"inbounds":  inbounds,
-		"outbounds": []obj{{"type": "direct", "tag": "direct"}},
+		"outbounds": append([]obj{{"type": "direct", "tag": "direct"}}, outs...),
 		"route":     route,
 	}
 	if len(endpoints) > 0 {
@@ -503,7 +512,7 @@ func (m *Manager) Apply() error {
 		for _, c := range []struct {
 			core *Core
 			cfg  []byte
-		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}, {m.TT, ttMain}} {
+		}{{m.Usque, b.usque}, {m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}, {m.TT, ttMain}} {
 			if c.core == m.TT && cerrs[m.TT.Name] != "" {
 				continue
 			}

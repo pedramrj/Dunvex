@@ -56,7 +56,7 @@ func TestRoutingDefaults(t *testing.T) {
 	if rp.useRouter() {
 		t.Error("Mieru and TrustTunnel are sent through Xray without any rule")
 	}
-	srules, sets, eps, final, resolver, err := m.singboxRouting(rp, true)
+	srules, sets, eps, _, final, resolver, err := m.singboxRouting(rp, true)
 	if err != nil || len(sets) != 0 || len(eps) != 0 || final != "direct" || resolver || len(srules) != 3 {
 		t.Errorf("sing-box defaults: %v %s %s", err, js(srules), js(sets))
 	}
@@ -96,7 +96,7 @@ func TestRoutingRules(t *testing.T) {
 		t.Errorf("loopback inbounds %s", js(ins))
 	}
 
-	srules, sets, eps, final, resolver, err := m.singboxRouting(rp, true)
+	srules, sets, eps, _, final, resolver, err := m.singboxRouting(rp, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestRoutingEverythingThroughWarp(t *testing.T) {
 	if strings.Contains(js(rules), `"router"`) {
 		t.Error("a router inbound without Mieru or TrustTunnel")
 	}
-	_, _, _, final, _, _ := m.singboxRouting(rp, true)
+	_, _, _, _, final, _, _ := m.singboxRouting(rp, true)
 	if final != "warp" {
 		t.Errorf("sing-box final %s", final)
 	}
@@ -217,5 +217,36 @@ func TestMieruAndTrustTunnelLeaveThroughXray(t *testing.T) {
 	}
 	if !strings.Contains(string(b.xray), `"tag": "router"`) {
 		t.Errorf("Xray runs without its routing inbound:\n%s", b.xray)
+	}
+}
+
+func TestWarpOverMasque(t *testing.T) {
+	m, st := routingSetup(t)
+	a := fakeAccount()
+	a.Transport, a.MasqueKey, a.MasquePeer, a.MasqueV4 = warp.MASQUE, "a2V5", "-----BEGIN PUBLIC KEY-----", "162.159.198.2"
+	routing.SaveAccount(st, a)
+	routing.Save(st, routing.Settings{Iran: routing.IranDirect, Warp: routing.WarpSites, WarpDomains: []string{"chatgpt.com"}})
+	rp := m.routePlan()
+	_, outs, _, _ := rp.xrayRouting(true, false)
+	want := `{"protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":` + js(m.Usque.APIPort) + `}]},"tag":"warp"}`
+	if js(outs[2]) != want {
+		t.Errorf("Xray's WARP outbound %s, want %s", js(outs[2]), want)
+	}
+	_, _, eps, souts, _, _, _ := m.singboxRouting(rp, true)
+	if len(eps) != 0 || len(souts) != 1 || js(souts[0]) != `{"server":"127.0.0.1","server_port":`+js(m.Usque.APIPort)+`,"tag":"warp","type":"socks","version":"5"}` {
+		t.Errorf("sing-box: endpoints %s outbounds %s", js(eps), js(souts))
+	}
+	b, err := m.build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var u map[string]string
+	if json.Unmarshal(b.usque, &u) != nil || u["endpoint_v4"] != "162.159.198.2" || u["private_key"] != "a2V5" {
+		t.Errorf("usque config: %s", b.usque)
+	}
+	// a WireGuard device needs no usque
+	routing.SaveAccount(st, fakeAccount())
+	if b, _ = m.build(); b.usque != nil {
+		t.Error("usque runs for a WireGuard device")
 	}
 }

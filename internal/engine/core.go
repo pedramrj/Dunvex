@@ -72,15 +72,25 @@ func (c *Core) Version() string {
 	if v != "" || !c.Installed() {
 		return v
 	}
-	arg := "version"
+	args := []string{"version"}
 	if c.Name == "mtg" || c.Name == "trusttunnel" {
-		arg = "--version"
+		args = []string{"--version"}
 	}
-	out, err := exec.Command(c.Bin(), arg).CombinedOutput()
+	if c.Name == "usque" {
+		args = []string{"-c", c.ConfigPath, "version"}
+	}
+	out, err := exec.Command(c.Bin(), args...).CombinedOutput()
 	if err != nil {
 		return ""
 	}
 	lines := strings.Split(strings.ReplaceAll(string(out), "\r", ""), "\n")
+	if c.Name == "usque" {
+		for _, l := range lines {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(l), "usque version: "); ok {
+				lines = []string{"usque version " + strings.TrimPrefix(v, "v")}
+			}
+		}
+	}
 	var tags []string
 	for _, l := range lines {
 		if strings.HasPrefix(strings.TrimSpace(l), "Tags:") {
@@ -161,7 +171,7 @@ func (c *Core) Test(cfg []byte) error {
 	switch c.Name {
 	case "xray":
 		cmd = exec.Command(c.Bin(), "run", "-test", "-c", tmp)
-	case "mtg", "mita", "trusttunnel":
+	case "mtg", "mita", "trusttunnel", "usque":
 		return nil // no check command; Dunvex writes these small configs itself
 	default:
 		cmd = exec.Command(c.Bin(), "check", "-c", tmp)
@@ -252,6 +262,9 @@ func (c *Core) start() error {
 		cmd = exec.Command(c.Bin(), "run", c.ConfigPath)
 	case "trusttunnel":
 		cmd = exec.Command(c.Bin(), c.ConfigPath, filepath.Join(filepath.Dir(c.ConfigPath), protocol.TTHostsFile))
+	case "usque":
+		// WARP over MASQUE as a SOCKS proxy that only this server can reach
+		cmd = exec.Command(c.Bin(), "-c", c.ConfigPath, "socks", "-b", "127.0.0.1", "-p", strconv.Itoa(c.APIPort))
 	case "mita":
 		// mita keeps per-user totals in one file and reloads them at start; a
 		// crash can bring back older totals, so each start counts from zero

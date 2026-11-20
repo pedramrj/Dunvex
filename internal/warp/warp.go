@@ -37,6 +37,13 @@ type Account struct {
 	License    string `json:"license,omitempty"`
 	Type       string `json:"type"` // free, limited (WARP+), unlimited, team
 	Created    int64  `json:"created"`
+
+	// MASQUE (see EnrollMasque); empty Transport means WireGuard
+	Transport  string `json:"transport,omitempty"`
+	MasqueKey  string `json:"masqueKey,omitempty"`  // P-256 private key, base64 SEC1 DER
+	MasquePeer string `json:"masquePeer,omitempty"` // Cloudflare's public key, PEM
+	MasqueV4   string `json:"masqueV4,omitempty"`
+	MasqueV6   string `json:"masqueV6,omitempty"`
 }
 
 // Client talks to the WARP API.
@@ -140,8 +147,21 @@ func (c *Client) call(ctx context.Context, method, path, token string, body, out
 	return nil
 }
 
-// Register creates a new free WARP device.
+// Register creates a new free WARP device and switches it to MASQUE.
 func (c *Client) Register(ctx context.Context) (*Account, error) {
+	a, err := c.registerWireGuard(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.EnrollMasque(ctx, a); err != nil {
+		c.Delete(ctx, a) // a half-made device is not kept
+		return nil, err
+	}
+	return a, nil
+}
+
+// registerWireGuard creates the device the way the app does (with a WireGuard key).
+func (c *Client) registerWireGuard(ctx context.Context) (*Account, error) {
 	priv, pub := util.WireGuardKeys()
 	var r regReply
 	err := c.call(ctx, "POST", "/reg", "", map[string]any{

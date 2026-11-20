@@ -2,6 +2,8 @@ package warp
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +13,11 @@ import (
 )
 
 // fakeAPI answers like Cloudflare's client API.
+const masquePeer = "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEIaHO\n-----END PUBLIC KEY-----\n"
+
 func fakeAPI(t *testing.T) (*httptest.Server, *map[string]any) {
 	var lastReg map[string]any
+	enabled := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("CF-Client-Version") == "" || !strings.HasPrefix(r.Header.Get("User-Agent"), "1.1.1.1/") {
 			http.Error(w, `{"errors":[{"message":"unknown client"}]}`, 403)
@@ -25,6 +30,23 @@ func fakeAPI(t *testing.T) (*httptest.Server, *map[string]any) {
 			"config":{"client_id":"AQID","peers":[{"public_key":"bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
 			"endpoint":{"host":"engage.cloudflareclient.com:2408","v4":"162.159.192.1:0","v6":"[2606:4700:d0::a29f:c001]:0","ports":[2408,500]}}],
 			"interface":{"addresses":{"v4":"172.16.0.2","v6":"2606:4700:110:8a36::1"}}}}`))
+		case r.Method == "PATCH" && r.URL.Path == "/reg/dev-1":
+			var in map[string]any
+			json.NewDecoder(r.Body).Decode(&in)
+			if in["warp_enabled"] == true {
+				enabled = true
+				w.Write([]byte(`{"warp_enabled":true}`))
+				return
+			}
+			der, _ := base64.StdEncoding.DecodeString(in["key"].(string))
+			if _, err := x509.ParsePKIXPublicKey(der); err != nil || in["key_type"] != "secp256r1" || in["tunnel_type"] != "masque" {
+				http.Error(w, `{"errors":[{"message":"bad key"}]}`, 400)
+				return
+			}
+			b, _ := json.Marshal(map[string]any{"warp_enabled": enabled, "config": map[string]any{
+				"peers":     []map[string]any{{"public_key": masquePeer, "endpoint": map[string]any{"v4": "162.159.198.2:0", "v6": "[2606:4700:103::2]:0"}}},
+				"interface": map[string]any{"addresses": map[string]any{"v4": "172.16.0.2", "v6": "2606:4700:110:8a36::1"}}}})
+			w.Write(b)
 		case r.URL.Path == "/reg/dev-1/account" && r.Header.Get("Authorization") != "Bearer tok-1":
 			http.Error(w, `{"errors":[{"message":"Unauthorized"}]}`, 401)
 		case r.Method == "PUT" && r.URL.Path == "/reg/dev-1/account":
@@ -59,6 +81,19 @@ func TestRegister(t *testing.T) {
 	}
 	if a.ID != "dev-1" || a.Token != "tok-1" || a.Type != "free" || a.AddressV4 != "172.16.0.2" || a.Created == 0 {
 		t.Errorf("account: %+v", a)
+	}
+	// registered devices use MASQUE (HTTP/3), which usque carries
+	if !a.Masque() || a.MasqueV4 != "162.159.198.2" || a.MasqueV6 != "2606:4700:103::2" || a.MasquePeer != masquePeer {
+		t.Errorf("MASQUE: %+v", a)
+	}
+	der, _ := base64.StdEncoding.DecodeString(a.MasqueKey)
+	if _, err := x509.ParseECPrivateKey(der); err != nil {
+		t.Errorf("MASQUE key: %v", err)
+	}
+	var u map[string]string
+	if err := json.Unmarshal(a.UsqueConfig(), &u); err != nil || u["private_key"] != a.MasqueKey || u["endpoint_v4"] != "162.159.198.2" ||
+		u["endpoint_pub_key"] != masquePeer || u["access_token"] != "tok-1" || u["id"] != "dev-1" || u["ipv4"] != "172.16.0.2" {
+		t.Errorf("usque config: %v %v", err, u)
 	}
 	// an IP endpoint (no DNS needed inside the cores) on the first offered port
 	if a.Endpoint != "162.159.192.1:2408" || a.Host() != "162.159.192.1" || a.Port() != 2408 {

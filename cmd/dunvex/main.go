@@ -260,6 +260,7 @@ func serve(home string) error {
 	sys := sysinfo.NewSampler()
 	srv := &server.Server{Home: home, Version: Version, St: st, Sys: sys}
 	mgr := engine.NewManager(st, binDir, runDir, func() protocol.Env { return srv.Env() })
+	mgr.InstallUsque = func() error { _, err := coremgr.InstallUsque(binDir); return err }
 	srv.Mgr = mgr
 	if ui, err := fs.Sub(web.Dist, "dist"); err == nil {
 		srv.UI = ui

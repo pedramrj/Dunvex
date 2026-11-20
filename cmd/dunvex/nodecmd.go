@@ -204,6 +204,7 @@ func nodeServe(home string) error {
 		return e
 	}
 	mgr := engine.NewManager(st, binDir, runDir, env)
+	mgr.InstallUsque = func() error { _, err := coremgr.InstallUsque(binDir); return err }
 	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

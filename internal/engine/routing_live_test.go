@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -120,6 +121,14 @@ func TestRoutingOnRealCores(t *testing.T) {
 	m := NewManager(st, bin, filepath.Join(dir, "run"), func() protocol.Env { return protocol.Env{Host: "127.0.0.1"} })
 	m.Xray.APIPort, m.SingBox.APIPort = nextFree(42190), nextFree(42200)
 	m.RouterPort, m.WarpTestPort = nextFree(42210), nextFree(42220)
+	// a MASQUE device is carried by the panel's running usque (one connection per device)
+	if acct.Masque() {
+		p, err := strconv.Atoi(os.Getenv("DUNVEX_USQUE_PORT"))
+		if err != nil {
+			t.Fatal("a MASQUE device needs DUNVEX_USQUE_PORT (the running usque's SOCKS port)")
+		}
+		m.Usque.APIPort = p
+	}
 	rp := m.routePlan()
 	if !rp.warp() || !rp.useRouter() || rp.dat == "" {
 		t.Fatalf("plan: warp %v router %v dat %q", rp.warp(), rp.useRouter(), rp.dat)

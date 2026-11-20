@@ -35,10 +35,11 @@ type routePlan struct {
 	dat      string        // directory with geosite.dat and geoip.dat, "" when missing
 	router   int           // port of the routing inbound
 	warpTest int           // port of the WARP check inbound
+	usque    int           // port of the MASQUE SOCKS proxy (usque)
 }
 
 func (m *Manager) routePlan() *routePlan {
-	rp := &routePlan{set: routing.Load(m.Store), router: m.RouterPort, warpTest: m.WarpTestPort}
+	rp := &routePlan{set: routing.Load(m.Store), router: m.RouterPort, warpTest: m.WarpTestPort, usque: m.Usque.APIPort}
 	if fileExists(filepath.Join(m.Xray.BinDir, "geosite.dat")) && fileExists(filepath.Join(m.Xray.BinDir, "geoip.dat")) {
 		rp.dat = m.Xray.BinDir
 	}
@@ -46,6 +47,8 @@ func (m *Manager) routePlan() *routePlan {
 	// before any traffic is sent to it
 	if rp.acct = routing.Account(m.Store); rp.acct == nil && rp.set.UsesWarp() {
 		m.registerWarpLater()
+	} else if rp.acct != nil && rp.acct.Masque() && !m.Usque.Installed() {
+		m.installUsqueLater()
 	}
 	return rp
 }
@@ -93,6 +96,10 @@ func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj,
 	outbounds = []obj{direct, block}
 	if rp.acct != nil {
 		w := rp.acct.XrayOutbound(warpTag)
+		if rp.acct.Masque() {
+			// usque carries WARP; Xray hands it the traffic over local SOCKS
+			w = obj{"protocol": "socks", "tag": warpTag, "settings": obj{"servers": []obj{{"address": "127.0.0.1", "port": rp.usque}}}}
+		}
 		if rp.warp() && rp.set.Warp == routing.WarpAll {
 			outbounds = []obj{w, direct, block} // the first outbound takes what no rule matched
 		} else {
@@ -151,7 +158,7 @@ func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj,
 // ---------------------------------------------------------------- sing-box
 
 // singboxRouting returns the route rules, rule-sets and endpoints for sing-box.
-func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleSets, endpoints []obj, final string, resolver bool, err error) {
+func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleSets, endpoints, outbounds []obj, final string, resolver bool, err error) {
 	rules = []obj{{"action": "sniff"}, {"ip_is_private": true, "action": "reject"}}
 	if blockTorrent {
 		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "action": "reject"})
@@ -181,7 +188,11 @@ func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleS
 		rules = append(rules, obj{"domain_suffix": s.BlockDomains, "action": "reject"})
 	}
 	if rp.warp() {
-		endpoints = append(endpoints, rp.acct.SingboxEndpoint(warpTag))
+		if rp.acct.Masque() {
+			outbounds = append(outbounds, obj{"type": "socks", "tag": warpTag, "server": "127.0.0.1", "server_port": rp.usque, "version": "5"})
+		} else {
+			endpoints = append(endpoints, rp.acct.SingboxEndpoint(warpTag))
+		}
 		if s.Warp == routing.WarpAll {
 			final = warpTag
 		}
@@ -319,6 +330,31 @@ func (m *Manager) ruleFile(dat, datName, tag, what string, make func() (obj, err
 }
 
 // ---------------------------------------------------------------- WARP
+
+var usqueInst struct {
+	sync.Mutex
+	busy bool
+	last time.Time
+}
+
+// installUsqueLater downloads usque in the background (a server whose WARP
+// device uses MASQUE but has no usque yet), then applies the configs again.
+func (m *Manager) installUsqueLater() {
+	usqueInst.Lock()
+	defer usqueInst.Unlock()
+	if usqueInst.busy || time.Since(usqueInst.last) < 10*time.Minute || m.InstallUsque == nil {
+		return
+	}
+	usqueInst.busy, usqueInst.last = true, time.Now()
+	go func() {
+		defer func() { usqueInst.Lock(); usqueInst.busy = false; usqueInst.Unlock() }()
+		if err := m.InstallUsque(); err != nil {
+			m.Store.Log("core", "usque (WARP) could not be installed: %v", err)
+			return
+		}
+		m.RequestApply()
+	}()
+}
 
 var warpReg struct {
 	sync.Mutex

@@ -40,6 +40,9 @@ func TestRoutingPageAndWarp(t *testing.T) {
 			w.Write([]byte(`{"id":"dev-9","token":"tok-9","account":{"account_type":"free"},"config":{"client_id":"BAUG",
 			"peers":[{"public_key":"bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=","endpoint":{"v4":"162.159.192.5:0","ports":[2408]}}],
 			"interface":{"addresses":{"v4":"172.16.0.2","v6":"2606:4700:110:1::2"}}}}`))
+		case r.Method == "PATCH" && r.URL.Path == "/reg/dev-9":
+			w.Write([]byte(`{"warp_enabled":true,"config":{"peers":[{"public_key":"-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----\n",
+			"endpoint":{"v4":"162.159.198.2:0","v6":"[2606:4700:103::2]:0"}}],"interface":{"addresses":{"v4":"172.16.0.2","v6":"2606:4700:110:1::2"}}}}`))
 		case r.Method == "PUT" && r.URL.Path == "/reg/dev-9/account":
 			w.WriteHeader(204)
 		case r.Method == "GET" && r.URL.Path == "/reg/dev-9/account":
@@ -82,13 +85,14 @@ func TestRoutingPageAndWarp(t *testing.T) {
 	}
 	code, out = owner.do("POST", "/routing/warp", nil)
 	w, _ := out["warp"].(map[string]any)
-	if code != 200 || w == nil || w["addressV4"] != "172.16.0.2" || w["endpoint"] != "162.159.192.5:2408" || w["type"] != "free" {
+	if code != 200 || w == nil || w["addressV4"] != "172.16.0.2" || w["transport"] != "masque" || w["type"] != "free" {
 		t.Fatalf("register: %d %v", code, out)
 	}
 	if a := routing.Account(st); a == nil || a.Token != "tok-9" {
 		t.Fatalf("stored device: %+v", a)
 	}
-	if raw, _ := json.Marshal(out); strings.Contains(string(raw), "tok-9") || strings.Contains(string(raw), routing.Account(st).PrivateKey) {
+	if raw, _ := json.Marshal(out); strings.Contains(string(raw), "tok-9") || strings.Contains(string(raw), routing.Account(st).PrivateKey) ||
+		strings.Contains(string(raw), routing.Account(st).MasqueKey) {
 		t.Error("the device's token or key reached the page")
 	}
 	code, out = owner.do("PUT", "/routing", map[string]any{"blockTorrent": false, "settings": map[string]any{

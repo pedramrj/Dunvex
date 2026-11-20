@@ -14,6 +14,7 @@ import (
 )
 
 type warpView struct {
+	Transport string `json:"transport"` // masque or wireguard
 	Type      string `json:"type"`
 	AddressV4 string `json:"addressV4"`
 	AddressV6 string `json:"addressV6"`
@@ -41,7 +42,7 @@ func (s *Server) routingState() routingView {
 		v.Groups = append(v.Groups, g.ID)
 	}
 	if a := routing.Account(s.St); a != nil {
-		v.Warp = &warpView{Type: a.Type, AddressV4: a.AddressV4, AddressV6: a.AddressV6, Endpoint: a.Endpoint, Created: a.Created, License: a.License != ""}
+		v.Warp = &warpView{Transport: map[bool]string{true: warp.MASQUE, false: warp.WireGuard}[a.Masque()], Type: a.Type, AddressV4: a.AddressV4, AddressV6: a.AddressV6, Endpoint: a.Endpoint, Created: a.Created, License: a.License != ""}
 	}
 	if s.Mgr != nil {
 		v.Geo = fileExists(filepath.Join(s.Mgr.Xray.BinDir, "geosite.dat")) && fileExists(filepath.Join(s.Mgr.Xray.BinDir, "geoip.dat"))
@@ -85,23 +86,39 @@ func (s *Server) putRouting(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.routingState())
 }
 
-// registerWarp creates the server's WARP device (once).
+// registerWarp creates the server's WARP device (once), on MASQUE, and
+// installs usque, which carries it. A device from v1.14 (WireGuard) is moved
+// to MASQUE.
 func (s *Server) registerWarp(w http.ResponseWriter, r *http.Request) {
-	if routing.Account(s.St) == nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
-		defer cancel()
-		a, err := s.warpClient().Register(ctx)
-		if err != nil {
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	a := routing.Account(s.St)
+	switch {
+	case a == nil:
+		var err error
+		if a, err = s.warpClient().Register(ctx); err != nil {
 			fail(w, 502, err.Error())
 			return
 		}
-		if err := routing.SaveAccount(s.St, a); err != nil {
-			fail(w, 500, err.Error())
+		s.St.Log("settings", "%s turned WARP on (%s)", adminOf(r).Username, a.AddressV4)
+	case !a.Masque():
+		if err := s.warpClient().EnrollMasque(ctx, a); err != nil {
+			fail(w, 502, err.Error())
 			return
 		}
-		s.St.Log("settings", "%s turned WARP on (%s)", adminOf(r).Username, a.AddressV4)
-		s.Mgr.RequestApply()
+		s.St.Log("settings", "%s moved WARP to MASQUE", adminOf(r).Username)
 	}
+	if err := routing.SaveAccount(s.St, a); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	if s.Mgr.InstallUsque != nil && !s.Mgr.Usque.Installed() {
+		if err := s.Mgr.InstallUsque(); err != nil {
+			fail(w, 502, "WARP is registered, but usque could not be installed: "+err.Error())
+			return
+		}
+	}
+	s.Mgr.RequestApply()
 	writeJSON(w, 200, s.routingState())
 }
 

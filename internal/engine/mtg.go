@@ -44,6 +44,9 @@ func (m *Manager) Cores() []*Core {
 	if m.TT.Installed() || m.TT.Running() || m.TT.Status().Error != "" {
 		out = append(out, m.TT)
 	}
+	if m.Usque.Installed() || m.Usque.Running() || m.Usque.Status().Error != "" {
+		out = append(out, m.Usque)
+	}
 	return out
 }
 
@@ -71,6 +74,8 @@ func (m *Manager) CoreByName(name string) *Core {
 		return m.Mita
 	case "trusttunnel":
 		return m.TT
+	case "usque":
+		return m.Usque
 	}
 	return m.Xray
 }

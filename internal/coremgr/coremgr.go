@@ -481,3 +481,53 @@ func InstallTrustTunnel(binDir string) (string, error) {
 	}
 	return "", fmt.Errorf("%s is not in the TrustTunnel release %s", want, r.Tag)
 }
+
+// InstallUsque downloads usque (MIT, github.com/Diniboy1123/usque), the
+// open-source WARP client that runs Cloudflare's MASQUE (HTTP/3) tunnel as a
+// local SOCKS proxy, into binDir. The download is checked against the
+// release's published SHA-256.
+func InstallUsque(binDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("usque (WARP over MASQUE) runs on Linux servers only")
+	}
+	r, err := latest("Diniboy1123/usque")
+	if err != nil {
+		return "", err
+	}
+	ver := strings.TrimPrefix(r.Tag, "v")
+	want := fmt.Sprintf("usque_%s_linux_%s.zip", ver, goarch())
+	var zipAsset, sums *asset
+	for i := range r.Assets {
+		switch r.Assets[i].Name {
+		case want:
+			zipAsset = &r.Assets[i]
+		case "checksums.txt":
+			sums = &r.Assets[i]
+		}
+	}
+	if zipAsset == nil {
+		return "", fmt.Errorf("no usque build for linux/%s in %s", goarch(), r.Tag)
+	}
+	data, err := download(*zipAsset)
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(zipAsset.Digest, "sha256:") {
+		// no digest from GitHub: the release's own checksum list must vouch for it
+		if sums == nil {
+			return "", fmt.Errorf("usque %s publishes no checksum for %s", r.Tag, want)
+		}
+		list, err := download(*sums)
+		if err != nil {
+			return "", err
+		}
+		sum := sha256.Sum256(data)
+		if !strings.Contains(string(list), hex.EncodeToString(sum[:])+"  "+want) {
+			return "", fmt.Errorf("checksum mismatch for %s", want)
+		}
+	}
+	if err := extractZip(data, binDir, map[string]string{"usque": "usque"}); err != nil {
+		return "", err
+	}
+	return ver, nil
+}

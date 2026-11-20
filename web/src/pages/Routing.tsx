@@ -17,7 +17,7 @@ interface RoutingSettings {
   blockDomains: string[] | null;
   directDomains: string[] | null;
 }
-interface WarpInfo { type: string; addressV4: string; addressV6: string; endpoint: string; created: number; license: boolean }
+interface WarpInfo { transport: "masque" | "wireguard"; type: string; addressV4: string; addressV6: string; endpoint: string; created: number; license: boolean }
 interface RoutingState { settings: RoutingSettings; blockTorrent: boolean; warp: WarpInfo | null; groups: string[]; geo: boolean; nodes: number }
 interface Trace { ip: string; loc: string; colo: string; warp: string }
 
@@ -88,10 +88,17 @@ export function RoutingPage() {
             <div className="flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-x-5 gap-y-3">
                 <KV label={t("warpAddress")}><bdi dir="ltr" className="mono text-[12.5px]">{w.addressV4}</bdi></KV>
-                <KV label={t("warpEndpoint")}><bdi dir="ltr" className="mono text-[12.5px]">{w.endpoint}</bdi></KV>
+                <KV label={t("warpTransport")}>{w.transport === "masque" ? t("warpMasque") : "WireGuard"}</KV>
                 <KV label={t("created")}>{date(w.created, lang)}</KV>
                 <KV label={t("warpLicense")}>{w.license ? "✓" : "—"}</KV>
               </div>
+              {w.transport !== "masque" && (
+                <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warn/40 bg-warn/[.08] px-4 py-3 text-[13px]">
+                  <TriangleAlert className="size-5 text-warn shrink-0" /><span className="flex-1 min-w-0">{t("warpWireGuardHint")}</span>
+                  <Button size="sm" variant="primary" loading={busy === "warp"}
+                    onClick={() => run("warp", api<RoutingState>("routing/warp", { method: "POST" }), t("warpReady"))}>{t("warpMoveMasque")}</Button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="soft" icon={<Activity className="size-4" />} loading={busy === "check"} onClick={check}>{t("warpCheck")}</Button>
                 <Button size="sm" icon={<KeyRound className="size-4" />} onClick={() => setLicense("")}>{t("warpLicense")}</Button>

@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/warp"
@@ -46,24 +49,44 @@ func warpCmd(home string, args []string) error {
 			return nil
 		}
 		set := routing.Load(st)
-		fmt.Printf("WARP device: %s (%s), address %s, Cloudflare %s, since %s\n", a.ID, a.Type, a.AddressV4, a.Endpoint,
+		via := "WireGuard (" + a.Endpoint + "; run dunvex warp on to move it to MASQUE)"
+		if a.Masque() {
+			via = "MASQUE (" + a.MasqueV4 + ":443)"
+		}
+		fmt.Printf("WARP device: %s (%s), address %s, %s, since %s\n", a.ID, a.Type, a.AddressV4, via,
 			time.Unix(a.Created, 0).Format("2006-01-02"))
 		sends := map[string]string{routing.WarpOff: "nothing", routing.WarpAll: "everything",
 			routing.WarpSites: "sites: " + strings.Join(append(append([]string{}, set.WarpGroups...), set.WarpDomains...), ", ")}[set.Warp]
 		fmt.Printf("Through WARP: %s; Iranian sites: %s\n", sends, set.Iran)
 	case "on":
-		if a != nil {
-			fmt.Printf("WARP is already on (%s, %s)\n", a.AddressV4, a.Type)
-			return nil
-		}
-		if a, err = c.Register(ctx); err != nil {
-			return err
+		switch {
+		case a == nil:
+			if a, err = c.Register(ctx); err != nil {
+				return err
+			}
+			st.Log("settings", "WARP turned on from SSH (%s)", a.AddressV4)
+			fmt.Printf("✓ WARP device registered: %s (%s)\n", a.AddressV4, a.Type)
+		case !a.Masque():
+			if err := c.EnrollMasque(ctx, a); err != nil {
+				return err
+			}
+			st.Log("settings", "WARP moved to MASQUE from SSH")
+			fmt.Println("✓ WARP moved to MASQUE (HTTP/3 on port 443)")
+		default:
+			fmt.Printf("WARP is already on (%s, %s, MASQUE)\n", a.AddressV4, a.Type)
 		}
 		if err := routing.SaveAccount(st, a); err != nil {
 			return err
 		}
-		st.Log("settings", "WARP turned on from SSH (%s)", a.AddressV4)
-		fmt.Printf("✓ WARP device registered: %s, Cloudflare %s (%s)\n", a.AddressV4, a.Endpoint, a.Type)
+		_, bin, _ := paths(home)
+		if _, err := os.Stat(filepath.Join(bin, "usque")); err != nil {
+			fmt.Println("installing usque (WARP over MASQUE)…")
+			v, err := coremgr.InstallUsque(bin)
+			if err != nil {
+				return err
+			}
+			fmt.Println("✓ usque", v)
+		}
 		fmt.Println("Choose what goes through it in the panel: Routing.")
 		restart()
 	case "check":
