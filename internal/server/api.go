@@ -1,0 +1,1070 @@
+package server
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+	"rsc.io/qr"
+
+	"github.com/pedramrj/dunvex/internal/coremgr"
+	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/tlsmgr"
+	"github.com/pedramrj/dunvex/internal/util"
+)
+
+type handler func(w http.ResponseWriter, r *http.Request)
+
+func (s *Server) apiMux() http.Handler {
+	mux := http.NewServeMux()
+	auth := func(h handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.currentAdmin(r) == nil {
+				fail(w, http.StatusUnauthorized, "login required")
+				return
+			}
+			if r.Method != http.MethodGet && r.Header.Get("X-Dunvex") != "1" {
+				fail(w, http.StatusForbidden, "missing request header")
+				return
+			}
+			h(w, r)
+		})
+	}
+	mux.HandleFunc("POST /login", s.login)
+	mux.Handle("POST /logout", auth(s.logout))
+	mux.Handle("GET /me", auth(s.me))
+	mux.Handle("PUT /account", auth(s.updateAccount))
+
+	mux.Handle("GET /overview", auth(s.overview))
+	mux.Handle("GET /events", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.St.Events(100)) }))
+
+	mux.Handle("GET /users", auth(s.listUsers))
+	mux.Handle("POST /users", auth(s.createUsers))
+	mux.Handle("POST /users/bulk", auth(s.bulkUsers))
+	mux.Handle("GET /users/{id}", auth(s.getUser))
+	mux.Handle("PUT /users/{id}", auth(s.updateUser))
+	mux.Handle("DELETE /users/{id}", auth(s.deleteUser))
+	mux.Handle("POST /users/{id}/reset", auth(s.resetUser))
+	mux.Handle("POST /users/{id}/regenerate", auth(s.regenerateUser))
+	mux.Handle("GET /users/{id}/usage", auth(s.userUsage))
+	mux.Handle("GET /users/{id}/configs", auth(s.userConfigs))
+
+	mux.Handle("GET /presets", auth(func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, protocol.All()) }))
+	mux.Handle("GET /inbounds", auth(s.listInbounds))
+	mux.Handle("POST /inbounds", auth(s.createInbound))
+	mux.Handle("PUT /inbounds/{id}", auth(s.updateInbound))
+	mux.Handle("DELETE /inbounds/{id}", auth(s.deleteInbound))
+
+	mux.Handle("GET /settings", auth(s.getSettings))
+	mux.Handle("PUT /settings", auth(s.putSettings))
+	mux.Handle("POST /settings/cert", auth(s.obtainCert))
+
+	mux.Handle("GET /cores", auth(s.cores))
+	mux.Handle("POST /cores/{name}/install", auth(s.installCore))
+	mux.Handle("POST /cores/apply", auth(s.applyCores))
+	mux.Handle("GET /cores/{name}/logs", auth(s.coreLogs))
+	mux.Handle("GET /cores/{name}/config", auth(s.coreConfig))
+
+	mux.Handle("POST /tools/sni", auth(s.testSNI))
+	mux.Handle("GET /tools/qr", auth(s.qrCode))
+	mux.Handle("GET /backup", auth(s.backup))
+	mux.Handle("POST /restore", auth(s.restore))
+	mux.Handle("GET /update", auth(s.checkUpdate))
+	mux.Handle("POST /update", auth(s.selfUpdate))
+	return mux
+}
+
+// ---------------------------------------------------------------- auth
+
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if s.tooManyFailures(ip) {
+		fail(w, http.StatusTooManyRequests, "too many attempts, try again in a few minutes")
+		return
+	}
+	var in struct{ Username, Password string }
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	a, err := s.St.AdminByName(strings.TrimSpace(in.Username))
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(in.Password)) != nil {
+		s.recordFailure(ip)
+		time.Sleep(600 * time.Millisecond)
+		fail(w, http.StatusUnauthorized, "wrong username or password")
+		return
+	}
+	s.issueSession(w, r, a)
+	s.St.Log("auth", "admin %s signed in from %s", a.Username, ip)
+	writeJSON(w, 200, a)
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: s.PanelPath(), MaxAge: -1, HttpOnly: true})
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) me(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"admin": s.currentAdmin(r), "version": s.Version})
+}
+
+func (s *Server) updateAccount(w http.ResponseWriter, r *http.Request) {
+	a := s.currentAdmin(r)
+	var in struct{ Username, CurrentPassword, NewPassword string }
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(in.CurrentPassword)) != nil {
+		fail(w, 400, "current password is wrong")
+		return
+	}
+	name := strings.TrimSpace(in.Username)
+	if name == "" {
+		name = a.Username
+	}
+	hash := a.PasswordHash
+	if in.NewPassword != "" {
+		if len(in.NewPassword) < 8 {
+			fail(w, 400, "the new password needs at least 8 characters")
+			return
+		}
+		hash, _ = HashPassword(in.NewPassword)
+	}
+	if err := s.St.UpdateAdmin(a.ID, name, hash); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	a.Username, a.PasswordHash = name, hash
+	s.issueSession(w, r, a)
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// ---------------------------------------------------------------- overview
+
+func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	users, _ := s.St.Users()
+	online := s.Mgr.OnlineUsers(60)
+	counts := map[string]int{}
+	for _, u := range users {
+		counts[u.Status(now.Unix())]++
+	}
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+	tu, td := s.St.TotalSince(dayStart)
+	mu, md := s.St.TotalSince(monthStart)
+	series, _ := s.St.UsageSeries(0, now.Add(-30*24*time.Hour).Unix())
+	top, _ := s.St.TopUsers(now.Add(-30*24*time.Hour).Unix(), 8)
+	var lifetime int64
+	for _, u := range users {
+		lifetime += u.LifetimeUsed
+	}
+	inbounds, _ := s.St.Inbounds()
+	ierr, cerr := s.Mgr.Errors()
+	enabledIn := 0
+	for _, in := range inbounds {
+		if in.Enabled {
+			enabledIn++
+		}
+	}
+	lines := []map[string]any{}
+	for _, in := range inbounds {
+		p := protocol.Get(in.Preset)
+		if p == nil {
+			continue
+		}
+		r := s.Mgr.InboundRate(in.ID)
+		lines = append(lines, map[string]any{"id": in.ID, "preset": in.Preset, "name": p.Name, "group": p.Group,
+			"remark": in.Remark, "port": in.Port, "enabled": in.Enabled, "error": ierr[in.ID],
+			"up": in.Up, "down": in.Down, "rateUp": r.Up, "rateDown": r.Down})
+	}
+	writeJSON(w, 200, map[string]any{
+		"lines":       lines,
+		"users":       len(users),
+		"online":      len(online),
+		"statuses":    counts,
+		"today":       map[string]int64{"up": tu, "down": td},
+		"month":       map[string]int64{"up": mu, "down": md},
+		"lifetime":    lifetime,
+		"series":      series,
+		"top":         top,
+		"live":        s.Mgr.Live(),
+		"system":      s.Sys.Get(),
+		"history":     s.Sys.History(),
+		"cores":       []any{s.Mgr.Xray.Status(), s.Mgr.SingBox.Status()},
+		"coreErrors":  cerr,
+		"inboundErrs": len(ierr),
+		"inbounds":    len(inbounds),
+		"inboundsOn":  enabledIn,
+		"version":     s.Version,
+	})
+}
+
+// ---------------------------------------------------------------- users
+
+type userView struct {
+	*store.User
+	Status   string `json:"status"`
+	Online   bool   `json:"online"`
+	Used     int64  `json:"used"`
+	SubURL   string `json:"subUrl"`
+	SpeedUp  int64  `json:"speedUp"`
+	SpeedDn  int64  `json:"speedDown"`
+	DaysLeft *int   `json:"daysLeft"`
+}
+
+func (s *Server) view(r *http.Request, u *store.User, online map[int64]bool) userView {
+	now := time.Now().Unix()
+	v := userView{User: u, Status: u.Status(now), Online: online[u.ID], Used: u.Used(), SubURL: s.SubURL(r, u)}
+	rate := s.Mgr.UserRate(u.ID)
+	v.SpeedUp, v.SpeedDn = rate.Up, rate.Down
+	if u.ExpireAt > 0 {
+		d := int((u.ExpireAt - now + 86399) / 86400)
+		if d < 0 {
+			d = 0
+		}
+		v.DaysLeft = &d
+	} else if u.DurationDays > 0 {
+		d := u.DurationDays
+		v.DaysLeft = &d
+	}
+	return v
+}
+
+func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := s.St.Users()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	online := s.Mgr.OnlineUsers(60)
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	status := r.URL.Query().Get("status")
+	out := []userView{}
+	for i := len(users) - 1; i >= 0; i-- {
+		v := s.view(r, users[i], online)
+		if q != "" && !strings.Contains(strings.ToLower(v.Name+" "+v.Note), q) {
+			continue
+		}
+		if status == "online" && !v.Online {
+			continue
+		}
+		if status != "" && status != "online" && v.Status != status {
+			continue
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, 200, out)
+}
+
+type userInput struct {
+	Name         *string  `json:"name"`
+	Count        int      `json:"count"`
+	DataLimit    *int64   `json:"dataLimit"`
+	ExpireAt     *int64   `json:"expireAt"`
+	DurationDays *int     `json:"durationDays"`
+	StartOnFirst *bool    `json:"startOnFirstUse"`
+	ResetPeriod  *string  `json:"resetPeriod"`
+	InboundIDs   *[]int64 `json:"inboundIds"`
+	Note         *string  `json:"note"`
+	Enabled      *bool    `json:"enabled"`
+	UsedReset    bool     `json:"resetUsage"`
+}
+
+func (in *userInput) apply(u *store.User) error {
+	if in.Name != nil {
+		n := util.SanitizeName(*in.Name)
+		if n == "" {
+			return fmt.Errorf("name may only contain letters, digits, - _ .")
+		}
+		u.Name = n
+	}
+	if in.DataLimit != nil {
+		if *in.DataLimit < 0 {
+			return fmt.Errorf("data limit cannot be negative")
+		}
+		u.DataLimit = *in.DataLimit
+	}
+	if in.ResetPeriod != nil {
+		switch *in.ResetPeriod {
+		case "none", "daily", "weekly", "monthly":
+			u.ResetPeriod = *in.ResetPeriod
+		default:
+			return fmt.Errorf("unknown reset period")
+		}
+	}
+	if in.InboundIDs != nil {
+		u.InboundIDs = *in.InboundIDs
+	}
+	if in.Note != nil {
+		u.Note = *in.Note
+	}
+	if in.Enabled != nil {
+		u.Enabled = *in.Enabled
+	}
+	// expiry: either an absolute date, or N days (now or on first use)
+	if in.DurationDays != nil {
+		days := *in.DurationDays
+		if days < 0 {
+			return fmt.Errorf("days cannot be negative")
+		}
+		switch {
+		case days == 0:
+			u.DurationDays, u.ExpireAt = 0, 0
+		case in.StartOnFirst != nil && *in.StartOnFirst && u.FirstUseAt == 0:
+			u.DurationDays, u.ExpireAt = days, 0
+		default:
+			u.DurationDays = days
+			u.ExpireAt = time.Now().Unix() + int64(days)*86400
+		}
+	}
+	if in.ExpireAt != nil {
+		u.ExpireAt = *in.ExpireAt
+		if u.ExpireAt > 0 {
+			u.DurationDays = 0
+		}
+	}
+	if in.UsedReset {
+		u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+	}
+	return nil
+}
+
+func (s *Server) newUser(name string) *store.User {
+	priv, pub := util.WireGuardKeys()
+	return &store.User{Name: name, UUID: util.UUID(), Password: util.RandomString(20), SubToken: util.RandomString(22),
+		Enabled: true, ResetPeriod: "none", WGPrivate: priv, WGPublic: pub, WGIndex: s.St.NextWGIndex()}
+}
+
+func (s *Server) createUsers(w http.ResponseWriter, r *http.Request) {
+	var in userInput
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	base := ""
+	if in.Name != nil {
+		base = util.SanitizeName(*in.Name)
+	}
+	count := in.Count
+	if count < 1 {
+		count = 1
+	}
+	if count > 500 {
+		fail(w, 400, "at most 500 users at once")
+		return
+	}
+	if base == "" {
+		base = "user" + util.RandomLower(4)
+	}
+	online := map[int64]bool{}
+	var created []userView
+	for i := 1; i <= count; i++ {
+		name := base
+		if count > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		u := s.newUser(name)
+		in2 := in
+		in2.Name = nil
+		if err := in2.apply(u); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		if err := s.St.CreateUser(u); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		created = append(created, s.view(r, u, online))
+	}
+	s.St.Log("user", "%d user(s) created (%s)", count, base)
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, created)
+}
+
+func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+}
+
+func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	var in userInput
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	if err := in.apply(u); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	if err := s.St.UpdateUser(u); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+}
+
+func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	s.St.DeleteUser(u.ID)
+	s.St.Log("user", "user %s deleted", u.Name)
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) resetUser(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+	s.St.UpdateUser(u)
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+}
+
+func (s *Server) regenerateUser(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	u.UUID, u.Password, u.SubToken = util.UUID(), util.RandomString(20), util.RandomString(22)
+	s.St.UpdateUser(u)
+	s.St.Log("user", "credentials of %s regenerated", u.Name)
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+}
+
+func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IDs    []int64 `json:"ids"`
+		Action string  `json:"action"`
+		Days   int     `json:"days"`
+		Bytes  int64   `json:"bytes"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	n := 0
+	for _, id := range in.IDs {
+		u, err := s.St.UserByID(id)
+		if err != nil {
+			continue
+		}
+		switch in.Action {
+		case "enable":
+			u.Enabled = true
+		case "disable":
+			u.Enabled = false
+		case "reset":
+			u.UsedUp, u.UsedDown, u.LastResetAt = 0, 0, time.Now().Unix()
+		case "extend":
+			if in.Days > 0 {
+				base := time.Now().Unix()
+				if u.ExpireAt > base {
+					base = u.ExpireAt
+				}
+				if u.ExpireAt == 0 && u.DurationDays > 0 && u.FirstUseAt == 0 {
+					u.DurationDays += in.Days
+				} else {
+					u.ExpireAt = base + int64(in.Days)*86400
+				}
+			}
+			if in.Bytes > 0 && u.DataLimit > 0 {
+				u.DataLimit += in.Bytes
+			}
+		case "delete":
+			s.St.DeleteUser(u.ID)
+			n++
+			continue
+		default:
+			fail(w, 400, "unknown action")
+			return
+		}
+		s.St.UpdateUser(u)
+		n++
+	}
+	s.St.Log("user", "bulk %s on %d user(s)", in.Action, n)
+	s.Mgr.RequestApply()
+	writeJSON(w, 200, map[string]int{"affected": n})
+}
+
+func (s *Server) userUsage(w http.ResponseWriter, r *http.Request) {
+	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
+	if days <= 0 || days > 400 {
+		days = 30
+	}
+	pts, err := s.St.UsageSeries(pathID(r), time.Now().Add(-time.Duration(days)*24*time.Hour).Unix())
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, pts)
+}
+
+// ConfigEntry is one ready-to-import config of a user.
+type ConfigEntry struct {
+	InboundID int64  `json:"inboundId"`
+	Preset    string `json:"preset"`
+	Name      string `json:"name"`
+	Link      string `json:"link"`
+}
+
+func (s *Server) configsFor(u *store.User) []ConfigEntry {
+	inbounds, _ := s.St.Inbounds()
+	env := s.Env()
+	title := s.St.GetSetting("sub_title", "Dunvex")
+	out := []ConfigEntry{}
+	for _, in := range inbounds {
+		if !in.Enabled || !u.AllowsInbound(in.ID) {
+			continue
+		}
+		p := protocol.Get(in.Preset)
+		if p == nil {
+			continue
+		}
+		name := protocol.Remark(in, p, u, title)
+		if l := protocol.Link(p, in, u, env, name); l != "" {
+			out = append(out, ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l})
+		}
+	}
+	return out
+}
+
+func (s *Server) userConfigs(w http.ResponseWriter, r *http.Request) {
+	u, err := s.St.UserByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "user not found")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"subUrl": s.SubURL(r, u), "configs": s.configsFor(u)})
+}
+
+// ---------------------------------------------------------------- inbounds
+
+type inboundView struct {
+	*store.Inbound
+	Name   string `json:"name"`
+	Engine string `json:"engine"`
+	Error  string `json:"error"`
+}
+
+func (s *Server) listInbounds(w http.ResponseWriter, r *http.Request) {
+	list, err := s.St.Inbounds()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	ierr, _ := s.Mgr.Errors()
+	out := []inboundView{}
+	for _, in := range list {
+		v := inboundView{Inbound: in, Error: ierr[in.ID]}
+		if p := protocol.Get(in.Preset); p != nil {
+			v.Name, v.Engine = p.Name, p.Engine
+		}
+		out = append(out, v)
+	}
+	writeJSON(w, 200, out)
+}
+
+func (s *Server) portTaken(port int, except int64) string {
+	if port < 1 || port > 65535 {
+		return "port must be between 1 and 65535"
+	}
+	if strconv.Itoa(port) == s.St.GetSetting("panel_port", "") {
+		return "that port is used by the panel"
+	}
+	list, _ := s.St.Inbounds()
+	for _, in := range list {
+		if in.ID != except && in.Port == port {
+			pa, pb := protocol.Get(in.Preset), (*protocol.Preset)(nil)
+			_ = pb
+			if pa != nil {
+				return fmt.Sprintf("port %d is already used by %s", port, pa.Name)
+			}
+			return fmt.Sprintf("port %d is already used", port)
+		}
+	}
+	return ""
+}
+
+func (s *Server) pickPort(def int) int {
+	used := map[int]bool{}
+	list, _ := s.St.Inbounds()
+	for _, in := range list {
+		used[in.Port] = true
+	}
+	pp, _ := strconv.Atoi(s.St.GetSetting("panel_port", "0"))
+	used[pp] = true
+	if !used[def] && util.FreePort(def) {
+		return def
+	}
+	for i := 0; i < 200; i++ {
+		p := 20000 + int(util.RandomBytes(2)[0])*150 + int(util.RandomBytes(1)[0])
+		if !used[p] && util.FreePort(p) {
+			return p
+		}
+	}
+	return def
+}
+
+func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Preset string         `json:"preset"`
+		Port   int            `json:"port"`
+		Remark string         `json:"remark"`
+		Params map[string]any `json:"params"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	p := protocol.Get(in.Preset)
+	if p == nil {
+		fail(w, 400, "unknown protocol")
+		return
+	}
+	if p.NeedsDomain && strings.TrimSpace(s.St.GetSetting("domain", "")) == "" {
+		fail(w, 400, p.Name+" needs a domain. Set your domain in Settings first.")
+		return
+	}
+	port := in.Port
+	if port == 0 {
+		port = s.pickPort(p.DefaultPort)
+	}
+	if msg := s.portTaken(port, 0); msg != "" {
+		fail(w, 400, msg)
+		return
+	}
+	if in.Port != 0 && !util.FreePort(port) {
+		fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", port))
+		return
+	}
+	ib := &store.Inbound{Preset: p.ID, Port: port, Remark: strings.TrimSpace(in.Remark), Enabled: true,
+		Params: protocol.Defaults(p, in.Params, s.St.GetSetting("domain", ""))}
+	if err := s.St.CreateInbound(ib); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	s.St.Log("inbound", "%s added on port %d", p.Name, port)
+	if err := s.Mgr.Apply(); err != nil {
+		writeJSON(w, 200, map[string]any{"inbound": ib, "warning": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"inbound": ib})
+}
+
+func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
+	ib, err := s.St.InboundByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "inbound not found")
+		return
+	}
+	var in struct {
+		Port    *int           `json:"port"`
+		Remark  *string        `json:"remark"`
+		Enabled *bool          `json:"enabled"`
+		Params  map[string]any `json:"params"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	if in.Port != nil && *in.Port != ib.Port {
+		if msg := s.portTaken(*in.Port, ib.ID); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		ib.Port = *in.Port
+	}
+	if in.Remark != nil {
+		ib.Remark = strings.TrimSpace(*in.Remark)
+	}
+	if in.Enabled != nil {
+		ib.Enabled = *in.Enabled
+	}
+	if in.Params != nil {
+		for k, v := range in.Params {
+			ib.Params[k] = v
+		}
+		if p := protocol.Get(ib.Preset); p != nil {
+			if pk, ok := in.Params["privateKey"]; ok && pk == "" {
+				delete(ib.Params, "privateKey") // empty = regenerate
+			}
+			ib.Params = protocol.Defaults(p, ib.Params, s.St.GetSetting("domain", ""))
+		}
+	}
+	if err := s.St.UpdateInbound(ib); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	s.Mgr.ClearPortErrors()
+	if err := s.Mgr.Apply(); err != nil {
+		writeJSON(w, 200, map[string]any{"inbound": ib, "warning": err.Error()})
+		return
+	}
+	writeJSON(w, 200, map[string]any{"inbound": ib})
+}
+
+func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
+	ib, err := s.St.InboundByID(pathID(r))
+	if err != nil {
+		fail(w, 404, "inbound not found")
+		return
+	}
+	s.St.DeleteInbound(ib.ID)
+	s.St.Log("inbound", "inbound on port %d removed", ib.Port)
+	s.Mgr.Apply()
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// ---------------------------------------------------------------- settings
+
+var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
+	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
+	"sub_info_entry", "announce", "panel_tls"}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
+	all := s.St.AllSettings()
+	out := map[string]string{}
+	for _, k := range editableSettings {
+		out[k] = all[k]
+	}
+	defaults := map[string]string{"sub_title": "Dunvex", "sub_update_hours": "12", "block_torrent": "true",
+		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true"}
+	for k, v := range defaults {
+		if out[k] == "" {
+			out[k] = v
+		}
+	}
+	env := s.Env()
+	info := map[string]any{"publicIp": s.Sys.PublicIP(), "effectiveHost": env.Host, "selfSigned": env.SelfSigned}
+	if env.CertFile != "" {
+		if t, err := tlsmgr.Expiry(env.CertFile); err == nil {
+			info["certExpiry"] = t.Unix()
+		}
+	}
+	writeJSON(w, 200, map[string]any{"settings": out, "info": info})
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
+	var in map[string]string
+	if err := readJSON(r, &in); err != nil {
+		fail(w, 400, "bad request")
+		return
+	}
+	allowed := map[string]bool{}
+	for _, k := range editableSettings {
+		allowed[k] = true
+	}
+	needRestart := false
+	for k, v := range in {
+		if !allowed[k] {
+			continue
+		}
+		v = strings.TrimSpace(v)
+		switch k {
+		case "panel_port":
+			p, err := strconv.Atoi(v)
+			if err != nil || p < 1 || p > 65535 {
+				fail(w, 400, "invalid panel port")
+				return
+			}
+			if msg := s.portTaken(p, 0); msg != "" && msg != "that port is used by the panel" {
+				fail(w, 400, msg)
+				return
+			}
+			needRestart = needRestart || v != s.St.GetSetting("panel_port", "")
+		case "panel_tls":
+			if v != "true" {
+				v = "false"
+			}
+			needRestart = needRestart || v != s.St.GetSetting("panel_tls", "false")
+		case "panel_path", "sub_path":
+			v = normPath(v)
+			if len(v) < 3 {
+				fail(w, 400, "path is too short")
+				return
+			}
+		case "domain":
+			v = strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(v, "https://"), "http://"), "/"))
+		case "cert_file", "key_file":
+			if v != "" && !util.FileExists(v) {
+				fail(w, 400, "file not found: "+v)
+				return
+			}
+		}
+		s.St.SetSetting(k, v)
+	}
+	if in["panel_path"] != "" && normPath(in["panel_path"]) == s.SubPath() {
+		fail(w, 400, "panel path and subscription path must differ")
+		return
+	}
+	s.St.Log("settings", "settings updated")
+	s.Mgr.RequestApply()
+	if needRestart && s.Restart != nil {
+		go func() { time.Sleep(time.Second); s.Restart() }()
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "restarting": needRestart})
+}
+
+func (s *Server) obtainCert(w http.ResponseWriter, r *http.Request) {
+	domain := strings.TrimSpace(s.St.GetSetting("domain", ""))
+	if domain == "" {
+		fail(w, 400, "set a domain first")
+		return
+	}
+	cert, key, err := tlsmgr.Obtain(s.CertDir(), domain, s.St.GetSetting("acme_email", ""))
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	s.St.SetSetting("cert_file", cert)
+	s.St.SetSetting("key_file", key)
+	s.St.SetSetting("cert_mode", "acme")
+	s.St.Log("tls", "certificate issued for %s", domain)
+	s.Mgr.Apply()
+	writeJSON(w, 200, map[string]string{"cert": cert, "key": key})
+}
+
+// ---------------------------------------------------------------- cores
+
+func (s *Server) cores(w http.ResponseWriter, r *http.Request) {
+	_, cerr := s.Mgr.Errors()
+	writeJSON(w, 200, map[string]any{
+		"cores":  []any{s.Mgr.Xray.Status(), s.Mgr.SingBox.Status()},
+		"errors": cerr,
+		"stats":  map[string]bool{"sing-box": s.Mgr.SingBox.HasTag("with_v2ray_api"), "xray": true},
+	})
+}
+
+func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	var ver string
+	var err error
+	binDir := s.Mgr.Xray.BinDir
+	switch name {
+	case "xray":
+		s.Mgr.Xray.Stop()
+		ver, err = coremgr.InstallXray(binDir)
+		s.Mgr.Xray.ResetVersion()
+	case "sing-box":
+		s.Mgr.SingBox.Stop()
+		ver, err = coremgr.InstallSingBox(binDir)
+		s.Mgr.SingBox.ResetVersion()
+	default:
+		fail(w, 404, "unknown core")
+		return
+	}
+	s.Mgr.Apply()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	s.St.Log("core", "%s updated to %s", name, ver)
+	writeJSON(w, 200, map[string]string{"version": ver})
+}
+
+func (s *Server) applyCores(w http.ResponseWriter, r *http.Request) {
+	s.Mgr.ClearPortErrors()
+	s.Mgr.Xray.Restart()
+	s.Mgr.SingBox.Restart()
+	if err := s.Mgr.Apply(); err != nil {
+		fail(w, 400, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) core(name string) interface{ Logs() []string } {
+	if name == "sing-box" {
+		return s.Mgr.SingBox
+	}
+	return s.Mgr.Xray
+}
+
+func (s *Server) coreLogs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.core(r.PathValue("name")).Logs())
+}
+
+func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
+	x, sb, _, _, err := s.Mgr.Configs()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if r.PathValue("name") == "sing-box" {
+		w.Write(orEmpty(sb))
+		return
+	}
+	w.Write(orEmpty(x))
+}
+
+func orEmpty(b []byte) []byte {
+	if b == nil {
+		return []byte("{}")
+	}
+	return b
+}
+
+// ---------------------------------------------------------------- tools
+
+func (s *Server) testSNI(w http.ResponseWriter, r *http.Request) {
+	var in struct{ Domains []string }
+	readJSON(r, &in)
+	if len(in.Domains) == 0 {
+		in.Domains = []string{"www.speedtest.net", "www.yahoo.com", "dl.google.com", "www.lovelive-anime.jp", "addons.mozilla.org",
+			"discord.com", "www.samsung.com", "www.nvidia.com", "www.amd.com", "www.oracle.com", "www.tesla.com", "www.mozilla.org"}
+	}
+	if len(in.Domains) > 30 {
+		in.Domains = in.Domains[:30]
+	}
+	res := make([]tlsmgr.SNIResult, len(in.Domains))
+	done := make(chan struct{})
+	for i, d := range in.Domains {
+		go func(i int, d string) {
+			res[i] = tlsmgr.TestSNI(strings.TrimSpace(d))
+			done <- struct{}{}
+		}(i, d)
+	}
+	for range in.Domains {
+		<-done
+	}
+	sort.SliceStable(res, func(i, j int) bool {
+		if res[i].OK != res[j].OK {
+			return res[i].OK
+		}
+		return res[i].LatencyMs < res[j].LatencyMs
+	})
+	writeJSON(w, 200, res)
+}
+
+func (s *Server) qrCode(w http.ResponseWriter, r *http.Request) {
+	text := r.URL.Query().Get("text")
+	if text == "" || len(text) > 2900 {
+		fail(w, 400, "bad text")
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Write([]byte(QRSVG(text)))
+}
+
+// QRSVG renders text as a compact SVG QR code.
+func QRSVG(text string) string {
+	code, err := qr.Encode(text, qr.M)
+	if err != nil {
+		return `<svg xmlns="http://www.w3.org/2000/svg"/>`
+	}
+	n := code.Size
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 %d %d" shape-rendering="crispEdges"><rect x="-2" y="-2" width="%d" height="%d" fill="#fff"/><path fill="#000" d="`, n+4, n+4, n+4, n+4)
+	for y := 0; y < n; y++ {
+		for x := 0; x < n; x++ {
+			if code.Black(x, y) {
+				fmt.Fprintf(&b, "M%d %dh1v1h-1z", x, y)
+			}
+		}
+	}
+	b.WriteString(`"/></svg>`)
+	return b.String()
+}
+
+func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
+	ensureDir(s.BackupDir())
+	name := "dunvex-" + time.Now().Format("20060102-150405") + ".db"
+	p := filepath.Join(s.BackupDir(), name)
+	if err := s.St.Backup(p); err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	defer os.Remove(p)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	http.ServeFile(w, r, p)
+}
+
+func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		fail(w, 400, "upload a .db backup file")
+		return
+	}
+	defer f.Close()
+	ensureDir(s.BackupDir())
+	tmp := filepath.Join(s.BackupDir(), "restore-upload.db")
+	out, err := os.Create(tmp)
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	head := make([]byte, 16)
+	n, _ := io.ReadFull(f, head)
+	if n < 16 || string(head[:15]) != "SQLite format 3" {
+		out.Close()
+		os.Remove(tmp)
+		fail(w, 400, "this is not a Dunvex backup")
+		return
+	}
+	out.Write(head[:n])
+	io.Copy(out, f)
+	out.Close()
+	// keep a safety copy of the current database, then swap on restart
+	s.St.Backup(filepath.Join(s.BackupDir(), "before-restore-"+time.Now().Format("20060102-150405")+".db"))
+	os.WriteFile(filepath.Join(s.Home, "restore.pending"), []byte(tmp), 0o600)
+	writeJSON(w, 200, map[string]bool{"ok": true})
+	if s.Restart != nil {
+		go func() { time.Sleep(time.Second); s.Restart() }()
+	}
+}
+
+func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
+	latest, err := coremgr.LatestDunvex()
+	xr, _ := coremgr.LatestVersion("xray")
+	sb, _ := coremgr.LatestVersion("sing-box")
+	resp := map[string]any{"current": s.Version, "latest": latest, "xray": xr, "singbox": sb}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	writeJSON(w, 200, resp)
+}
+
+func (s *Server) selfUpdate(w http.ResponseWriter, r *http.Request) {
+	tag, err := coremgr.UpdateSelf()
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	s.St.Log("update", "Dunvex updated to %s", tag)
+	writeJSON(w, 200, map[string]string{"version": tag})
+	if s.Restart != nil {
+		go func() { time.Sleep(time.Second); s.Restart() }()
+	}
+}

@@ -1,0 +1,16 @@
+# build output
+/dunvex
+/dunvex.exe
+/dist/
+web/node_modules/
+web/dist/*
+!web/dist/.keep
+# local data
+dunvex-home/
+*.db
+*.db-wal
+*.db-shm
+# impeccable runtime
+.impeccable/questions/
+.impeccable/mocks/
+.impeccable/review/

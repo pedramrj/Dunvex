@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#0a1224">
+<title>{{.Title}} · {{.User.Name}}</title>
+<style>
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}fa.woff2") format("woff2");font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F,U+06F0-06F9}
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en.woff2") format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
+@font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en-bold.woff2") format("woff2");font-weight:600 700;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
+:root{--bg:#0a1224;--card:#101b36;--card2:#152443;--line:#223154;--line2:#2c3d64;--text:#eef1f6;--muted:#aab6cf;--dim:#8593b2;--reality:#f0474f;--cdn:#4c8dff;--udp:#f2a93b;--classic:#34b37a;--ok:#3ddc97;--bad:#ff5d73}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.8 "Dunvex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(76,141,255,.35)}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 48px}
+.bar{height:6px;display:flex;border-radius:99px;overflow:hidden;margin-bottom:18px}.bar i{flex:1}
+.hero{border-radius:20px;padding:20px;background:var(--card);border:1px solid var(--line);display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.ring{--p:{{.PctCSS}};width:112px;height:112px;border-radius:50%;background:conic-gradient({{.RingColor}} calc(var(--p)*1%),var(--line) 0);display:grid;place-items:center;flex:none}
+.ring>div{width:90px;height:90px;border-radius:50%;background:var(--card);display:grid;place-items:center;text-align:center;font-weight:700;line-height:1.3}
+.ring small{display:block;font-weight:400;color:var(--muted);font-size:11px;direction:ltr}
+h1{margin:0;font-size:22px;line-height:1.4}
+.muted{color:var(--muted);font-size:13px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);border-radius:999px;padding:2px 12px;font-size:13px;color:var(--muted)}
+.chip b{font-weight:600;color:var(--text)}
+.dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--udp)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-top:14px}
+.card h2{font-size:15px;margin:0 0 12px;font-weight:700}
+.row{display:flex;gap:10px;align-items:center}
+input.copy{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line2);color:var(--muted);border-radius:12px;padding:0 12px;height:42px;direction:ltr;font-size:12px;font-family:ui-monospace,monospace}
+button,.btn{background:var(--text);color:var(--bg);border:0;border-radius:12px;height:42px;padding:0 16px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+.btn.ghost{background:var(--card2);border:1px solid var(--line2);color:var(--text);font-weight:500}
+.btn.ghost:hover{border-color:var(--dim)}
+:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+.apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.qr{width:184px;height:184px;margin:14px auto 0;display:block;background:#fff;border-radius:14px;padding:8px}
+.qr svg{width:100%;height:100%}
+details{border-top:1px solid var(--line);padding:10px 0}
+details:first-of-type{border-top:0}
+summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:8px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";width:8px;height:8px;border-inline-end:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);margin-top:-4px;flex:none}
+details[open] summary::after{transform:rotate(225deg);margin-top:4px}
+.alert{border-radius:14px;padding:12px 14px;margin-top:14px;background:rgba(255,93,115,.08);border:1px solid rgba(255,93,115,.4)}
+.note{background:rgba(76,141,255,.08);border-color:rgba(76,141,255,.35)}
+footer{text-align:center;color:var(--dim);font-size:12px;margin-top:28px}
+</style>
+</head>
+<body><div class="wrap">
+<div class="bar" aria-hidden="true"><i style="background:var(--reality)"></i><i style="background:var(--cdn)"></i><i style="background:var(--udp)"></i><i style="background:var(--classic)"></i></div>
+<div class="hero">
+  <div class="ring"><div>{{.Pct}}%<small>{{.Used}} / {{.Limit}}</small></div></div>
+  <div>
+    <h1><bdi>{{.User.Name}}</bdi></h1>
+    <div class="muted">{{.Title}}</div>
+    <div class="chips">
+      {{if .Reason}}<span class="chip bad"><i class="dot"></i>{{.Reason}}</span>{{else if .Pending}}<span class="chip warn"><i class="dot"></i>شروع با اولین اتصال</span>{{else}}<span class="chip ok"><i class="dot"></i>فعال</span>{{end}}
+      <span class="chip"><b dir="ltr">{{.Days}}</b> روز مانده</span>
+      {{if .Expire}}<span class="chip">تا <b dir="ltr">{{.Expire}}</b></span>{{end}}
+      {{if .View.Online}}<span class="chip ok"><i class="dot"></i>آنلاین</span>{{end}}
+    </div>
+  </div>
+</div>
+{{if .Announce}}<div class="alert note">{{.Announce}}</div>{{end}}
+{{if .Reason}}<div class="alert">{{.Reason}} — برای تمدید با پشتیبانی تماس بگیرید.</div>{{end}}
+
+<div class="card">
+  <h2>لینک اشتراک</h2>
+  <div class="row"><input class="copy" id="sub" readonly value="{{.Sub}}"><button onclick="cp('sub',this)">کپی</button></div>
+  <div class="qr">{{.SubQR}}</div>
+</div>
+
+<div class="card">
+  <h2>افزودن با یک لمس</h2>
+  <div class="apps">{{range .Apps}}<a class="btn ghost" href="{{safeURL .URL}}">{{.Name}}</a>{{end}}</div>
+</div>
+
+{{if .Configs}}<div class="card">
+  <h2>کانفیگ‌ها ({{len .Configs}})</h2>
+  {{range $i, $c := .Configs}}<details>
+    <summary><span dir="ltr">{{$c.Name}}</span></summary>
+    <div class="row" style="margin-top:10px"><input class="copy" id="c{{$i}}" readonly value="{{$c.Link}}"><button onclick="cp('c{{$i}}',this)">کپی</button></div>
+    <div class="qr">{{$c.QR}}</div>
+  </details>{{end}}
+</div>{{end}}
+
+{{if .Support}}<div class="card row" style="justify-content:space-between"><span>پشتیبانی</span><a class="btn" href="{{safeURL .Support}}">تماس</a></div>{{end}}
+<footer>Dunvex · Pedram</footer>
+</div>
+<script>
+function cp(id,b){var e=document.getElementById(id);e.select();try{navigator.clipboard.writeText(e.value)}catch(_){document.execCommand('copy')}var t=b.textContent;b.textContent='✓';setTimeout(function(){b.textContent=t},1200)}
+</script>
+</body></html>

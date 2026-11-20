@@ -1,0 +1,337 @@
+// Package server is the HTTP side of Dunvex: admin API, panel UI and subscriptions.
+package server
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io/fs"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/pedramrj/dunvex/internal/engine"
+	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/sysinfo"
+	"github.com/pedramrj/dunvex/internal/util"
+)
+
+// Server bundles everything the HTTP layer needs.
+type Server struct {
+	Home    string
+	Version string
+	St      *store.Store
+	Mgr     *engine.Manager
+	Sys     *sysinfo.Sampler
+	UI      fs.FS // built panel (index.html + assets)
+	Restart func() // asks the process to restart (after self-update / restore)
+
+	limMu sync.Mutex
+	fails map[string][]time.Time
+}
+
+// Dirs.
+func (s *Server) CertDir() string   { return filepath.Join(s.Home, "certs") }
+func (s *Server) BackupDir() string { return filepath.Join(s.Home, "backups") }
+
+// PanelPath returns the secret panel prefix, e.g. "/a1b2c3/".
+func (s *Server) PanelPath() string { return normPath(s.St.GetSetting("panel_path", "/dunvex/")) }
+
+// SubPath returns the subscription prefix, e.g. "/s/".
+func (s *Server) SubPath() string { return normPath(s.St.GetSetting("sub_path", "/sub/")) }
+
+func normPath(p string) string {
+	p = "/" + strings.Trim(strings.TrimSpace(p), "/") + "/"
+	if p == "//" {
+		return "/"
+	}
+	return p
+}
+
+// Env returns the protocol environment derived from settings.
+func (s *Server) Env() protocol.Env {
+	domain := strings.TrimSpace(s.St.GetSetting("domain", ""))
+	host := strings.TrimSpace(s.St.GetSetting("host", ""))
+	if host == "" {
+		host = domain
+	}
+	if host == "" {
+		host = s.Sys.PublicIP()
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	env := protocol.Env{Host: host, Domain: domain, Listen: os.Getenv("DUNVEX_LISTEN")}
+	cert, key := s.St.GetSetting("cert_file", ""), s.St.GetSetting("key_file", "")
+	if cert != "" && util.FileExists(cert) && util.FileExists(key) {
+		env.CertFile, env.KeyFile = cert, key
+		env.SelfSigned = s.St.GetSetting("cert_mode", "self") == "self"
+	} else {
+		cn := host
+		if domain != "" {
+			cn = domain
+		}
+		if c, k, err := util.SelfSignedCert(s.CertDir(), cn); err == nil {
+			env.CertFile, env.KeyFile, env.SelfSigned = c, k, true
+		}
+	}
+	if env.SelfSigned && env.CertFile != "" {
+		env.CertSHA256 = util.CertSHA256(env.CertFile)
+	}
+	return env
+}
+
+// PublicBase returns the base URL the server is reachable at (for subscription links).
+func (s *Server) PublicBase(r *http.Request) string {
+	if b := strings.TrimRight(s.St.GetSetting("sub_base_url", ""), "/"); b != "" {
+		return b
+	}
+	scheme := "http"
+	if r != nil && r.TLS != nil {
+		scheme = "https"
+	}
+	host := ""
+	if r != nil {
+		host = r.Host
+	}
+	if host == "" {
+		h := s.Env().Host
+		host = net.JoinHostPort(h, s.St.GetSetting("panel_port", "2096"))
+	}
+	return scheme + "://" + host
+}
+
+// SubURL is the subscription link of a user.
+func (s *Server) SubURL(r *http.Request, u *store.User) string {
+	return s.PublicBase(r) + s.SubPath() + u.SubToken
+}
+
+// ---------------------------------------------------------------- routing
+
+// Handler returns the root HTTP handler.
+func (s *Server) Handler() http.Handler {
+	if s.fails == nil {
+		s.fails = map[string][]time.Time{}
+	}
+	api := s.apiMux()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		panel, sub := s.PanelPath(), s.SubPath()
+		p := r.URL.Path
+		switch {
+		case strings.HasPrefix(p, panel+"api/"):
+			r2 := r.Clone(r.Context())
+			r2.URL.Path = "/" + strings.TrimPrefix(p, panel+"api/")
+			api.ServeHTTP(w, r2)
+		case p+"/" == panel:
+			http.Redirect(w, r, panel, http.StatusMovedPermanently)
+		case strings.HasPrefix(p, panel):
+			s.serveUI(w, r, strings.TrimPrefix(p, panel))
+		case strings.HasPrefix(p, sub+"_font/"):
+			s.serveFont(w, strings.TrimPrefix(p, sub+"_font/"))
+		case strings.HasPrefix(p, sub) && len(p) > len(sub):
+			s.serveSub(w, r, strings.TrimPrefix(p, sub))
+		default:
+			decoy(w)
+		}
+	})
+}
+
+// serveFont exposes the panel's embedded fonts to the public user page
+// (under the subscription path, so the panel path stays secret).
+func (s *Server) serveFont(w http.ResponseWriter, name string) {
+	prefix := map[string]string{"fa.woff2": "Vazirmatn-Variable", "en.woff2": "FiraSans-400", "en-bold.woff2": "FiraSans-600"}[name]
+	if prefix == "" || s.UI == nil {
+		decoy(w)
+		return
+	}
+	entries, _ := fs.ReadDir(s.UI, "assets")
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), prefix) && strings.HasSuffix(e.Name(), ".woff2") {
+			b, err := fs.ReadFile(s.UI, "assets/"+e.Name())
+			if err != nil {
+				break
+			}
+			w.Header().Set("Content-Type", "font/woff2")
+			w.Header().Set("Cache-Control", "public, max-age=2592000")
+			w.Write(b)
+			return
+		}
+	}
+	decoy(w)
+}
+
+func decoy(w http.ResponseWriter) {
+	w.Header().Set("Server", "nginx")
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusNotFound)
+	fmt.Fprint(w, "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n")
+}
+
+func (s *Server) serveUI(w http.ResponseWriter, r *http.Request, rel string) {
+	if s.UI == nil {
+		http.Error(w, "panel UI not built", http.StatusNotFound)
+		return
+	}
+	if rel != "" && rel != "index.html" {
+		if f, err := s.UI.Open(rel); err == nil {
+			st, _ := f.Stat()
+			f.Close()
+			if st != nil && !st.IsDir() {
+				if strings.HasPrefix(rel, "assets/") {
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
+				http.ServeFileFS(w, r, s.UI, rel)
+				return
+			}
+		}
+	}
+	b, err := fs.ReadFile(s.UI, "index.html")
+	if err != nil {
+		http.Error(w, "panel UI not built", http.StatusNotFound)
+		return
+	}
+	cfg, _ := json.Marshal(map[string]string{"base": s.PanelPath(), "version": s.Version})
+	html := strings.Replace(string(b), "</head>", "<script>window.__DVX__="+string(cfg)+"</script></head>", 1)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Write([]byte(html))
+}
+
+// ---------------------------------------------------------------- auth
+
+const cookieName = "dvx_session"
+
+func (s *Server) secret() []byte {
+	sec := s.St.GetSetting("session_secret", "")
+	if sec == "" {
+		sec = util.RandomHex(32)
+		s.St.SetSetting("session_secret", sec)
+	}
+	return []byte(sec)
+}
+
+func (s *Server) sign(payload string) string {
+	m := hmac.New(sha256.New, s.secret())
+	m.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
+func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, a *store.Admin) {
+	exp := time.Now().Add(7 * 24 * time.Hour).Unix()
+	payload := fmt.Sprintf("%d.%d.%s", a.ID, exp, pwStamp(a.PasswordHash))
+	val := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + s.sign(payload)
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: val, Path: s.PanelPath(), HttpOnly: true,
+		SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, Expires: time.Unix(exp, 0)})
+}
+
+func pwStamp(hash string) string {
+	h := sha256.Sum256([]byte(hash))
+	return base64.RawURLEncoding.EncodeToString(h[:6])
+}
+
+func (s *Server) currentAdmin(r *http.Request) *store.Admin {
+	c, err := r.Cookie(cookieName)
+	if err != nil {
+		return nil
+	}
+	parts := strings.SplitN(c.Value, ".", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil
+	}
+	payload := string(raw)
+	if subtle.ConstantTimeCompare([]byte(s.sign(payload)), []byte(parts[1])) != 1 {
+		return nil
+	}
+	f := strings.Split(payload, ".")
+	if len(f) != 3 {
+		return nil
+	}
+	id, _ := strconv.ParseInt(f[0], 10, 64)
+	exp, _ := strconv.ParseInt(f[1], 10, 64)
+	if time.Now().Unix() > exp {
+		return nil
+	}
+	a, err := s.St.AdminByID(id)
+	if err != nil || pwStamp(a.PasswordHash) != f[2] {
+		return nil
+	}
+	return a
+}
+
+// HashPassword hashes an admin password.
+func HashPassword(pw string) (string, error) {
+	b, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
+	return string(b), err
+}
+
+func clientIP(r *http.Request) string {
+	h, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return h
+}
+
+// tooManyFailures applies a simple per-IP login throttle (8 failures / 10 min).
+func (s *Server) tooManyFailures(ip string) bool {
+	s.limMu.Lock()
+	defer s.limMu.Unlock()
+	cut := time.Now().Add(-10 * time.Minute)
+	var keep []time.Time
+	for _, t := range s.fails[ip] {
+		if t.After(cut) {
+			keep = append(keep, t)
+		}
+	}
+	s.fails[ip] = keep
+	return len(keep) >= 8
+}
+
+func (s *Server) recordFailure(ip string) {
+	s.limMu.Lock()
+	s.fails[ip] = append(s.fails[ip], time.Now())
+	s.limMu.Unlock()
+}
+
+// ---------------------------------------------------------------- helpers
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+func fail(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func readJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(nil, r.Body, 4<<20))
+	return dec.Decode(v)
+}
+
+func pathID(r *http.Request) int64 {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	return id
+}
+
+func ensureDir(p string) { os.MkdirAll(p, 0o700) }

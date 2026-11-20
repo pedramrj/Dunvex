@@ -1,0 +1,57 @@
+# Protocols (research as of November 2026)
+
+Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
+Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experimental · 🗺 = on the roadmap
+
+## Xray-core
+| Protocol | Transport / security | Status | Notes |
+|---|---|---|---|
+| VLESS | Reality + Vision (TCP) | ✅ | Strongest default choice; no domain needed |
+| VLESS | Reality + XHTTP | ✅ | Bypasses connection-length detection |
+| VLESS | Reality + gRPC | ✅ | |
+| VLESS | XHTTP + TLS | ✅ | Works behind a CDN |
+| VLESS | WebSocket + TLS | ✅ | CDN, works with every client |
+| VLESS | HTTPUpgrade + TLS | ✅ | CDN, lighter than WS |
+| VLESS | gRPC + TLS | ✅ | CDN |
+| VLESS Encryption | ML-KEM-768 (post-quantum), no TLS | ✅ | New in 2025/26 |
+| VLESS | mKCP + FinalMask | ✅ | UDP, header obfuscation |
+| VMess | WebSocket (± TLS) | ✅ | For older clients |
+| Trojan | TLS / Reality / WS | ✅ | |
+| Shadowsocks 2022 | blake3-aes-128/256, chacha20 | ✅ | Multi-user |
+| Shadowsocks | aes-256-gcm / chacha20 | ✅ | Compatible with Outline |
+| Hysteria2 | QUIC + Salamander | ✅ | Hysteria2 inbound is new in Xray 26.3 |
+| WireGuard | Userspace, per-user peers | ✅ | Per-user stats via email |
+| SOCKS5 / HTTP | With authentication | ✅ | |
+| MASQUE | CONNECT-IP over HTTP/3 | 🧪 | New in Xray 26; few clients |
+| XDNS | DNS tunnel (FinalMask + mKCP) | 🗺 | Needs an NS record; for shutdowns |
+| XICMP | ICMP tunnel | 🗺 | |
+| Sudoku | FinalMask obfuscation, TCP/UDP | 🗺 | |
+| XDRIVE | Tunnel through cloud storage (S3/Drive) | 🗺 | Newest Xray feature (26.10) |
+
+## sing-box
+| Protocol | Status | Notes |
+|---|---|---|
+| TUIC v5 | ✅ | QUIC, BBR |
+| Hysteria2 (masquerade + Gecko) | ✅ | Gecko obfs is new in 1.14 |
+| NaiveProxy | ✅ | Real Chrome fingerprint, needs a domain |
+| ShadowTLS v3 | ✅ | Paired with Shadowsocks 2022 |
+| AnyTLS | ✅ | Defeats TLS-in-TLS detection |
+| Snell v5/v6 | 🧪 | New in 1.14 (Surge clients) |
+| OpenVPN server | 🧪 | New in 1.14 |
+| Hysteria v1 | — | Deprecated in 1.14 |
+
+## Independent / lesser-known protocols (sidecars)
+| Protocol | What it is | Status |
+|---|---|---|
+| AmneziaWG 2.0 | WireGuard with junk packets and header obfuscation | 🗺 |
+| Mieru | TCP/UDP with no fixed pattern | 🗺 |
+| TrustTunnel (AdGuard) | HTTP/2/3 VPN that looks like normal traffic | 🗺 |
+| MTProto (mtg) | Telegram proxy with FakeTLS | 🗺 |
+| dnstt / Slipstream / VayDNS | DNS tunnels; the only working path in the February 2026 shutdown | 🗺 |
+| paqet | KCP over raw TCP packets (bypasses the OS stack) | 🗺 |
+| AIVPN | UDP disguised as STUN/QUIC/video calls | 🗺 |
+| olcRTC / qWDTT / CSQTT | Tunnels through WebRTC/TURN of video-call services | research |
+| Juicity, Brook, Restls | Older options | research |
+| Tor (obfs4, Snowflake, WebTunnel) | Bridges | research |
+
+> Note: claims of "resistance to filtering" in the sources are often unmeasured. Dunvex only marks a protocol ✅ after a real core config test.

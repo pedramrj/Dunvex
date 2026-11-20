@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------- type
+   One family name, two scripts: Vazirmatn carries Persian, Fira Sans (a
+   transit-signage humanist) carries Latin and figures. Both SIL OFL 1.1. */
+@font-face {
+  font-family: "Dunvex Sans";
+  src: url("./fonts/Vazirmatn-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+06F0-06F9;
+}
+@font-face {
+  font-family: "Dunvex Sans";
+  src: url("./fonts/FiraSans-400.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF, U+20AC, U+2212;
+}
+@font-face {
+  font-family: "Dunvex Sans";
+  src: url("./fonts/FiraSans-500.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF, U+20AC, U+2212;
+}
+@font-face {
+  font-family: "Dunvex Sans";
+  src: url("./fonts/FiraSans-600.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF, U+20AC, U+2212;
+}
+@font-face {
+  font-family: "Dunvex Sans";
+  src: url("./fonts/FiraSans-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+  unicode-range: U+0000-024F, U+2000-206F, U+2190-21FF, U+20AC, U+2212;
+}
+
+/* ---------------------------------------------------------------- world tokens
+   Night metro map: midnight enamel, porcelain signage, four line inks. */
+@theme {
+  --font-sans: "Dunvex Sans", system-ui, sans-serif;
+  --color-ground: #0a1224;
+  --color-rail: #0c1630;
+  --color-panel: #101b36;
+  --color-panel2: #152443;
+  --color-hair: #223154;
+  --color-hair2: #2c3d64;
+  --color-ink: #eef1f6;
+  --color-ink2: #aab6cf;
+  --color-ink3: #8593b2;
+  --color-reality: #f0474f;
+  --color-cdn: #4c8dff;
+  --color-udp: #f2a93b;
+  --color-classic: #34b37a;
+  --color-online: #3ddc97;
+  --color-warn: #f2a93b;
+  --color-bad: #ff5d73;
+  --radius-pill: 999px;
+}
+
+:root {
+  color-scheme: dark;
+  background: var(--color-ground);
+}
+html,
+body,
+#root {
+  min-height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+:lang(fa) {
+  letter-spacing: 0 !important;
+  line-height: 1.8;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  unicode-bidi: isolate;
+}
+::selection {
+  background: rgba(76, 141, 255, 0.35);
+  color: #fff;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-hair2) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-hair2);
+  border-radius: 10px;
+  border: 3px solid var(--color-ground);
+}
+input,
+textarea,
+select {
+  caret-color: var(--color-ink);
+}
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+a {
+  text-underline-offset: 3px;
+}
+
+/* line flow along the network map */
+@keyframes flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+.flow {
+  stroke-dasharray: 2 14;
+  animation: flow var(--flow-dur, 2s) linear infinite;
+}
+/* entrance motion starts from an already-visible state: if animations are
+   paused (background tab, low-power mode) nothing is left hidden */
+@keyframes rise {
+  from {
+    transform: translateY(8px);
+  }
+  to {
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(var(--sheet-from, 40px));
+  }
+  to {
+    transform: none;
+  }
+}
+.sheet {
+  animation: sheet-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+.pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: currentColor;
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow,
+  .pulse::after,
+  .rise,
+  .sheet {
+    animation: none !important;
+  }
+}
