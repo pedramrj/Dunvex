@@ -264,7 +264,9 @@ func (c *Core) start() error {
 		cmd = exec.Command(c.Bin(), c.ConfigPath, filepath.Join(filepath.Dir(c.ConfigPath), protocol.TTHostsFile))
 	case "usque":
 		// WARP over MASQUE as a SOCKS proxy that only this server can reach
-		cmd = exec.Command(c.Bin(), "-c", c.ConfigPath, "socks", "-b", "127.0.0.1", "-p", strconv.Itoa(c.APIPort))
+		// --always-reconnect keeps the tunnel up: otherwise usque connects only
+		// on the first traffic, and that first connection fails
+		cmd = exec.Command(c.Bin(), "-c", c.ConfigPath, "socks", "-b", "127.0.0.1", "-p", strconv.Itoa(c.APIPort), "--always-reconnect")
 	case "mita":
 		// mita keeps per-user totals in one file and reloads them at start; a
 		// crash can bring back older totals, so each start counts from zero

@@ -20,8 +20,21 @@ type TraceInfo struct {
 	Warp string `json:"warp"` // off, on or plus
 }
 
-// Trace loads Cloudflare's trace page, through a local SOCKS5 proxy when given.
+// Trace loads Cloudflare's trace page, through a local SOCKS5 proxy when
+// given; a tunnel that is still connecting gets a second try.
 func Trace(ctx context.Context, socks string) (*TraceInfo, error) {
+	t, err := trace(ctx, socks)
+	if err != nil && socks != "" && ctx.Err() == nil {
+		select {
+		case <-time.After(2 * time.Second):
+			t, err = trace(ctx, socks)
+		case <-ctx.Done():
+		}
+	}
+	return t, err
+}
+
+func trace(ctx context.Context, socks string) (*TraceInfo, error) {
 	tr := &http.Transport{TLSHandshakeTimeout: 10 * time.Second}
 	if socks != "" {
 		d, err := proxy.SOCKS5("tcp", socks, nil, &net.Dialer{Timeout: 5 * time.Second})
