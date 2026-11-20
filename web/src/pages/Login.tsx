@@ -44,9 +44,6 @@ export function Login({ onDone }: { onDone: () => void }) {
             <div className="absolute inset-0 -z-10 blur-3xl rounded-full bg-primary/25 scale-75" aria-hidden />
             <Logo part="full" className="w-[230px] sm:w-[300px] lg:w-[420px] drop-shadow-[0_24px_60px_color-mix(in_oklab,var(--primary)_30%,transparent)]" />
           </div>
-          <p className="hidden lg:block text-ink2 mt-2 max-w-sm text-center text-[15px]">
-            {lang === "fa" ? "همهٔ پروتکل‌ها، یک پنل. ساده، سریع و دقیق." : "Every protocol, one panel. Simple, fast and precise."}
-          </p>
         </div>
 
         {/* the form */}
