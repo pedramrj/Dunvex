@@ -30,6 +30,10 @@ func relayable(p *protocol.Preset, in *store.Inbound) bool {
 // never a CDN name in front of it.
 func (s *Server) relayTargetHost(target int64, nodes map[int64]*store.Node) string {
 	if target == 0 {
+		// an IP set in Settings is this server's address; a name there may be a CDN
+		if ip := net.ParseIP(strings.TrimSpace(s.St.GetSetting("host", ""))); ip != nil {
+			return ip.String()
+		}
 		if s.Sys != nil {
 			if ip := s.Sys.PublicIP(); ip != "" {
 				return ip
