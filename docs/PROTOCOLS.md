@@ -6,7 +6,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 ## Xray-core
 | Protocol | Transport / security | Status | Notes |
 |---|---|---|---|
-| VLESS | Reality + Vision (TCP) | ✅ | Strongest default choice; no domain needed |
+| VLESS | Reality + Vision (TCP) | ✅ | Xray Reality; since 26.9.8 only for Xray-based apps and mihomo (see below) |
 | VLESS | Reality + XHTTP | ✅ | Bypasses connection-length detection |
 | VLESS | Reality + gRPC | ✅ | |
 | VLESS | XHTTP + TLS | ✅ | Works behind a CDN |
@@ -22,7 +22,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | Hysteria2 | QUIC + Salamander | ✅ | Hysteria2 inbound is new in Xray 26.3 |
 | WireGuard | Userspace, per-user peers | ✅ | Per-user stats via email |
 | SOCKS5 / HTTP | With authentication | ✅ | |
-| MASQUE | CONNECT-IP over HTTP/3 | 🧪 | New in Xray 26; few clients |
+| MASQUE | CONNECT-IP over HTTP/3 | 🗺 | New in Xray 26; few clients |
 | XDNS | DNS tunnel (FinalMask + mKCP) | 🗺 | Needs an NS record; for shutdowns |
 | XICMP | ICMP tunnel | 🗺 | |
 | Sudoku | FinalMask obfuscation, TCP/UDP | 🗺 | |
@@ -31,13 +31,14 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 ## sing-box
 | Protocol | Status | Notes |
 |---|---|---|
+| VLESS Reality Vision (universal) | ✅ | **Default.** Works with both Xray and sing-box apps |
 | TUIC v5 | ✅ | QUIC, BBR |
 | Hysteria2 (masquerade + Gecko) | ✅ | Gecko obfs is new in 1.14 |
 | NaiveProxy | ✅ | Real Chrome fingerprint, needs a domain |
 | ShadowTLS v3 | ✅ | Paired with Shadowsocks 2022 |
 | AnyTLS | ✅ | Defeats TLS-in-TLS detection |
-| Snell v5/v6 | 🧪 | New in 1.14 (Surge clients) |
-| OpenVPN server | 🧪 | New in 1.14 |
+| Snell v5/v6 | 🗺 | New in 1.14 (Surge clients) |
+| OpenVPN server | 🗺 | New in 1.14 |
 | Hysteria v1 | — | Deprecated in 1.14 |
 
 ## Independent / lesser-known protocols (sidecars)
@@ -54,4 +55,8 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | Juicity, Brook, Restls | Older options | research |
 | Tor (obfs4, Snowflake, WebTunnel) | Bridges | research |
 
+> **Reality compatibility:** since Xray 26.9.8, Xray's Reality server requires an X25519MLKEM768 key share that sing-box clients (Hiddify, NekoBox, sing-box, Karing) do not send yet ([sing-box#4520](https://github.com/SagerNet/sing-box/issues/4520)). Dunvex therefore uses the universal Reality on the sing-box engine as the default, and leaves Xray-Reality entries out of the sing-box subscription.
+>
+> **Test status (v1.0.1):** every preset passes the core config check; real traffic went through 25 of 26 presets with Xray and sing-box clients. NaiveProxy has only the config check (it needs a real domain and certificate).
+>
 > Note: claims of "resistance to filtering" in the sources are often unmeasured. Dunvex only marks a protocol ✅ after a real core config test.
