@@ -20,7 +20,19 @@ for arch in amd64 arm64; do
 done
 
 # 3. sing-box with per-user statistics (upstream source, unchanged, extra build tag)
-SINGBOX_TAG="${SINGBOX_TAG:-$(curl -fsSL https://api.github.com/repos/SagerNet/sing-box/releases/latest | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)}"
+# latest sing-box release: GitHub API (with the workflow token when there is one, so CI is not
+# rate-limited), or the newest stable tag when the API does not answer
+latest_singbox() {
+  local auth=() tag
+  [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
+  tag=$(curl -fsSL "${auth[@]}" https://api.github.com/repos/SagerNet/sing-box/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1) || true
+  if [ -z "$tag" ]; then
+    tag=$(git ls-remote --tags --refs https://github.com/SagerNet/sing-box.git 'v*' | sed 's|.*refs/tags/||' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+  fi
+  echo "$tag"
+}
+SINGBOX_TAG="${SINGBOX_TAG:-$(latest_singbox)}"
+[ -n "$SINGBOX_TAG" ] || { echo "cannot find the latest sing-box tag" >&2; exit 1; }
 src=$(mktemp -d)
 git clone -q --depth 1 --branch "$SINGBOX_TAG" https://github.com/SagerNet/sing-box.git "$src"
 TAGS="with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_openvpn,badlinkname,tfogo_checklinkname0"
