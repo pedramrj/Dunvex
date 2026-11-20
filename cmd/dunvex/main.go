@@ -399,6 +399,12 @@ func setup(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ mita", v)
 		}
+		fmt.Println("• Downloading the TrustTunnel endpoint ...")
+		if v, err := coremgr.InstallTrustTunnel(binDir); err != nil {
+			fmt.Println("  ! trusttunnel:", err)
+		} else {
+			fmt.Println("  ✓ trusttunnel", v)
+		}
 		fmt.Println("• Downloading GeoIP country data ...")
 		if src, err := coremgr.InstallGeoIP(home); err != nil {
 			fmt.Println("  ! GeoIP:", err)
@@ -563,6 +569,11 @@ func core(home string, args []string) error {
 		fmt.Println("! mita:", err)
 	} else {
 		fmt.Println("✓ mita", v)
+	}
+	if v, err := coremgr.InstallTrustTunnel(binDir); err != nil {
+		fmt.Println("! trusttunnel:", err)
+	} else {
+		fmt.Println("✓ trusttunnel", v)
 	}
 	if src, err := coremgr.InstallGeoIP(home); err != nil {
 		fmt.Println("! GeoIP:", err)

@@ -450,3 +450,34 @@ func InstallMita(binDir string) (string, error) {
 	}
 	return "", fmt.Errorf("no mita build for linux/%s in %s", goarch(), r.Tag)
 }
+
+// InstallTrustTunnel downloads the TrustTunnel endpoint (by AdGuard,
+// Apache-2.0) from its latest release into binDir, as "trusttunnel".
+func InstallTrustTunnel(binDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("the TrustTunnel endpoint runs on Linux servers only")
+	}
+	r, err := latest("TrustTunnel/TrustTunnel")
+	if err != nil {
+		return "", err
+	}
+	arch := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[goarch()]
+	if arch == "" {
+		return "", fmt.Errorf("no TrustTunnel build for linux/%s", goarch())
+	}
+	want := fmt.Sprintf("trusttunnel-%s-linux-%s.tar.gz", r.Tag, arch)
+	for _, a := range r.Assets {
+		if a.Name != want {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		if err := extractTarGz(data, binDir, map[string]string{"trusttunnel_endpoint": "trusttunnel"}); err != nil {
+			return "", err
+		}
+		return strings.TrimPrefix(r.Tag, "v"), nil
+	}
+	return "", fmt.Errorf("%s is not in the TrustTunnel release %s", want, r.Tag)
+}

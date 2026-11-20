@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/process"
+
+	"github.com/pedramrj/dunvex/internal/protocol"
 )
 
 // Core is one supervised proxy process.
@@ -71,7 +73,7 @@ func (c *Core) Version() string {
 		return v
 	}
 	arg := "version"
-	if c.Name == "mtg" {
+	if c.Name == "mtg" || c.Name == "trusttunnel" {
 		arg = "--version"
 	}
 	out, err := exec.Command(c.Bin(), arg).CombinedOutput()
@@ -91,6 +93,8 @@ func (c *Core) Version() string {
 	switch {
 	case c.Name == "mtg" && len(f) >= 1:
 		v = f[0] // "2.3.0 (go1.x, …)"
+	case c.Name == "trusttunnel" && len(f) >= 1:
+		v = f[len(f)-1] // "1.3.1"
 	case c.Name == "mita" && len(f) >= 1:
 		v = f[len(f)-1] // a log line ending in "3.39.0"
 	case c.Name == "xray" && len(f) >= 2:
@@ -157,7 +161,7 @@ func (c *Core) Test(cfg []byte) error {
 	switch c.Name {
 	case "xray":
 		cmd = exec.Command(c.Bin(), "run", "-test", "-c", tmp)
-	case "mtg", "mita":
+	case "mtg", "mita", "trusttunnel":
 		return nil // no check command; Dunvex writes these small configs itself
 	default:
 		cmd = exec.Command(c.Bin(), "check", "-c", tmp)
@@ -246,6 +250,8 @@ func (c *Core) start() error {
 	switch c.Name {
 	case "mtg":
 		cmd = exec.Command(c.Bin(), "run", c.ConfigPath)
+	case "trusttunnel":
+		cmd = exec.Command(c.Bin(), c.ConfigPath, filepath.Join(filepath.Dir(c.ConfigPath), protocol.TTHostsFile))
 	case "mita":
 		// mita keeps per-user totals in one file and reloads them at start; a
 		// crash can bring back older totals, so each start counts from zero

@@ -50,7 +50,7 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 		if q == nil {
 			return fmt.Sprintf("port %d is already used", port)
 		}
-		if p != nil && q.Network != p.Network {
+		if p != nil && !sameNetwork(p, q) {
 			continue // TCP and UDP on one port number do not clash
 		}
 		if onPanel && SNIRouted(p) && SNIRouted(q) {
@@ -94,6 +94,12 @@ func PanelPortConflict(list []*store.Inbound, port int) string {
 		}
 	}
 	return ""
+}
+
+// sameNetwork reports whether two presets listen on the same kind of socket
+// (TrustTunnel uses both TCP and UDP on its port).
+func sameNetwork(p, q *Preset) bool {
+	return p.Network == q.Network || p.alsoUDP && q.Network == "udp" || q.alsoUDP && p.Network == "udp"
 }
 
 // UsesPort reports whether one of the inbounds listens on port.

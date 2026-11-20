@@ -37,6 +37,7 @@ type Manager struct {
 	MTG     *Core       // the Telegram (MTProto) proxy
 	AWG     *awg.Server // AmneziaWG (its own interface)
 	Mita    *Core       // the Mieru server
+	TT      *Core       // the TrustTunnel endpoint
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -77,6 +78,10 @@ type Manager struct {
 	mitaGen  time.Time                // start of the mita process they came from
 	mitaGone map[string]int64         // users removed by a reload, and when
 	mitaKick int64                    // last restart to cut a removed user off
+
+	ttNow  *mitaPlan                // what TrustTunnel serves now (its inbound)
+	ttPrev map[string]store.Traffic // last counters per TrustTunnel user
+	ttGen  time.Time                // start of the endpoint they came from
 }
 
 // NewManager wires a manager for the given home directory.
@@ -89,6 +94,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		MTG:         &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
 		AWG:         awg.New(binDir, "dvxawg0"),
 		Mita:        &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
+		TT:          &Core{Name: "trusttunnel", BinDir: binDir, ConfigPath: filepath.Join(runDir, "tt-vpn.toml"), APIPort: 62792},
 		Env:         env,
 		applyCh:     make(chan struct{}, 1),
 		inboundErrs: map[int64]string{},
@@ -167,6 +173,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.SingBox.Stop()
 			m.MTG.Stop()
 			m.Mita.Stop()
+			m.TT.Stop()
 			m.AWG.Stop()
 			return
 		case <-m.applyCh:
@@ -209,10 +216,12 @@ func (m *Manager) SNIRoutes() (map[string]edge.Target, error) {
 // built is one generation of core configs plus the edge router's SNI table.
 type built struct {
 	xray, singbox []byte
-	mtg           []byte   // the Telegram proxy (one per server)
-	mita          []byte   // Mieru (one per server)
-	mitaIn        int64    // its inbound
-	awg           *awgPlan // AmneziaWG (one per server)
+	mtg           []byte             // the Telegram proxy (one per server)
+	mita          []byte             // Mieru (one per server)
+	mitaIn        int64              // its inbound
+	tt            *protocol.TTServer // TrustTunnel (one per server)
+	ttIn          int64              // its inbound
+	awg           *awgPlan           // AmneziaWG (one per server)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -301,6 +310,13 @@ func (m *Manager) build() (b built, err error) {
 			}
 		}
 		switch p.Engine {
+		case "trusttunnel":
+			if b.ttIn != 0 {
+				b.errs[in.ID] = "only one TrustTunnel can run on a server: it serves every user on its port"
+				continue
+			}
+			// nil while nobody may use it: without users the endpoint lets anyone in
+			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort), in.ID
 		case "mita":
 			if b.mitaIn != 0 {
 				b.errs[in.ID] = "only one Mieru (TCP or UDP) can run on a server: it serves every user on its port"
@@ -457,10 +473,21 @@ func (m *Manager) Apply() error {
 	for attempt := 0; attempt < 6; attempt++ {
 		cerrs = map[string]string{}
 		retry := false
+		var ttMain []byte
+		if b.tt != nil {
+			ttMain = b.tt.Main
+			if e := m.writeTTFiles(b.tt); e != nil {
+				cerrs[m.TT.Name] = e.Error()
+				ttMain = nil
+			}
+		}
 		for _, c := range []struct {
 			core *Core
 			cfg  []byte
-		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}} {
+		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}, {m.TT, ttMain}} {
+			if c.core == m.TT && cerrs[m.TT.Name] != "" {
+				continue
+			}
 			if e := c.core.Apply(c.cfg); e != nil {
 				cerrs[c.core.Name] = e.Error()
 				continue
@@ -490,6 +517,18 @@ func (m *Manager) Apply() error {
 		m.mitaNow = &mitaPlan{inbound: b.mitaIn}
 	}
 	m.mu.Unlock()
+	m.mu.Lock()
+	m.ttNow = nil
+	if b.tt != nil {
+		m.ttNow = &mitaPlan{inbound: b.ttIn}
+	}
+	m.mu.Unlock()
+	if b.tt != nil && cerrs[m.TT.Name] == "" {
+		if err := m.ttServing(); err != nil {
+			cerrs[m.TT.Name] = err.Error()
+			ierrs[b.ttIn] = err.Error()
+		}
+	}
 	if b.mita != nil && cerrs["mita"] == "" {
 		if err := m.mitaServing(); err != nil {
 			cerrs["mita"] = err.Error()
@@ -632,6 +671,7 @@ func (m *Manager) collect() bool {
 	}
 	m.awgCollect(ud, id)
 	m.mitaCollect(byName, ud, id)
+	m.ttCollect(byName, ud, id)
 	for _, t := range id {
 		totUp, totDown = totUp+t.Up, totDown+t.Down
 	}

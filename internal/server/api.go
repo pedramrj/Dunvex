@@ -845,6 +845,21 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if p.Engine == "trusttunnel" {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has a TrustTunnel; one per server, because it serves every user on its port")
+				return
+			}
+		}
+		// the endpoint arrives with the first TrustTunnel inbound
+		if in.NodeID == 0 && !s.Mgr.TT.Installed() {
+			if _, err := coremgr.InstallTrustTunnel(s.Mgr.TT.BinDir); err != nil {
+				fail(w, 502, "could not download the TrustTunnel endpoint: "+err.Error())
+				return
+			}
+		}
+	}
 	if p.Engine == "mita" {
 		for _, x := range s.inboundsOn(in.NodeID) {
 			if q := protocol.Get(x.Preset); protocol.IsMieru(q) {
@@ -1166,6 +1181,10 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 		s.Mgr.Mita.Stop()
 		ver, err = coremgr.InstallMita(binDir)
 		s.Mgr.Mita.ResetVersion()
+	case "trusttunnel":
+		s.Mgr.TT.Stop()
+		ver, err = coremgr.InstallTrustTunnel(binDir)
+		s.Mgr.TT.ResetVersion()
 	default:
 		fail(w, 404, "unknown core")
 		return
@@ -1220,6 +1239,9 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 		w.Write(s.Mgr.AWGConfig())
 	case "mita":
 		w.Write(s.Mgr.MitaConfig())
+	case "trusttunnel":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(s.Mgr.TTConfig())
 	default:
 		w.Write(orEmpty(x))
 	}

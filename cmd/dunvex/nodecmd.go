@@ -133,6 +133,12 @@ func nodeInit(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ mita", v)
 		}
+		fmt.Println("• Downloading the TrustTunnel endpoint ...")
+		if v, err := coremgr.InstallTrustTunnel(binDir); err != nil {
+			fmt.Println("  ! trusttunnel:", err)
+		} else {
+			fmt.Println("  ✓ trusttunnel", v)
+		}
 	}
 	tok, err := node.Init(st, filepath.Join(home, "certs"), nodeHost(st), nodePort(st), false)
 	if err != nil {

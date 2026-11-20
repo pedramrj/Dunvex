@@ -41,6 +41,9 @@ func (m *Manager) Cores() []*Core {
 	if m.Mita.Installed() || m.Mita.Running() || m.Mita.Status().Error != "" {
 		out = append(out, m.Mita)
 	}
+	if m.TT.Installed() || m.TT.Running() || m.TT.Status().Error != "" {
+		out = append(out, m.TT)
+	}
 	return out
 }
 
@@ -66,6 +69,8 @@ func (m *Manager) CoreByName(name string) *Core {
 		return m.MTG
 	case "mita":
 		return m.Mita
+	case "trusttunnel":
+		return m.TT
 	}
 	return m.Xray
 }

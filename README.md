@@ -44,12 +44,13 @@ Ctrl+P opens a command palette; risky actions ask first; mouse works too. Plain 
 and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 
 ### What you get
-- **31 protocol presets**, all validated against the real cores (Xray 26.11, sing-box 1.14, mtg 2.3, amneziawg-go 3.1, mita 3.39):
+- **32 protocol presets**, all validated against the real cores (Xray 26.11, sing-box 1.14, mtg 2.3, amneziawg-go 3.1, mita 3.39, TrustTunnel 1.3):
   VLESS Reality (Vision · XHTTP · gRPC · universal), XHTTP/WS/HTTPUpgrade/gRPC over TLS (CDN),
   post-quantum VLESS Encryption, Hysteria2, TUIC v5, WireGuard, AnyTLS, ShadowTLS v3, NaiveProxy,
   Shadowsocks 2022, Trojan, VMess, mKCP, SOCKS5, HTTP, **AmneziaWG** (WireGuard that DPI cannot recognise,
   versions 3.1 and 2.0, a `.conf` file and QR for each user), **Mieru** over TCP or UDP (no fixed pattern; for
-  Clash.Meta apps, Karing and Exclave), the **XDNS DNS tunnel** for internet shutdowns and a
+  Clash.Meta apps, Karing and Exclave), **TrustTunnel** (AdGuard's HTTP/2 and HTTP/3 VPN that looks like an
+  HTTPS site, for the official TrustTunnel apps and Shadowrocket), the **XDNS DNS tunnel** for internet shutdowns and a
   **Telegram proxy** (MTProto) that can share port 443. See [docs/PROTOCOLS.md](docs/PROTOCOLS.md).
 - **Users**: data limit, expiry, start-on-first-connection, daily/weekly/monthly reset, per-protocol access, bulk actions.
 - **Live changes**: adding, limiting or renewing a user reaches Xray at once, without disconnecting anyone else.
@@ -113,9 +114,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 اگر گیت‌هاب روی سرور بسته است، فایل باینری را منتقل کنید و با `DUNVEX_BINARY=/root/dunvex bash install.sh` نصب کنید.
 
 ### امکانات
-- **۳۱ پروتکل آماده** که همه با هسته‌های واقعی تست شده‌اند، از جمله **AmneziaWG** (وایرگاردی که فیلترینگ تشخیصش
+- **۳۲ پروتکل آماده** که همه با هسته‌های واقعی تست شده‌اند، از جمله **AmneziaWG** (وایرگاردی که فیلترینگ تشخیصش
   نمی‌دهد، نسخهٔ ۳٫۱ و ۲٫۰، با فایل .conf و QR برای هر کاربر)، **Mieru** روی TCP یا UDP (بدون الگوی ثابت، برای
-  برنامه‌های Clash.Meta، Karing و Exclave)، **تونل DNS (XDNS)** برای قطعی اینترنت و
+  برنامه‌های Clash.Meta، Karing و Exclave)، **TrustTunnel** (VPN مبتنی بر HTTP/2 و HTTP/3 از AdGuard که شبیه یک سایت
+  HTTPS است، برای برنامه‌های رسمی TrustTunnel و Shadowrocket)، **تونل DNS (XDNS)** برای قطعی اینترنت و
   **پراکسی تلگرام (MTProto)** که می‌تواند پورت ۴۴۳ را شریک شود (فهرست کامل در [docs/PROTOCOLS.md](docs/PROTOCOLS.md)).
 - **کاربران**: حجم، تاریخ انقضا، شروع از اولین اتصال، صفر شدن دوره‌ای، محدودیت پروتکل، عملیات گروهی.
 - **تغییر زنده**: ساختن، محدود کردن یا تمدید کاربر بدون قطع شدن بقیه اعمال می‌شود.

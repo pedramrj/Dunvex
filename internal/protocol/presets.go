@@ -41,6 +41,7 @@ type Preset struct {
 	proto     string // xray protocol / sing-box type
 	transport string // raw | xhttp | grpc | ws | httpupgrade | kcp | hysteria
 	flow      string
+	alsoUDP   bool // a TCP protocol that also listens on UDP on its port (QUIC)
 }
 
 var (
@@ -60,6 +61,10 @@ var (
 	fSSMethod  = Field{Key: "method", Label: "Cipher", LabelFa: "رمزنگاری", Type: "select", Options: []string{"2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"}}
 	fSSClassic = Field{Key: "method", Label: "Cipher", LabelFa: "رمزنگاری", Type: "select", Options: []string{"chacha20-ietf-poly1305", "aes-256-gcm", "aes-128-gcm"}}
 	fMTU       = Field{Key: "mtu", Label: "MTU", LabelFa: "MTU", Type: "number", Advanced: true}
+	fTTHost    = Field{Key: "sni", Label: "Hostname (the site it looks like; your domain uses its real certificate)", LabelFa: "نام میزبان (سایتی که شبیهش دیده می‌شود؛ دامنهٔ خودتان با گواهی واقعی‌اش)", Type: "text"}
+	fTTProto   = Field{Key: "protocol", Label: "Transport in the apps (HTTP/2 over TCP, HTTP/3 over QUIC)", LabelFa: "انتقال در برنامه‌ها (HTTP/2 روی TCP، HTTP/3 روی QUIC)", Type: "select", Options: TTProtocols}
+	fTTAntiDPI = Field{Key: "antiDpi", Label: "Anti-DPI in the apps (splits the first packets)", LabelFa: "ضد DPI در برنامه‌ها (بسته‌های اول را تکه می‌کند)", Type: "bool", Advanced: true}
+	fTTDNS     = Field{Key: "dns", Label: "DNS for the apps (empty: the app's own; e.g. tls://1.1.1.1)", LabelFa: "DNS برای برنامه‌ها (خالی: پیش‌فرض برنامه؛ مثل tls://1.1.1.1)", Type: "text", Advanced: true}
 	fMieruMux  = Field{Key: "multiplexing", Label: "Multiplexing in the apps (LOW suits most networks)", LabelFa: "مالتی‌پلکس در برنامه‌ها (LOW برای بیشتر شبکه‌ها مناسب است)", Type: "select", Options: MieruMux, Advanced: true}
 	fCC        = Field{Key: "congestion", Label: "Congestion control", LabelFa: "کنترل ازدحام", Type: "select", Options: []string{"bbr", "cubic", "new_reno"}}
 	fHandshake = Field{Key: "handshake", Label: "Handshake server", LabelFa: "سرور دست‌دهی", Type: "text"}
@@ -193,6 +198,11 @@ var presets = []*Preset{
 		Desc:   "A proxy inside Telegram itself: users add it with one tap, no VPN app needed. It looks like an HTTPS visit to the site you choose, and can share port 443. One per server; one link for everyone, so usage is not counted per user.",
 		DescFa: "پراکسی داخل خود تلگرام: کاربر با یک لمس اضافه‌اش می‌کند و برنامهٔ VPN لازم نیست. شبیه بازدید HTTPS از سایتی است که انتخاب می‌کنید و می‌تواند پورت ۴۴۳ را شریک شود. هر سرور یکی؛ یک لینک برای همه، پس مصرف هر کاربر جدا شمرده نمی‌شود.",
 		Fields: []Field{fFakeTLS}},
+	{ID: "trusttunnel", Name: "TrustTunnel", Engine: "trusttunnel", Group: "classic", Network: "tcp", DefaultPort: 8443,
+		Security: "tls", Status: "ready", proto: "trusttunnel", alsoUDP: true,
+		Desc:   "AdGuard's open VPN protocol: HTTP/2 or HTTP/3 that looks like an ordinary HTTPS site, with the official TrustTunnel apps (iOS, Android, desktop) and Shadowrocket. Uses TCP and UDP on its port. One per server; users change with a short restart.",
+		DescFa: "پروتکل باز AdGuard: HTTP/2 یا HTTP/3 که شبیه یک سایت HTTPS معمولی است، با برنامه‌های رسمی TrustTunnel (iOS، اندروید، دسکتاپ) و Shadowrocket. روی پورتش هم TCP و هم UDP دارد. هر سرور یکی؛ تغییر کاربران با یک ری‌استارت کوتاه اعمال می‌شود.",
+		Fields: []Field{fTTHost, fTTProto, fTTAntiDPI, fTTDNS}},
 	{ID: "mieru", Name: "Mieru", Engine: "mita", Group: "classic", Network: "tcp", DefaultPort: 0,
 		Security: "none", Status: "ready", proto: "mieru",
 		Desc:   "TCP with no fixed pattern: no handshake to fingerprint, random padding and a key from each user's name, password and the time. For Clash.Meta (mihomo) apps, Karing and Exclave. One Mieru per server, TCP or UDP; the device limit does not apply to it.",
@@ -305,6 +315,8 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		awgDefaults(params)
 	case "mieru", "mieru-udp":
 		mieruDefaults(params)
+	case "trusttunnel":
+		ttDefaults(params, domain)
 	case "mtproto":
 		set("sni", DefaultFakeTLS)
 		if k, _ := params["mtKey"].(string); len(k) != 32 {

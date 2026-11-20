@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// TestInstallSidecars downloads mita and amneziawg-go from the real releases
+// TestInstallSidecars downloads mita, amneziawg-go and the TrustTunnel endpoint from the real releases
 // into a temporary folder (checksums checked by download). Needs network and
 // DUNVEX_NET_TEST=1.
 func TestInstallSidecars(t *testing.T) {
@@ -35,4 +35,13 @@ func TestInstallSidecars(t *testing.T) {
 		t.Errorf("amneziawg-go version %q", a)
 	}
 	t.Logf("amneziawg-go %s", a)
+	tt, err := InstallTrustTunnel(dir)
+	if err != nil {
+		t.Fatalf("trusttunnel: %v", err)
+	}
+	out, err = exec.Command(filepath.Join(dir, "trusttunnel"), "--version").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != tt {
+		t.Errorf("trusttunnel %s runs as %q (%v)", tt, out, err)
+	}
+	t.Logf("trusttunnel %s", tt)
 }
