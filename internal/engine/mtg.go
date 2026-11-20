@@ -38,6 +38,9 @@ func (m *Manager) Cores() []*Core {
 	if m.MTG.Installed() || m.MTG.Running() || m.MTG.Status().Error != "" {
 		out = append(out, m.MTG)
 	}
+	if m.Mita.Installed() || m.Mita.Running() || m.Mita.Status().Error != "" {
+		out = append(out, m.Mita)
+	}
 	return out
 }
 
@@ -61,6 +64,8 @@ func (m *Manager) CoreByName(name string) *Core {
 		return m.SingBox
 	case "mtg":
 		return m.MTG
+	case "mita":
+		return m.Mita
 	}
 	return m.Xray
 }

@@ -1,6 +1,6 @@
 # Protocols (research as of November 2026)
 
-Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, mtg **v2.3.0**, amneziawg-go **v3.1.20261116**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
+Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, mtg **v2.3.0**, amneziawg-go **v3.1.20261116**, Hysteria **v2.14.0**, Mieru (mita) **v3.39.0**, TrustTunnel **v1.3.1**.
 Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experimental · 🗺 = on the roadmap
 
 ## Xray-core
@@ -45,7 +45,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | Protocol | What it is | Status |
 |---|---|---|
 | AmneziaWG 3.1 / 2.0 | WireGuard with junk packets, random sizes and message headers, and (3.1) header protection | ✅ amneziawg-go (MIT), userspace TUN with NAT; one per server, serving every user. Each user gets a `.conf` (download and QR on the user page and in the panel) for the AmneziaVPN / AmneziaWG apps. Users are added and removed live; usage, online state and devices come from the interface's counters. Tested with a real client: no packet on the wire looks like WireGuard. Built from upstream source with each release, downloaded with the first AmneziaWG |
-| Mieru | TCP/UDP with no fixed pattern | 🗺 |
+| Mieru (TCP or UDP) | Proxy with no fixed pattern: no handshake to fingerprint, random padding, a key from the user's name, password and the time | ✅ mita 3.39.0 (GPL-3.0), downloaded from the Mieru release with the first Mieru. One per server (mita serves every user on its port). Users join and leave by a reload, without cutting anyone off; a removed user who still has a connection open is cut at the next look at the counters (mita is started again). Usage and online state per user; no devices (mita does not report addresses). Links: `mierus://` (Karing, Exclave, NyameBox, mieru) and Clash.Meta profiles; not in sing-box profiles. Tested with the official mieru client importing Dunvex's link, over TCP and UDP |
 | TrustTunnel (AdGuard) | HTTP/2/3 VPN that looks like normal traffic | 🗺 |
 | MTProto (mtg) | Telegram proxy with FakeTLS | ✅ mtg 2.3.0 (MIT): one per server, one `tg://proxy` link for everyone (no per-user usage). Can share port 443 by SNI; probes see the fake domain's real site. Downloaded with the first Telegram proxy |
 | dnstt / Slipstream / VayDNS | DNS tunnels; the only working path in the February 2026 shutdown | 🗺 |

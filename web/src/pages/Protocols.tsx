@@ -8,7 +8,7 @@ import { PageHead, navigate } from "../App";
 import { shortName } from "../components/NetworkMap";
 
 /** the program that serves each engine, as shown on the cards */
-const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", xray: "Xray" };
+const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", xray: "Xray" };
 
 export function ProtocolsPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
@@ -127,7 +127,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 /** Setup steps some protocols need before they work. */
 function PresetHelp({ id }: { id: string }) {
   const { t } = useI18n();
-  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : null;
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : null;
   if (!key) return null;
   return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
 }
@@ -210,7 +210,7 @@ function AddSheet({ open, group, presets, nodes, onClose, onDone }: { open: bool
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <label><Label hint={String(pick.defaultPort)}>{t("port")}</Label><Input type="number" value={port} placeholder={String(pick.defaultPort)} onChange={(e) => setPort(e.target.value)} className="num" /></label>
+            <label><Label hint={pick.defaultPort ? String(pick.defaultPort) : t("randomPort")}>{t("port")}</Label><Input type="number" value={port} placeholder={pick.defaultPort ? String(pick.defaultPort) : t("randomPort")} onChange={(e) => setPort(e.target.value)} className="num" /></label>
             <label><Label>{t("remark")}</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} dir="ltr" /></label>
           </div>
           <Params fields={pick.fields} values={params} onChange={setParams} group={pick.group} />

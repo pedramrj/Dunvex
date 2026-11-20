@@ -36,6 +36,7 @@ type Manager struct {
 	SingBox *Core
 	MTG     *Core       // the Telegram (MTProto) proxy
 	AWG     *awg.Server // AmneziaWG (its own interface)
+	Mita    *Core       // the Mieru server
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -70,6 +71,12 @@ type Manager struct {
 	awgPrev  map[string]awg.PeerStat // last counters per peer
 	awgGen   int                     // amneziawg-go start those counters belong to
 	awgRetry int64                   // last time a stopped AmneziaWG was started again
+
+	mitaNow  *mitaPlan                // what mita serves now
+	mitaPrev map[string]store.Traffic // last counters per Mieru user
+	mitaGen  time.Time                // start of the mita process they came from
+	mitaGone map[string]int64         // users removed by a reload, and when
+	mitaKick int64                    // last restart to cut a removed user off
 }
 
 // NewManager wires a manager for the given home directory.
@@ -81,6 +88,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		SingBox:     &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
 		MTG:         &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
 		AWG:         awg.New(binDir, "dvxawg0"),
+		Mita:        &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
 		Env:         env,
 		applyCh:     make(chan struct{}, 1),
 		inboundErrs: map[int64]string{},
@@ -94,6 +102,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		overSince:   map[int64]int64{},
 	}
 	m.Xray.Live = m.xrayLive
+	m.Mita.Live = m.mitaLive
 	m.SingBox.OnLine = m.dev.singboxLine
 	m.dev.resolve = func(addr string) string {
 		if m.ClientOf != nil {
@@ -157,6 +166,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.Xray.Stop()
 			m.SingBox.Stop()
 			m.MTG.Stop()
+			m.Mita.Stop()
 			m.AWG.Stop()
 			return
 		case <-m.applyCh:
@@ -200,6 +210,8 @@ func (m *Manager) SNIRoutes() (map[string]edge.Target, error) {
 type built struct {
 	xray, singbox []byte
 	mtg           []byte   // the Telegram proxy (one per server)
+	mita          []byte   // Mieru (one per server)
+	mitaIn        int64    // its inbound
 	awg           *awgPlan // AmneziaWG (one per server)
 	errs          map[int64]string
 	active        map[string]bool
@@ -289,6 +301,17 @@ func (m *Manager) build() (b built, err error) {
 			}
 		}
 		switch p.Engine {
+		case "mita":
+			if b.mitaIn != 0 {
+				b.errs[in.ID] = "only one Mieru (TCP or UDP) can run on a server: it serves every user on its port"
+				continue
+			}
+			cfg, e := protocol.MieruServer(p, in, us, env.Listen)
+			if e != nil {
+				b.errs[in.ID] = e.Error()
+				continue
+			}
+			b.mita, b.mitaIn = cfg, in.ID // cfg is nil while nobody may use it: mita stays off
 		case "awg":
 			if b.awg != nil {
 				b.errs[in.ID] = "only one AmneziaWG can run on a server"
@@ -437,7 +460,7 @@ func (m *Manager) Apply() error {
 		for _, c := range []struct {
 			core *Core
 			cfg  []byte
-		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}} {
+		}{{m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}} {
 			if e := c.core.Apply(c.cfg); e != nil {
 				cerrs[c.core.Name] = e.Error()
 				continue
@@ -460,6 +483,18 @@ func (m *Manager) Apply() error {
 		}
 		xcfg, scfg, tcfg = b.xray, b.singbox, b.mtg
 		ierrs, active = b.errs, b.active
+	}
+	m.mu.Lock()
+	m.mitaNow = nil
+	if b.mita != nil {
+		m.mitaNow = &mitaPlan{inbound: b.mitaIn}
+	}
+	m.mu.Unlock()
+	if b.mita != nil && cerrs["mita"] == "" {
+		if err := m.mitaServing(); err != nil {
+			cerrs["mita"] = err.Error()
+			ierrs[b.mitaIn] = err.Error()
+		}
 	}
 	if err := m.awgApply(b.awg); err != nil {
 		cerrs["amneziawg"] = err.Error()
@@ -596,6 +631,7 @@ func (m *Manager) collect() bool {
 		}
 	}
 	m.awgCollect(ud, id)
+	m.mitaCollect(byName, ud, id)
 	for _, t := range id {
 		totUp, totDown = totUp+t.Up, totDown+t.Down
 	}

@@ -235,6 +235,11 @@ func (a *Agent) Apply(s State) error {
 				log.Printf("node: mtg: %v", err) // the status reports it as a core error
 			}
 		}
+		if p.Engine == "mita" && in.Enabled && !a.Mgr.Mita.Installed() {
+			if _, err := coremgr.InstallMita(a.Mgr.Mita.BinDir); err != nil {
+				log.Printf("node: mita: %v", err)
+			}
+		}
 		if p.Engine == "awg" && in.Enabled && !a.Mgr.AWG.Installed() {
 			if _, err := coremgr.InstallAWG(a.Mgr.AWG.BinDir); err != nil {
 				log.Printf("node: amneziawg-go: %v", err)

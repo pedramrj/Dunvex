@@ -83,7 +83,8 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] XDNS DNS tunnel for shutdowns, with the DNS records explained in the panel (v1.9)
 - [x] Telegram proxy (MTProto, mtg) that can share port 443 by SNI (v1.9)
 - [x] AmneziaWG 3.1 and 2.0 with a .conf and QR per user, live user changes, usage and devices (v1.10)
-- [ ] Mieru (mita server), TrustTunnel (AdGuard)
+- [x] Mieru over TCP or UDP, with per-user usage and live user changes (v1.11)
+- [ ] TrustTunnel (AdGuard)
 - [ ] dnstt / Slipstream (XDNS covers DNS tunnels for Xray apps), xICMP
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 

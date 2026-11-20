@@ -393,6 +393,12 @@ func setup(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ amneziawg-go", v)
 		}
+		fmt.Println("• Downloading mita (Mieru) ...")
+		if v, err := coremgr.InstallMita(binDir); err != nil {
+			fmt.Println("  ! mita:", err)
+		} else {
+			fmt.Println("  ✓ mita", v)
+		}
 		fmt.Println("• Downloading GeoIP country data ...")
 		if src, err := coremgr.InstallGeoIP(home); err != nil {
 			fmt.Println("  ! GeoIP:", err)
@@ -552,6 +558,11 @@ func core(home string, args []string) error {
 		fmt.Println("! amneziawg-go:", err)
 	} else {
 		fmt.Println("✓ amneziawg-go", v)
+	}
+	if v, err := coremgr.InstallMita(binDir); err != nil {
+		fmt.Println("! mita:", err)
+	} else {
+		fmt.Println("✓ mita", v)
 	}
 	if src, err := coremgr.InstallGeoIP(home); err != nil {
 		fmt.Println("! GeoIP:", err)

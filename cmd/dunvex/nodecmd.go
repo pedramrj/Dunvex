@@ -127,6 +127,12 @@ func nodeInit(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ amneziawg-go", v)
 		}
+		fmt.Println("• Downloading mita (Mieru) ...")
+		if v, err := coremgr.InstallMita(binDir); err != nil {
+			fmt.Println("  ! mita:", err)
+		} else {
+			fmt.Println("  ✓ mita", v)
+		}
 	}
 	tok, err := node.Init(st, filepath.Join(home, "certs"), nodeHost(st), nodePort(st), false)
 	if err != nil {

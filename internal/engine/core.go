@@ -91,6 +91,8 @@ func (c *Core) Version() string {
 	switch {
 	case c.Name == "mtg" && len(f) >= 1:
 		v = f[0] // "2.3.0 (go1.x, …)"
+	case c.Name == "mita" && len(f) >= 1:
+		v = f[len(f)-1] // a log line ending in "3.39.0"
 	case c.Name == "xray" && len(f) >= 2:
 		v = f[1]
 	case len(f) >= 3:
@@ -132,6 +134,12 @@ func (c *Core) env() []string {
 	if c.Name == "sing-box" {
 		env = append(env, "ENABLE_DEPRECATED_LEGACY_DNS_SERVERS=true")
 	}
+	if c.Name == "mita" {
+		// mita reads its JSON from our file and is controlled through its own
+		// socket, without the "mita" system user its package would create
+		env = append(env, "MITA_CONFIG_JSON_FILE="+c.ConfigPath, "MITA_UDS_PATH="+c.Socket(),
+			"MITA_INSECURE_UDS=1", "MITA_LOG_NO_TIMESTAMP=1")
+	}
 	return env
 }
 
@@ -149,8 +157,8 @@ func (c *Core) Test(cfg []byte) error {
 	switch c.Name {
 	case "xray":
 		cmd = exec.Command(c.Bin(), "run", "-test", "-c", tmp)
-	case "mtg":
-		return nil // mtg has no check command; Dunvex writes its few lines itself
+	case "mtg", "mita":
+		return nil // no check command; Dunvex writes these small configs itself
 	default:
 		cmd = exec.Command(c.Bin(), "check", "-c", tmp)
 	}
@@ -193,6 +201,22 @@ func (c *Core) Apply(cfg []byte) error {
 	return c.start()
 }
 
+// MitaMetricsDump is where mita keeps its counters between starts.
+var MitaMetricsDump = "/var/lib/mita/metrics.pb"
+
+// Socket is the control socket of a core that has one (mita).
+func (c *Core) Socket() string { return filepath.Join(filepath.Dir(c.ConfigPath), c.Name+".sock") }
+
+// StartedAt is when the current process started (zero when stopped).
+func (c *Core) StartedAt() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cmd == nil {
+		return time.Time{}
+	}
+	return c.startedAt
+}
+
 // Running reports whether the process is alive.
 func (c *Core) Running() bool {
 	c.mu.Lock()
@@ -219,8 +243,14 @@ func (c *Core) start() error {
 	defer c.mu.Unlock()
 	c.killStale()
 	cmd := exec.Command(c.Bin(), "run", "-c", c.ConfigPath)
-	if c.Name == "mtg" {
+	switch c.Name {
+	case "mtg":
 		cmd = exec.Command(c.Bin(), "run", c.ConfigPath)
+	case "mita":
+		// mita keeps per-user totals in one file and reloads them at start; a
+		// crash can bring back older totals, so each start counts from zero
+		os.Remove(MitaMetricsDump)
+		cmd = exec.Command(c.Bin(), "run")
 	}
 	cmd.Env = c.env()
 	cmd.Dir = c.BinDir

@@ -422,3 +422,31 @@ func InstallAWG(binDir string) (string, error) {
 	}
 	return "", fmt.Errorf("%s is not published with %s yet", want, r.Tag)
 }
+
+// InstallMita downloads mita, the Mieru server (by enfein, GPL-3.0), from the
+// latest Mieru release into binDir. Its archives hold the single binary.
+func InstallMita(binDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("mita (Mieru) runs on Linux servers only")
+	}
+	r, err := latest("enfein/mieru")
+	if err != nil {
+		return "", err
+	}
+	ver := strings.TrimPrefix(r.Tag, "v")
+	want := fmt.Sprintf("mita_%s_linux_%s.tar.gz", ver, goarch())
+	for _, a := range r.Assets {
+		if a.Name != want {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		if err := extractTarGz(data, binDir, map[string]string{"mita": "mita"}); err != nil {
+			return "", err
+		}
+		return ver, nil
+	}
+	return "", fmt.Errorf("no mita build for linux/%s in %s", goarch(), r.Tag)
+}

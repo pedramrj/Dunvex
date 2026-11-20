@@ -111,6 +111,8 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 	case "amneziawg":
 		// not a URI: the .conf the AmneziaWG apps import (or scan as a QR)
 		return AWGConfig(in, u, env)
+	case "mieru":
+		return mieruLink(p, in, u, env, remark)
 	case "mtproto":
 		// opens straight in Telegram; one secret for everyone
 		q.Set("server", host)
@@ -306,6 +308,8 @@ func Clash(p *Preset, in *store.Inbound, u *store.User, env Env, name string) ob
 	case "http":
 		c["type"], c["username"], c["password"] = "http", u.Name, u.Password
 		delete(c, "udp")
+	case "mieru":
+		mieruClash(p, in, u, c)
 	default:
 		return nil
 	}

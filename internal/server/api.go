@@ -845,6 +845,21 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if p.Engine == "mita" {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if q := protocol.Get(x.Preset); protocol.IsMieru(q) {
+				fail(w, 400, "this server already has a Mieru ("+q.Name+"); one per server, because it serves every user on its port")
+				return
+			}
+		}
+		// mita arrives with the first Mieru inbound
+		if in.NodeID == 0 && !s.Mgr.Mita.Installed() {
+			if _, err := coremgr.InstallMita(s.Mgr.Mita.BinDir); err != nil {
+				fail(w, 502, "could not download mita (the Mieru server): "+err.Error())
+				return
+			}
+		}
+	}
 	if p.Engine == "awg" {
 		for _, x := range s.inboundsOn(in.NodeID) {
 			if x.Preset == p.ID {
@@ -1147,6 +1162,10 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 		s.Mgr.AWG.Stop()
 		ver, err = coremgr.InstallAWG(s.Mgr.AWG.BinDir)
 		s.Mgr.AWG.ResetVersion()
+	case "mita":
+		s.Mgr.Mita.Stop()
+		ver, err = coremgr.InstallMita(binDir)
+		s.Mgr.Mita.ResetVersion()
 	default:
 		fail(w, 404, "unknown core")
 		return
@@ -1199,6 +1218,8 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 	case "amneziawg":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(s.Mgr.AWGConfig())
+	case "mita":
+		w.Write(s.Mgr.MitaConfig())
 	default:
 		w.Write(orEmpty(x))
 	}

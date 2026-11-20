@@ -60,6 +60,7 @@ var (
 	fSSMethod  = Field{Key: "method", Label: "Cipher", LabelFa: "رمزنگاری", Type: "select", Options: []string{"2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305"}}
 	fSSClassic = Field{Key: "method", Label: "Cipher", LabelFa: "رمزنگاری", Type: "select", Options: []string{"chacha20-ietf-poly1305", "aes-256-gcm", "aes-128-gcm"}}
 	fMTU       = Field{Key: "mtu", Label: "MTU", LabelFa: "MTU", Type: "number", Advanced: true}
+	fMieruMux  = Field{Key: "multiplexing", Label: "Multiplexing in the apps (LOW suits most networks)", LabelFa: "مالتی‌پلکس در برنامه‌ها (LOW برای بیشتر شبکه‌ها مناسب است)", Type: "select", Options: MieruMux, Advanced: true}
 	fCC        = Field{Key: "congestion", Label: "Congestion control", LabelFa: "کنترل ازدحام", Type: "select", Options: []string{"bbr", "cubic", "new_reno"}}
 	fHandshake = Field{Key: "handshake", Label: "Handshake server", LabelFa: "سرور دست‌دهی", Type: "text"}
 	fMasq      = Field{Key: "masquerade", Label: "Masquerade site", LabelFa: "سایت پوششی", Type: "text", Advanced: true}
@@ -192,6 +193,16 @@ var presets = []*Preset{
 		Desc:   "A proxy inside Telegram itself: users add it with one tap, no VPN app needed. It looks like an HTTPS visit to the site you choose, and can share port 443. One per server; one link for everyone, so usage is not counted per user.",
 		DescFa: "پراکسی داخل خود تلگرام: کاربر با یک لمس اضافه‌اش می‌کند و برنامهٔ VPN لازم نیست. شبیه بازدید HTTPS از سایتی است که انتخاب می‌کنید و می‌تواند پورت ۴۴۳ را شریک شود. هر سرور یکی؛ یک لینک برای همه، پس مصرف هر کاربر جدا شمرده نمی‌شود.",
 		Fields: []Field{fFakeTLS}},
+	{ID: "mieru", Name: "Mieru", Engine: "mita", Group: "classic", Network: "tcp", DefaultPort: 0,
+		Security: "none", Status: "ready", proto: "mieru",
+		Desc:   "TCP with no fixed pattern: no handshake to fingerprint, random padding and a key from each user's name, password and the time. For Clash.Meta (mihomo) apps, Karing and Exclave. One Mieru per server, TCP or UDP; the device limit does not apply to it.",
+		DescFa: "TCP بدون الگوی ثابت: دست‌دادنی برای شناسایی ندارد، پر کردن تصادفی دارد و کلیدش از نام، رمز و زمان ساخته می‌شود. برای برنامه‌های Clash.Meta (mihomo)، Karing و Exclave. هر سرور یک Mieru (TCP یا UDP)؛ محدودیت دستگاه روی آن اعمال نمی‌شود.",
+		Fields: []Field{fMieruMux}},
+	{ID: "mieru-udp", Name: "Mieru · UDP", Engine: "mita", Group: "udp", Network: "udp", DefaultPort: 0,
+		Security: "none", Status: "ready", proto: "mieru",
+		Desc:   "Mieru over UDP: often faster on lossy networks, where UDP is not blocked. Same apps as Mieru; one Mieru per server.",
+		DescFa: "Mieru روی UDP: در شبکه‌های پرافت اغلب سریع‌تر است، جایی که UDP بسته نیست. همان برنامه‌های Mieru؛ هر سرور یک Mieru.",
+		Fields: []Field{fMTU, fMieruMux}},
 	{ID: "amneziawg", Name: "AmneziaWG", Engine: "awg", Group: "udp", Network: "udp", DefaultPort: 51821,
 		Security: "none", Status: "ready", proto: "amneziawg",
 		Desc:   "WireGuard that DPI cannot recognise: junk packets, padded messages, random headers and (3.1) header protection. A full VPN tunnel for the AmneziaWG and AmneziaVPN apps (import the .conf or scan its QR). One per server.",
@@ -292,6 +303,8 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		set("resolver", "8.8.8.8")
 	case "amneziawg":
 		awgDefaults(params)
+	case "mieru", "mieru-udp":
+		mieruDefaults(params)
 	case "mtproto":
 		set("sni", DefaultFakeTLS)
 		if k, _ := params["mtKey"].(string); len(k) != 32 {
