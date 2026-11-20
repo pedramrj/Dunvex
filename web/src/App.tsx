@@ -4,7 +4,7 @@ import {
   LayoutDashboard, LogOut, Maximize2, Monitor, Moon, Network, Plus, Route as RouteIcon, ScrollText, Search, Server, Settings as SettingsIcon, ShieldCheck,
   ShoppingBag, Star, Sun, UserPlus, Users as UsersIcon, Wallet, Waypoints, X, Zap,
 } from "lucide-react";
-import { api, setUnauthorizedHandler, VERSION, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
+import { api, setUnauthorizedHandler, VERSION_LABEL, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
 import { ago, cx } from "./lib/format";
 import { useI18n, type Key } from "./lib/i18n";
 import { usePrefs, useHotkey, type Theme } from "./lib/prefs";
@@ -208,7 +208,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
               {page === "sales" && <BillingPage />}
               {page === "wallet" && <WalletPage />}
             </div>
-            <footer className="mt-12 text-center text-[11.5px] text-ink3">Dunvex · Powered by Pedram · <span className="mono" dir="ltr">v{VERSION}</span></footer>
+            <footer className="mt-12 text-center text-[11.5px] text-ink3">Dunvex · Powered by Pedram · <span className="mono" dir="ltr">{VERSION_LABEL}</span></footer>
           </main>
         </div>
 
@@ -286,7 +286,7 @@ function Sidebar({ items, page, me, status, unread, onLogout }: { items: NavItem
           {!collapsed && (
             <div className="min-w-0">
               <Logo part="wordmark" width={112} />
-              <div className="text-[10.5px] text-ink3 mt-1 mono" dir="ltr">v{VERSION}</div>
+              <div className="text-[10.5px] text-ink3 mt-1 mono" dir="ltr">{VERSION_LABEL}</div>
             </div>
           )}
         </div>

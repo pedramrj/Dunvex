@@ -59,6 +59,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
+- **Webhooks and Prometheus metrics (v1.19)**: every event (users limited or expired, servers offline, core errors,
+  sign-ins, orders…) goes to your own code as signed JSON, or to Slack and Discord, with retries and a delivery log;
+  and `/api/metrics` gives Prometheus users, traffic per user and protocol, protocol and core health, each server's
+  resources, certificate expiry and relays, behind a read-only API key. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 - **CDN helper (v1.17)**: put the CDN protocols behind Cloudflare. Their configs go through the CDN name plus one per
   clean address (labelled, for example by operator); a check tries the DNS, each protocol through the CDN and straight
   to the server, and each clean address, explaining Cloudflare's errors; and one click with your own API token (never
@@ -145,6 +149,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
+- **وب‌هوک و آمار Prometheus (نسخهٔ ۱.۱۹)**: هر رویداد (محدود یا منقضی شدن کاربران، قطع شدن سرورها، خطای هسته‌ها، ورودها،
+  سفارش‌ها و…) به برنامهٔ خودتان با JSON امضاشده یا به Slack و Discord فرستاده می‌شود، با تلاش دوباره و فهرست ارسال‌ها؛ و
+  ‎`/api/metrics`‎ برای Prometheus کاربران، مصرف هر کاربر و پروتکل، سلامت پروتکل‌ها و هسته‌ها، منابع هر سرور، انقضای گواهی‌ها
+  و رله‌ها را با یک کلید API فقط‌خواندنی می‌دهد. راهنما: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
 - **دستیار CDN (نسخهٔ ۱.۱۷)**: پروتکل‌های CDN پشت کلادفلر؛ کانفیگ‌ها از راه نام CDN و یکی هم برای هر آی‌پی تمیز (با
   برچسب، مثلاً نام اپراتور)؛ بررسی DNS، هر پروتکل از راه CDN و مستقیم و هر آی‌پی تمیز با توضیح خطاهای کلادفلر؛ و با یک
   کلیک و توکن API خودتان (که ذخیره نمی‌شود) رکورد DNS پروکسی ساخته و SSL/TLS و WebSockets درست می‌شود. راهنما:

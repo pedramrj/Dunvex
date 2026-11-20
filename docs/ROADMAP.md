@@ -110,4 +110,4 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Routing: Iranian sites direct, blocked or through WARP (server) and direct on devices (subscriptions), ad and
       adult blocking, own domains; Cloudflare WARP for chosen sites or everything, for Mieru and TrustTunnel too (v1.14)
 - [x] REST API with tokens (v1.6)
-- [ ] Webhooks, Prometheus metrics
+- [x] Webhooks (signed JSON, Slack, Discord; retries and a delivery log) and Prometheus metrics (v1.19)

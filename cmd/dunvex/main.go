@@ -35,6 +35,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/sysinfo"
 	"github.com/pedramrj/dunvex/internal/tlsmgr"
 	"github.com/pedramrj/dunvex/internal/util"
+	"github.com/pedramrj/dunvex/internal/webhook"
 	"github.com/pedramrj/dunvex/web"
 )
 
@@ -289,6 +290,15 @@ func serve(home string) error {
 		ShopURL: func() string { return srv.ShopURL(nil) }})
 	srv.Bot = tg
 	tg.Start()
+	// every event also goes to the webhooks (and is counted for the metrics)
+	srv.Hooks = &webhook.Sender{St: st, Version: Version, Panel: func() string { return st.GetSetting("sub_title", "Dunvex") }}
+	prevLog := st.OnLog
+	st.OnLog = func(kind, msg string) {
+		if prevLog != nil {
+			prevLog(kind, msg)
+		}
+		srv.OnEvent(kind, msg)
+	}
 
 	// the panel's port is shared: Reality inbounds on it are reached by SNI,
 	// everything else (panel, subscription page, probes) gets the panel

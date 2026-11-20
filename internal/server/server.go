@@ -28,6 +28,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
 	"github.com/pedramrj/dunvex/internal/util"
+	"github.com/pedramrj/dunvex/internal/webhook"
 )
 
 // Server bundles everything the HTTP layer needs.
@@ -45,6 +46,9 @@ type Server struct {
 	WarpAPI       string                 // Cloudflare's WARP API ("" = the real one; tests point it elsewhere)
 	CloudflareAPI string                 // Cloudflare's API for the CDN setup ("" = the real one)
 	SelfBinary    func() ([]byte, error) // this panel's executable, sent to nodes ("" = os.Executable; tests replace it)
+	Hooks         *webhook.Sender        // delivers events to webhooks
+
+	evCount eventCounter // events by kind since the start, for the metrics
 
 	Tunnels *relay.Tunnels // this server's links to reverse relays in front of it
 

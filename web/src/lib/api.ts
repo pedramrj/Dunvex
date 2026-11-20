@@ -7,6 +7,8 @@ declare global {
 
 export const BASE = (window.__DVX__?.base ?? "/panel/") + "api/";
 export const VERSION = window.__DVX__?.version ?? "dev";
+/** The version as shown: releases already carry their "v" ("v1.19.0"); a development build is "dev". */
+export const VERSION_LABEL = /^v|^dev$/.test(VERSION) ? VERSION : "v" + VERSION;
 
 export class ApiError extends Error {
   status: number;

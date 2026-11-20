@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bot, Palette, Sparkles, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
-  UserCog, Users as UsersIcon,
+  UserCog, Users as UsersIcon, Webhook,
 } from "lucide-react";
 import { api, BASE, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
 import { GB, bytes, cx, date, duration } from "../lib/format";
@@ -12,10 +12,11 @@ import {
 import { PageHead, can, roleColor, roleKey, useSession } from "../App";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
 import { Logo } from "../components/Logo";
+import { IntegrationsTab } from "./Integrations";
 
 type S = Record<string, string>;
 type Info = { publicIp: string; effectiveHost: string; selfSigned: boolean; certExpiry?: number; telegram?: { running: boolean; configured: boolean; username: string; error: string; admins: number } };
-type TabId = "appearance" | "server" | "sub" | "brand" | "panel" | "security" | "admins" | "telegram" | "cores" | "backup";
+type TabId = "appearance" | "server" | "sub" | "brand" | "panel" | "security" | "admins" | "telegram" | "integrations" | "cores" | "backup";
 
 const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
   { id: "appearance", key: "appearance", icon: Palette, need: "reseller" },
@@ -26,6 +27,7 @@ const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
   { id: "security", key: "security", icon: ShieldCheck, need: "reseller" },
   { id: "admins", key: "admins", icon: UsersIcon, need: "owner" },
   { id: "telegram", key: "telegram", icon: Bot, need: "owner" },
+  { id: "integrations", key: "integrations", icon: Webhook, need: "owner" },
   { id: "cores", key: "cores", icon: Cpu, need: "admin" },
   { id: "backup", key: "backup", icon: HardDriveDownload, need: "owner" },
 ];
@@ -63,6 +65,7 @@ export function SettingsPage({ arg }: { arg?: string }) {
           {tab === "admins" && <AdminsTab />}
           {tab === "cores" && <CoresPanel />}
           {tab === "backup" && <BackupPanel />}
+          {tab === "integrations" && <IntegrationsTab />}
         </div>
       </div>
     </div>
