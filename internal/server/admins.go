@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -14,6 +15,14 @@ import (
 
 type ctxKey struct{}
 
+// sessionKey carries the request's session id (empty for API keys).
+type sessionKey struct{}
+
+func sessionOf(r *http.Request) string {
+	s, _ := r.Context().Value(sessionKey{}).(string)
+	return s
+}
+
 // adminOf returns the signed-in admin of an authenticated request.
 func adminOf(r *http.Request) *store.Admin {
 	a, _ := r.Context().Value(ctxKey{}).(*store.Admin)
@@ -23,7 +32,11 @@ func adminOf(r *http.Request) *store.Admin {
 // need wraps a handler with login, role and CSRF checks.
 func (s *Server) need(role string, h handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		a := s.currentAdmin(r)
+		a, sid := s.cookieAdmin(r)
+		var key *store.APIKey
+		if a == nil {
+			a, key = s.keyAdmin(r)
+		}
 		if a == nil {
 			fail(w, http.StatusUnauthorized, "login required")
 			return
@@ -32,11 +45,23 @@ func (s *Server) need(role string, h handler) http.Handler {
 			fail(w, http.StatusForbidden, "your role cannot do this")
 			return
 		}
-		if r.Method != http.MethodGet && r.Header.Get("X-Dunvex") != "1" {
+		if key != nil {
+			// a key works the panel, but cannot change who may sign in
+			// (a restore would replace the admins too)
+			if strings.HasPrefix(r.URL.Path, "/account") || r.URL.Path == "/logout" || strings.HasPrefix(r.URL.Path, "/admins") || r.URL.Path == "/restore" {
+				fail(w, http.StatusForbidden, "API keys cannot manage accounts, sessions, keys or restores")
+				return
+			}
+			if key.ReadOnly && r.Method != http.MethodGet {
+				fail(w, http.StatusForbidden, "this API key is read-only")
+				return
+			}
+		} else if r.Method != http.MethodGet && r.Header.Get("X-Dunvex") != "1" {
 			fail(w, http.StatusForbidden, "missing request header")
 			return
 		}
-		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, a)))
+		ctx := context.WithValue(r.Context(), ctxKey{}, a)
+		h(w, r.WithContext(context.WithValue(ctx, sessionKey{}, sid)))
 	})
 }
 

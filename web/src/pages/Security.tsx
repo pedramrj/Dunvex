@@ -5,6 +5,7 @@ import { ago, cx } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { Avatar, Badge, Button, EventMsg, Panel, StatCard, Num } from "../components/ui";
 import { PageHead, navigate, roleColor, roleKey, useSession } from "../App";
+import { ApiKeysPanel, SessionsPanel } from "./Access";
 
 /** Security centre: sign-ins, failures, two-step login and roles, from real events. */
 export function SecurityPage() {
@@ -73,6 +74,8 @@ export function SecurityPage() {
             </Panel>
           )}
         </div>
+        <SessionsPanel className="xl:col-span-7" me={me.admin.username} />
+        <ApiKeysPanel className="xl:col-span-5" me={me.admin.username} />
       </div>
     </div>
   );

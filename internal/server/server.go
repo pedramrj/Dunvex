@@ -262,8 +262,14 @@ func (s *Server) sign(payload string) string {
 }
 
 func (s *Server) issueSession(w http.ResponseWriter, r *http.Request, a *store.Admin) {
-	exp := time.Now().Add(7 * 24 * time.Hour).Unix()
-	payload := fmt.Sprintf("%d.%d.%s", a.ID, exp, pwStamp(a.PasswordHash))
+	now := time.Now()
+	exp := now.Add(7 * 24 * time.Hour).Unix()
+	// the session is also a row, so it can be listed and signed out elsewhere
+	sid := util.RandomString(24)
+	s.St.PruneSessions(now.Unix())
+	s.St.CreateSession(&store.Session{ID: sid, AdminID: a.ID, IP: clientIP(r), Agent: agentOf(r),
+		CreatedAt: now.Unix(), LastSeen: now.Unix(), ExpiresAt: exp})
+	payload := fmt.Sprintf("%d.%d.%s.%s", a.ID, exp, pwStamp(a.PasswordHash), sid)
 	val := base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + s.sign(payload)
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: val, Path: s.PanelPath(), HttpOnly: true,
 		SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, Expires: time.Unix(exp, 0)})
@@ -274,37 +280,85 @@ func pwStamp(hash string) string {
 	return base64.RawURLEncoding.EncodeToString(h[:6])
 }
 
+// agentOf is the browser's user agent, kept short.
+func agentOf(r *http.Request) string {
+	ua := r.UserAgent()
+	if len(ua) > 300 {
+		ua = ua[:300]
+	}
+	return ua
+}
+
 func (s *Server) currentAdmin(r *http.Request) *store.Admin {
+	a, _ := s.cookieAdmin(r)
+	return a
+}
+
+// cookieAdmin checks the session cookie and returns its admin and session id.
+func (s *Server) cookieAdmin(r *http.Request) (*store.Admin, string) {
 	c, err := r.Cookie(cookieName)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 	parts := strings.SplitN(c.Value, ".", 2)
 	if len(parts) != 2 {
-		return nil
+		return nil, ""
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 	payload := string(raw)
 	if subtle.ConstantTimeCompare([]byte(s.sign(payload)), []byte(parts[1])) != 1 {
-		return nil
+		return nil, ""
 	}
 	f := strings.Split(payload, ".")
-	if len(f) != 3 {
-		return nil
+	if len(f) != 4 {
+		return nil, "" // cookies from before session rows: sign in once more
 	}
 	id, _ := strconv.ParseInt(f[0], 10, 64)
 	exp, _ := strconv.ParseInt(f[1], 10, 64)
-	if time.Now().Unix() > exp {
-		return nil
+	now := time.Now().Unix()
+	if now > exp {
+		return nil, ""
 	}
 	a, err := s.St.AdminByID(id)
 	if err != nil || !a.Enabled || pwStamp(a.PasswordHash) != f[2] {
-		return nil
+		return nil, ""
 	}
-	return a
+	sess, err := s.St.SessionByID(f[3])
+	if err != nil || sess.AdminID != a.ID || sess.ExpiresAt < now {
+		return nil, "" // signed out from another device
+	}
+	if now-sess.LastSeen >= 60 {
+		s.St.TouchSession(sess.ID, clientIP(r), now)
+	}
+	return a, sess.ID
+}
+
+// keyAdmin checks an "Authorization: Bearer dvx_…" API key.
+func (s *Server) keyAdmin(r *http.Request) (*store.Admin, *store.APIKey) {
+	h := r.Header.Get("Authorization")
+	tok, ok := strings.CutPrefix(h, "Bearer ")
+	if !ok || !strings.HasPrefix(tok, keyPrefix) {
+		return nil, nil
+	}
+	k, err := s.St.APIKeyByHash(keyHash(tok))
+	if err != nil {
+		return nil, nil
+	}
+	now := time.Now().Unix()
+	if k.ExpiresAt > 0 && now > k.ExpiresAt {
+		return nil, nil
+	}
+	a, err := s.St.AdminByID(k.AdminID)
+	if err != nil || !a.Enabled {
+		return nil, nil
+	}
+	if now-k.LastUsed >= 60 {
+		s.St.TouchAPIKey(k.ID, now)
+	}
+	return a, k
 }
 
 // HashPassword hashes an admin password.

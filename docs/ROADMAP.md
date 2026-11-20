@@ -57,7 +57,13 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] No random admin password: a one-time setup link (and QR) lets the owner choose the username and password
 - [x] SSH menu without arrow keys: 1–8 open sections, letters run actions, `?` shows every key
 
-## Phase 3: More protocols (v1.6)
+## Sessions and API keys (v1.6) ✅
+- [x] Every sign-in is a session you can see (device, IP, last activity) and sign out from another device;
+      "sign out everywhere else"; the owner sees every admin's sessions
+- [x] API keys for scripts and bots (`Authorization: Bearer dvx_…`): read-only or full, with expiry, shown once,
+      stored as a hash; keys cannot manage accounts, sessions, keys, admins or restores. See [API.md](API.md)
+
+## Phase 3: More protocols (v1.7)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
@@ -66,4 +72,5 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [ ] Multi-server: central panel + node agent (mTLS)
 - [ ] Relays and tunnels between the domestic and foreign servers, CDN helper
 - [ ] Routing: Iranian sites go direct, ad blocking, WARP output
-- [ ] REST API with tokens, webhooks, Prometheus metrics
+- [x] REST API with tokens (v1.6)
+- [ ] Webhooks, Prometheus metrics

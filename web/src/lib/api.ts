@@ -85,6 +85,33 @@ export interface User {
 
 export type Role = "owner" | "admin" | "reseller";
 
+/** A signed-in browser of an admin. */
+export interface AdminSession {
+  id: string;
+  adminId: number;
+  admin: string;
+  ip: string;
+  agent: string;
+  device: string;
+  createdAt: number;
+  lastSeen: number;
+  expiresAt: number;
+  current: boolean;
+}
+
+/** An API key; the key itself is shown only when it is made. */
+export interface ApiKey {
+  id: number;
+  adminId: number;
+  admin: string;
+  name: string;
+  prefix: string;
+  readOnly: boolean;
+  createdAt: number;
+  lastUsed: number;
+  expiresAt: number;
+}
+
 export interface Admin {
   id: number;
   username: string;

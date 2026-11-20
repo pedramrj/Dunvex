@@ -51,6 +51,8 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Live changes**: adding, limiting or renewing a user reaches Xray at once, without disconnecting anyone else.
 - **Device limit**: set how many devices may connect at once; the panel shows each user's connected addresses.
 - **Admins**: owner, admin and reseller roles (resellers manage only their own users, within a user and data quota), two-step login (TOTP).
+- **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
+  with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
@@ -106,6 +108,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **تغییر زنده**: ساختن، محدود کردن یا تمدید کاربر بدون قطع شدن بقیه اعمال می‌شود.
 - **محدودیت دستگاه**: تعداد دستگاه هم‌زمان هر کاربر، با نمایش IPهای متصل.
 - **مدیران**: نقش مالک، مدیر و نماینده فروش (با سقف کاربر و حجم) و ورود دو مرحله‌ای.
+- **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
+  برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.

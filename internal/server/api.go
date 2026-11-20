@@ -38,6 +38,12 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /account/2fa/setup", R, s.totpSetup)
 	h("POST /account/2fa/enable", R, s.totpEnable)
 	h("POST /account/2fa/disable", R, s.totpDisable)
+	h("GET /account/sessions", R, s.listSessions)
+	h("DELETE /account/sessions/{id}", R, s.endSession)
+	h("POST /account/sessions/others", R, s.endOtherSessions)
+	h("GET /account/keys", R, s.listKeys)
+	h("POST /account/keys", R, s.createKey)
+	h("DELETE /account/keys/{id}", R, s.deleteKey)
 
 	h("GET /overview", R, s.overview)
 	h("GET /status", R, s.status)
@@ -130,6 +136,9 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if sid := sessionOf(r); sid != "" {
+		s.St.DeleteSession(sid)
+	}
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: s.PanelPath(), MaxAge: -1, HttpOnly: true})
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }

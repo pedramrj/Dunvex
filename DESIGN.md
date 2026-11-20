@@ -94,7 +94,7 @@ On phones both become lists.
 
 ## Data honesty
 Every number comes from the server. Features the backend does not have yet (billing, more than one
-server, session list, API keys) are shown as such, never with sample data.
+server) are shown as such, never with sample data.
 
 ## Motion
 An intro plays once per session (GSAP): particles, the emblem rising, a light sweep, the wordmark and the
