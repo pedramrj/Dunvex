@@ -706,11 +706,20 @@ type ConfigEntry struct {
 	// its file name, and its QR inline so the private key stays out of URLs
 	File string `json:"file,omitempty"`
 	QR   string `json:"qr,omitempty"`
+	// the relay this config goes through (0: straight to its server)
+	RelayID int64 `json:"relayId,omitempty"`
 }
 
 // confName is a .conf file name that is also a valid interface name in the
 // apps (at most 15 letters, digits or -_.=+), unique per inbound.
-func confName(title string, id int64) string {
+// confNameVia names the .conf of an inbound reached through relay rid.
+func confNameVia(title string, id, rid int64) string {
+	return confNameSuffix(title, fmt.Sprintf("-%dr%d", id, rid))
+}
+
+func confName(title string, id int64) string { return confNameSuffix(title, fmt.Sprintf("-%d", id)) }
+
+func confNameSuffix(title, suffix string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(title) {
 		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
@@ -721,7 +730,6 @@ func confName(title string, id int64) string {
 	if base == "" {
 		base = "dunvex"
 	}
-	suffix := fmt.Sprintf("-%d", id)
 	if len(base)+len(suffix) > 15 {
 		base = base[:15-len(suffix)]
 	}
@@ -744,13 +752,27 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		if in.NodeID != 0 && nodes[in.NodeID] == nil {
 			continue // its server was removed
 		}
-		name := remarkFor(in, p, u, title, nodes)
-		if l := protocol.Link(p, in, u, s.envFor(in, local, nodes), name); l != "" {
-			c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l}
-			if strings.HasPrefix(l, "[Interface]") {
-				c.File, c.QR = confName(title, in.ID), QRSVG(l)
+		env := s.envFor(in, local, nodes)
+		relays := relaysFor(in, p, nodes)
+		if !onlyViaRelay(relays) {
+			name := remarkFor(in, p, u, title, nodes)
+			if l := protocol.Link(p, in, u, env, name); l != "" {
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l}
+				if strings.HasPrefix(l, "[Interface]") {
+					c.File, c.QR = confName(title, in.ID), QRSVG(l)
+				}
+				out = append(out, c)
 			}
-			out = append(out, c)
+		}
+		for _, r := range relays {
+			name := relayRemark(in, p, title, r)
+			if l := protocol.Link(p, viaRelay(in, r), u, env, name); l != "" {
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, RelayID: r.ID}
+				if strings.HasPrefix(l, "[Interface]") {
+					c.File, c.QR = confNameVia(title, in.ID, r.ID), QRSVG(l)
+				}
+				out = append(out, c)
+			}
 		}
 	}
 	return out
@@ -857,8 +879,12 @@ func (s *Server) checkServer(nodeID int64, p *protocol.Preset) string {
 	if nodeID == 0 {
 		return ""
 	}
-	if _, err := s.St.NodeByID(nodeID); err != nil {
+	n, err := s.St.NodeByID(nodeID)
+	if err != nil {
 		return "that server does not exist"
+	}
+	if n.IsRelay() {
+		return n.Name + " is a relay: it forwards to another server and runs no protocols of its own"
 	}
 	if p.NeedsDomain {
 		return p.Name + " needs a domain and a certificate; on other servers use Reality or another protocol without a domain"

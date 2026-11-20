@@ -160,6 +160,11 @@ func (s *Server) desired(n *store.Node) node.State {
 		"block_torrent": s.St.GetSetting("block_torrent", "true"),
 		"routing":       s.St.GetSetting("routing", ""),
 	}}
+	if n.IsRelay() {
+		// a relay forwards ports; it needs no protocols or users
+		st.Forwards = s.relayForwards(n)
+		return st
+	}
 	inbounds, _ := s.St.Inbounds()
 	for _, in := range inbounds {
 		if in.NodeID == n.ID {
@@ -189,7 +194,7 @@ func (s *Server) desired(n *store.Node) node.State {
 
 func stateHash(st node.State) string {
 	// counters change all the time and say nothing about what to serve
-	clean := node.State{Users: st.Users, Settings: st.Settings}
+	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards}
 	for _, in := range st.Inbounds {
 		c := *in
 		c.Up, c.Down = 0, 0
@@ -368,14 +373,15 @@ func remarkFor(in *store.Inbound, p *protocol.Preset, u *store.User, title strin
 
 type nodeView struct {
 	*store.Node
-	Paired   bool         `json:"paired"`
-	Online   bool         `json:"online"`
-	Error    string       `json:"error"`
-	LastTry  int64        `json:"lastTry"`
-	Status   *node.Status `json:"status"`
-	Inbounds int          `json:"inbounds"`
-	RateUp   int64        `json:"rateUp"`
-	RateDown int64        `json:"rateDown"`
+	TargetName string       `json:"targetName,omitempty"` // a relay's target ("" = this server)
+	Paired     bool         `json:"paired"`
+	Online     bool         `json:"online"`
+	Error      string       `json:"error"`
+	LastTry    int64        `json:"lastTry"`
+	Status     *node.Status `json:"status"`
+	Inbounds   int          `json:"inbounds"`
+	RateUp     int64        `json:"rateUp"`
+	RateDown   int64        `json:"rateDown"`
 }
 
 func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
@@ -385,6 +391,13 @@ func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
 	for _, in := range inbounds {
 		if in.NodeID == n.ID {
 			v.Inbounds++
+		}
+	}
+	if n.IsRelay() && n.RelayTarget != 0 {
+		if t, err := s.St.NodeByID(n.RelayTarget); err == nil {
+			v.TargetName = t.Name
+		} else {
+			v.TargetName = "?"
 		}
 	}
 	return v
@@ -406,8 +419,12 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name  string `json:"name"`
-		Token string `json:"token"`
+		Name        string `json:"name"`
+		Token       string `json:"token"`
+		Role        string `json:"role"`
+		RelayTarget int64  `json:"relayTarget"`
+		RelayOnly   bool   `json:"relayOnly"`
+		RelayShift  int    `json:"relayShift"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -432,7 +449,18 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	n := &store.Node{Name: in.Name, Address: host, AgentPort: p, Fingerprint: tok.Fingerprint, Secret: tok.Secret, Enabled: true}
+	n := &store.Node{Name: in.Name, Address: host, AgentPort: p, Fingerprint: tok.Fingerprint, Secret: tok.Secret, Enabled: true, Role: store.RoleServer}
+	if in.Role == store.RoleRelay {
+		if msg := s.checkRelayTarget(0, in.RelayTarget); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		if in.RelayShift < -60000 || in.RelayShift > 60000 {
+			fail(w, 400, "the port shift is between -60000 and 60000")
+			return
+		}
+		n.Role, n.RelayTarget, n.RelayOnly, n.RelayShift = store.RoleRelay, in.RelayTarget, in.RelayOnly, in.RelayShift
+	}
 	if err := s.St.CreateNode(n); err != nil {
 		fail(w, 400, err.Error())
 		return
@@ -454,9 +482,13 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name    *string `json:"name"`
-		Address *string `json:"address"`
-		Enabled *bool   `json:"enabled"`
+		Name        *string `json:"name"`
+		Address     *string `json:"address"`
+		Enabled     *bool   `json:"enabled"`
+		Role        *string `json:"role"`
+		RelayTarget *int64  `json:"relayTarget"`
+		RelayOnly   *bool   `json:"relayOnly"`
+		RelayShift  *int    `json:"relayShift"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -480,6 +512,48 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Enabled != nil {
 		n.Enabled = *in.Enabled
+	}
+	if in.Role != nil {
+		switch *in.Role {
+		case store.RoleRelay:
+			if !n.IsRelay() {
+				if k := len(s.inboundsOn(n.ID)); k > 0 {
+					fail(w, 400, fmt.Sprintf("%s runs %d protocol(s); move or remove them before it becomes a relay", n.Name, k))
+					return
+				}
+				for _, o := range s.nodeMap() {
+					if o.IsRelay() && o.RelayTarget == n.ID {
+						fail(w, 400, fmt.Sprintf("the relay %s forwards to %s; point it elsewhere first", o.Name, n.Name))
+						return
+					}
+				}
+			}
+			n.Role = store.RoleRelay
+		case store.RoleServer:
+			n.Role = store.RoleServer
+		default:
+			fail(w, 400, "the role is server or relay")
+			return
+		}
+	}
+	if in.RelayTarget != nil {
+		n.RelayTarget = *in.RelayTarget
+	}
+	if in.RelayOnly != nil {
+		n.RelayOnly = *in.RelayOnly
+	}
+	if in.RelayShift != nil {
+		if *in.RelayShift < -60000 || *in.RelayShift > 60000 {
+			fail(w, 400, "the port shift is between -60000 and 60000")
+			return
+		}
+		n.RelayShift = *in.RelayShift
+	}
+	if n.IsRelay() {
+		if msg := s.checkRelayTarget(n.ID, n.RelayTarget); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
 	}
 	if err := s.St.UpdateNode(n); err != nil {
 		fail(w, 400, err.Error())

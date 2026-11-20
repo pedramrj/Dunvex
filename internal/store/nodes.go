@@ -26,7 +26,23 @@ type Node struct {
 	Epoch       string `json:"-"` // the node install the sequence belongs to
 	LastSeen    int64  `json:"lastSeen"`
 	CreatedAt   int64  `json:"createdAt"`
+
+	// A relay runs no protocols: it forwards every protocol of its target
+	// (0 = this panel's server, else a node) on the same ports.
+	Role        string `json:"role"` // server or relay
+	RelayTarget int64  `json:"relayTarget"`
+	RelayOnly   bool   `json:"relayOnly"`  // users get only the relay's configs for the target
+	RelayShift  int    `json:"relayShift"` // the relay listens on each port plus this
 }
+
+// Node roles.
+const (
+	RoleServer = "server"
+	RoleRelay  = "relay"
+)
+
+// IsRelay reports whether the node forwards instead of running protocols.
+func (n *Node) IsRelay() bool { return n.Role == RoleRelay }
 
 // Paired reports whether the node has accepted this panel.
 func (n *Node) Paired() bool { return n.Secret == "" }
@@ -48,13 +64,14 @@ var nodeTables = []string{
 	)`,
 }
 
-const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at`
+const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at,role,relay_target,relay_only,relay_shift`
 
 func scanNode(r scanner) (*Node, error) {
 	n := &Node{}
-	var en int
-	err := r.Scan(&n.ID, &n.Name, &n.Address, &n.AgentPort, &n.Fingerprint, &n.Secret, &en, &n.CertSHA256, &n.StatsSeq, &n.Epoch, &n.LastSeen, &n.CreatedAt)
-	n.Enabled = en == 1
+	var en, only int
+	err := r.Scan(&n.ID, &n.Name, &n.Address, &n.AgentPort, &n.Fingerprint, &n.Secret, &en, &n.CertSHA256, &n.StatsSeq, &n.Epoch, &n.LastSeen, &n.CreatedAt,
+		&n.Role, &n.RelayTarget, &only, &n.RelayShift)
+	n.Enabled, n.RelayOnly = en == 1, only == 1
 	return n, err
 }
 
@@ -92,8 +109,11 @@ func (s *Store) CreateNode(n *Node) error {
 	if n.CreatedAt == 0 {
 		n.CreatedAt = time.Now().Unix()
 	}
-	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at) VALUES(?,?,?,?,?,?,?,?)`,
-		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.CreatedAt)
+	if n.Role == "" {
+		n.Role = RoleServer
+	}
+	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at,role,relay_target,relay_only,relay_shift) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.CreatedAt, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("a server named %q already exists", n.Name)
@@ -108,8 +128,11 @@ func (s *Store) CreateNode(n *Node) error {
 func (s *Store) UpdateNode(n *Node) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=? WHERE id=?`,
-		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.LastSeen, n.ID)
+	if n.Role == "" {
+		n.Role = RoleServer
+	}
+	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=?,role=?,relay_target=?,relay_only=?,relay_shift=? WHERE id=?`,
+		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.LastSeen, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift, n.ID)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return fmt.Errorf("a server named %q already exists", n.Name)
 	}

@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/engine"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 )
 
@@ -143,11 +144,13 @@ type User struct {
 	WGIndex    int     `json:"wgIndex,omitempty"`
 }
 
-// State is everything the node should serve.
+// State is everything the node should serve. A relay serves no protocols:
+// it forwards ports to another server.
 type State struct {
 	Inbounds []*store.Inbound  `json:"inbounds"`
 	Users    []User            `json:"users"`
 	Settings map[string]string `json:"settings"`
+	Forwards []relay.Forward   `json:"forwards,omitempty"`
 }
 
 // Status is the node's health, as the panel shows it.
@@ -170,6 +173,7 @@ type Status struct {
 	NetDown       uint64            `json:"netDown"`
 	Users         int               `json:"users"`
 	Inbounds      int               `json:"inbounds"`
+	Forwards      []relay.Stat      `json:"forwards,omitempty"` // a relay's ports
 	Time          int64             `json:"time"`
 }
 

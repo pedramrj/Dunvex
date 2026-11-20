@@ -180,11 +180,22 @@ func (s *Server) items(u *store.User) []profileItem {
 		if in.NodeID != 0 && nodes[in.NodeID] == nil {
 			continue // its server was removed
 		}
-		name := remarkFor(in, p, u, title, nodes)
-		if seen[name]++; seen[name] > 1 {
-			name = fmt.Sprintf("%s %d", name, seen[name])
+		env := s.envFor(in, local, nodes)
+		relays := relaysFor(in, p, nodes)
+		if !onlyViaRelay(relays) {
+			name := remarkFor(in, p, u, title, nodes)
+			if seen[name]++; seen[name] > 1 {
+				name = fmt.Sprintf("%s %d", name, seen[name])
+			}
+			out = append(out, profileItem{p, in, name, env})
 		}
-		out = append(out, profileItem{p, in, name, s.envFor(in, local, nodes)})
+		for _, r := range relays {
+			name := relayRemark(in, p, title, r)
+			if seen[name]++; seen[name] > 1 {
+				name = fmt.Sprintf("%s %d", name, seen[name])
+			}
+			out = append(out, profileItem{p, viaRelay(in, r), name, env})
+		}
 	}
 	return out
 }
@@ -311,9 +322,9 @@ func (s *Server) confFile(w http.ResponseWriter, r *http.Request, u *store.User,
 		http.Error(w, reason, http.StatusForbidden)
 		return
 	}
-	want := r.URL.Query().Get("i")
+	want, via := r.URL.Query().Get("i"), r.URL.Query().Get("r")
 	for _, c := range s.configsFor(u) {
-		if c.File == "" || (want != "" && want != fmt.Sprint(c.InboundID)) {
+		if c.File == "" || (want != "" && want != fmt.Sprint(c.InboundID)) || (via != "" && via != fmt.Sprint(c.RelayID)) || (via == "" && want != "" && c.RelayID != 0) {
 			continue
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -373,7 +384,11 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	if blockedReason(u, now) == "" {
 		for _, c := range s.configsFor(u) {
 			if c.File != "" {
-				cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(c.QR), c.File, sub + "/conf?i=" + fmt.Sprint(c.InboundID)})
+				dl := sub + "/conf?i=" + fmt.Sprint(c.InboundID)
+				if c.RelayID != 0 {
+					dl += "&r=" + fmt.Sprint(c.RelayID)
+				}
+				cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(c.QR), c.File, dl})
 				continue
 			}
 			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link)), "", ""})

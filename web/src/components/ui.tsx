@@ -720,9 +720,10 @@ export function Dialog({ open, onClose, title, children, footer, danger, wide }:
   useEscape(open, onClose);
   if (!open) return null;
   return createPortal(
-    <div className="fixed inset-0 z-[65] grid place-items-center p-4">
+    <div className="fixed inset-0 z-[65] flex items-center justify-center p-4">
       <div className="fade absolute inset-0 bg-[rgba(3,6,12,.6)] backdrop-blur-[3px]" onClick={onClose} />
-      <div role="alertdialog" aria-modal="true" className={cx("pop relative glass-strong rounded-[22px] w-full p-6", wide ? "max-w-2xl" : "max-w-md")} style={{ ["--origin" as any]: "center" }}>
+      {/* flex, not grid: a grid track would grow to the content's width and push the dialog off a phone screen */}
+      <div role="alertdialog" aria-modal="true" className={cx("pop relative glass-strong rounded-[22px] w-full min-w-0 max-h-full overflow-y-auto p-6", wide ? "max-w-2xl" : "max-w-md")} style={{ ["--origin" as any]: "center" }}>
         <div className="flex items-start gap-3">
           {danger && <span className="grid place-items-center size-10 rounded-xl bg-bad/12 text-bad shrink-0"><AlertTriangle className="size-5" /></span>}
           <div className="min-w-0 flex-1">

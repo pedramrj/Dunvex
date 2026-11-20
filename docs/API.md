@@ -41,7 +41,7 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/network/geo` | A | The server's own location |
 | GET | `/network/clients` | A | Devices of the last 5 minutes by country (counts only, looked up offline) |
 | GET | `/nodes` | A | Other servers with their state |
-| POST | `/nodes` | O | Add a server: `{"name":"Frankfurt","token":"dvxnode1.…"}` (pairs at once) |
+| POST | `/nodes` | O | Add a server: `{"name":"Frankfurt","token":"dvxnode1.…"}` (pairs at once); a relay adds `"role":"relay","relayTarget":0,"relayShift":0,"relayOnly":false` (see [RELAY.md](RELAY.md)) |
 | PUT | `/nodes/{id}` | O | Rename, change the address, or turn a server off and on |
 | DELETE | `/nodes/{id}` | O | Remove a server and its protocols (the node is released) |
 | POST | `/nodes/{id}/sync` | A | Sync a server now |

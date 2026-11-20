@@ -98,6 +98,17 @@ func PanelPortConflict(list []*store.Inbound, port int) string {
 
 // sameNetwork reports whether two presets listen on the same kind of socket
 // (TrustTunnel uses both TCP and UDP on its port).
+// Networks is what an inbound of p listens on: tcp, udp or tcp+udp.
+func Networks(p *Preset) string {
+	switch {
+	case p.Network == "udp":
+		return "udp"
+	case p.alsoUDP:
+		return "tcp+udp"
+	}
+	return "tcp"
+}
+
 func sameNetwork(p, q *Preset) bool {
 	return p.Network == q.Network || p.alsoUDP && q.Network == "udp" || q.alsoUDP && p.Network == "udp"
 }

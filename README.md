@@ -59,6 +59,9 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
+- **Relay servers (v1.15)**: put a server in Iran in front of the one abroad. It forwards every protocol unchanged
+  (TCP and UDP, encryption end to end), users get an extra config through it (or only through it), and the Servers
+  page shows each relayed port with its traffic and delay. See [docs/RELAY.md](docs/RELAY.md).
 - **Routing and WARP (v1.14)**: block ads, adult sites, torrents or your own domains; Iranian sites direct, blocked
   or through WARP on the server, and straight from the phone in sing-box and Clash subscriptions; one click registers a
   free Cloudflare WARP device for chosen sites (AI, Google, Netflix…) or for everything. The rules cover Mieru and
@@ -134,6 +137,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
+- **سرور رله (نسخهٔ ۱.۱۵)**: یک سرور ایران جلوی سرور خارج؛ همهٔ پروتکل‌ها را بدون تغییر رد می‌کند (TCP و UDP، رمزگذاری
+  از گوشی تا سرور مقصد)، کاربران یک کانفیگ اضافه از راه رله می‌گیرند (یا فقط از راه رله) و صفحهٔ سرورها هر پورت رله را
+  با ترافیک و تأخیرش نشان می‌دهد. راهنما: [docs/RELAY.md](docs/RELAY.md).
 - **مسیریابی و WARP (نسخهٔ ۱.۱۴)**: مسدود کردن تبلیغات، سایت‌های بزرگسال، تورنت یا دامنه‌های دلخواه؛ سایت‌های ایرانی
   روی سرور مستقیم، مسدود یا از WARP، و روی گوشی کاربر بیرون از VPN (اشتراک sing-box و Clash)؛ ثبت WARP رایگان کلادفلر
   با یک کلیک برای سایت‌های انتخابی (هوش مصنوعی، گوگل، نتفلیکس…) یا همهٔ ترافیک. Mieru و TrustTunnel هم از همین قانون‌ها

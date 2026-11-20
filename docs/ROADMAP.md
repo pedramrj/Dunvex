@@ -100,7 +100,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 ## Phase 4: Network (v2.0)
 - [x] Multi-server: central panel + node agent (mTLS) (v1.8)
 - [ ] Nodes: domains and real certificates for TLS protocols, one-click node updates
-- [ ] Relays and tunnels between the domestic and foreign servers, CDN helper
+- [x] Relay servers: a domestic server forwards every protocol (TCP and UDP) to a server abroad, with a port shift,
+      relay-only configs and per-port traffic and delay (v1.15)
+- [ ] Reverse tunnels (the server abroad dials the relay), CDN helper
 - [x] Routing: Iranian sites direct, blocked or through WARP (server) and direct on devices (subscriptions), ad and
       adult blocking, own domains; Cloudflare WARP for chosen sites or everything, for Mieru and TrustTunnel too (v1.14)
 - [x] REST API with tokens (v1.6)

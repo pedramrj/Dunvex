@@ -18,6 +18,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/node"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
 	"github.com/pedramrj/dunvex/internal/util"
@@ -205,7 +206,10 @@ func nodeServe(home string) error {
 	}
 	mgr := engine.NewManager(st, binDir, runDir, env)
 	mgr.InstallUsque = func() error { _, err := coremgr.InstallUsque(binDir); return err }
-	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env}
+	rl := relay.New(map[int]string{nodePort(st): "the Dunvex agent"})
+	defer rl.Close()
+	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env, Relay: rl}
+	agent.RestoreForwards()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

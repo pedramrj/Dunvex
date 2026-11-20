@@ -17,6 +17,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
 	"github.com/pedramrj/dunvex/internal/util"
@@ -39,6 +40,7 @@ type Agent struct {
 	Mgr     *engine.Manager
 	Sys     *sysinfo.Sampler
 	Env     func() protocol.Env
+	Relay   *relay.Relay // forwards to another server when this node is a relay
 
 	mu    sync.Mutex // one state push or stats batch at a time
 	fails int
@@ -194,6 +196,9 @@ func (a *Agent) Status() Status {
 		DiskUsed: snap.DiskUsed, DiskTotal: snap.DiskTotal, Uptime: snap.Uptime, NetUp: snap.NetUp, NetDown: snap.NetDown,
 		Users: len(users), Inbounds: len(inbounds), Time: time.Now().Unix(),
 	}
+	if a.Relay != nil {
+		st.Forwards = a.Relay.Stats()
+	}
 	if st.CoreErrors == nil {
 		st.CoreErrors = map[string]string{}
 	}
@@ -267,6 +272,10 @@ func (a *Agent) Apply(s State) error {
 			a.St.SetSetting(k, v)
 		}
 	}
+	if a.Relay != nil {
+		a.Relay.Apply(s.Forwards)
+		a.saveJSON(keyForwards, s.Forwards) // brought back at the next start
+	}
 	a.Mgr.ClearPortErrors()
 	if err := a.Mgr.Apply(); err != nil {
 		log.Printf("node apply: %v", err) // reported per core and inbound in the status
@@ -275,6 +284,18 @@ func (a *Agent) Apply(s State) error {
 }
 
 // ---------------------------------------------------------------- traffic
+
+// keyForwards keeps a relay's forwards across restarts.
+const keyForwards = "relay_forwards"
+
+// RestoreForwards starts the forwards the panel sent last.
+func (a *Agent) RestoreForwards() {
+	var list []relay.Forward
+	a.loadJSON(keyForwards, &list)
+	if a.Relay != nil && len(list) > 0 {
+		a.Relay.Apply(list)
+	}
+}
 
 func (a *Agent) loadJSON(key string, v any) {
 	if raw := a.St.GetSetting(key, ""); raw != "" {

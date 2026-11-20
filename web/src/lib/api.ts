@@ -251,7 +251,22 @@ export interface NodeStatus {
   netDown: number;
   users: number;
   inbounds: number;
+  forwards?: RelayStat[];
   time: number;
+}
+
+/** One port a relay forwards to its target server. */
+export interface RelayStat {
+  name: string;
+  listen: number;
+  network: "tcp" | "udp" | "tcp+udp";
+  target: string;
+  listening: boolean;
+  error?: string;
+  conns: number;
+  up: number;
+  down: number;
+  rttMs: number; // -1 unreachable, 0 not checked
 }
 
 /** Another server this panel runs protocols on. */
@@ -272,6 +287,11 @@ export interface NodeView {
   inbounds: number;
   rateUp: number;
   rateDown: number;
+  role: "server" | "relay";
+  relayTarget: number; // 0 = this panel's server
+  relayOnly: boolean;
+  relayShift: number;
+  targetName?: string;
 }
 
 export interface Line {

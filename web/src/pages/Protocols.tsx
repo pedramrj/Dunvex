@@ -20,7 +20,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
   useEffect(() => {
     load();
     api<Preset[]>("presets").then(setPresets).catch(() => {});
-    api<NodeView[]>("nodes").then(setNodes).catch(() => {});
+    api<NodeView[]>("nodes").then((l) => setNodes(l.filter((x) => x.role !== "relay"))).catch(() => {}); // relays run no protocols
   }, [load]);
   const nodeName = (id: number) => nodes.find((x) => x.id === id)?.name ?? "?";
   const byId = useMemo(() => Object.fromEntries(presets.map((p) => [p.id, p])), [presets]);
