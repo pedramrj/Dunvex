@@ -1,0 +1,15 @@
+{
+  "name": "Dunvex night map",
+  "mode": "operate",
+  "tokens": {
+    "color": {
+      "ground": "#0a1224", "rail": "#0c1630", "panel": "#101b36", "panel2": "#152443",
+      "hair": "#223154", "hair2": "#2c3d64", "ink": "#eef1f6", "ink2": "#aab6cf", "ink3": "#8593b2",
+      "lineReality": "#f0474f", "lineCdn": "#4c8dff", "lineUdp": "#f2a93b", "lineClassic": "#34b37a",
+      "online": "#3ddc97", "warn": "#f2a93b", "bad": "#ff5d73"
+    },
+    "font": { "sans": "Dunvex Sans (Vazirmatn + Fira Sans)" },
+    "radius": { "control": "12px", "panel": "16px", "pill": "999px" }
+  },
+  "source": "web/src/styles.css (@theme)"
+}
