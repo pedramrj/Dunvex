@@ -167,6 +167,7 @@ func (s *Server) items(u *store.User) []profileItem {
 	inbounds, _ := s.St.Inbounds()
 	title := s.St.GetSetting("sub_title", "Dunvex")
 	local, nodes := s.Env(), s.nodeMap()
+	cl := s.cdnLinks(local)
 	var out []profileItem
 	seen := map[string]int{}
 	for _, in := range inbounds {
@@ -182,12 +183,19 @@ func (s *Server) items(u *store.User) []profileItem {
 		}
 		env := s.envFor(in, local, nodes)
 		relays := relaysFor(in, p, nodes)
-		if !onlyViaRelay(relays) {
+		if !onlyViaRelay(relays) && cl.direct(in, p) {
 			name := remarkFor(in, p, u, title, nodes)
 			if seen[name]++; seen[name] > 1 {
 				name = fmt.Sprintf("%s %d", name, seen[name])
 			}
 			out = append(out, profileItem{p, in, name, env})
+		}
+		for _, v := range cl.variants(in, p, title, env) {
+			name := v.name
+			if seen[name]++; seen[name] > 1 {
+				name = fmt.Sprintf("%s %d", name, seen[name])
+			}
+			out = append(out, profileItem{p, v.in, name, v.env})
 		}
 		for _, r := range relays {
 			name := relayRemark(in, p, title, r)

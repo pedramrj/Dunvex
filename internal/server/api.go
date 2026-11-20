@@ -111,6 +111,10 @@ func (s *Server) apiMux() http.Handler {
 	h("DELETE /routing/warp", O, s.removeWarp)
 	h("POST /routing/warp/license", O, s.warpLicense)
 	h("POST /routing/warp/check", O, s.checkWarp)
+	h("GET /cdn", O, s.getCDN)
+	h("PUT /cdn", O, s.putCDN)
+	h("POST /cdn/check", O, s.checkCDN)
+	h("POST /cdn/cloudflare", O, s.setupCloudflare)
 
 	h("GET /cores", A, s.cores)
 	h("POST /cores/{name}/install", O, s.installCore)
@@ -708,6 +712,8 @@ type ConfigEntry struct {
 	QR   string `json:"qr,omitempty"`
 	// the relay this config goes through (0: straight to its server)
 	RelayID int64 `json:"relayId,omitempty"`
+	// through the CDN: "cdn" (the proxied name) or the clean address
+	Via string `json:"via,omitempty"`
 }
 
 // confName is a .conf file name that is also a valid interface name in the
@@ -740,6 +746,7 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 	inbounds, _ := s.St.Inbounds()
 	local, nodes := s.Env(), s.nodeMap()
 	title := s.St.GetSetting("sub_title", "Dunvex")
+	cl := s.cdnLinks(local)
 	out := []ConfigEntry{}
 	for _, in := range inbounds {
 		if !in.Enabled || !u.AllowsInbound(in.ID) {
@@ -754,7 +761,7 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		}
 		env := s.envFor(in, local, nodes)
 		relays := relaysFor(in, p, nodes)
-		if !onlyViaRelay(relays) {
+		if !onlyViaRelay(relays) && cl.direct(in, p) {
 			name := remarkFor(in, p, u, title, nodes)
 			if l := protocol.Link(p, in, u, env, name); l != "" {
 				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l}
@@ -762,6 +769,11 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 					c.File, c.QR = confName(title, in.ID), QRSVG(l)
 				}
 				out = append(out, c)
+			}
+		}
+		for _, v := range cl.variants(in, p, title, env) {
+			if l := protocol.Link(p, v.in, u, v.env, v.name); l != "" {
+				out = append(out, ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: v.name, Link: l, Via: v.via})
 			}
 		}
 		for _, r := range relays {
@@ -860,10 +872,13 @@ func (s *Server) portBusy(nodeID int64, port int) bool {
 }
 
 // pickPort chooses a port for a new inbound: the preset's default when it is
-// free (or can share the panel's port), otherwise a random free one.
+// free (or can share the panel's port), then for a CDN protocol the other
+// ports Cloudflare proxies, otherwise a random free one.
 func (s *Server) pickPort(nodeID int64, p *protocol.Preset, sni string) int {
-	if s.portTaken(nodeID, p.DefaultPort, 0, p, sni) == "" && !s.portBusy(nodeID, p.DefaultPort) {
-		return p.DefaultPort
+	for _, port := range append([]int{p.DefaultPort}, cdnPorts(p)...) {
+		if s.portTaken(nodeID, port, 0, p, sni) == "" && !s.portBusy(nodeID, port) {
+			return port
+		}
 	}
 	for i := 0; i < 200; i++ {
 		port := 20000 + int(util.RandomBytes(2)[0])*150 + int(util.RandomBytes(1)[0])

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, Bell, BellOff, ChartArea, ChevronDown, ChevronsLeft, ChevronsRight, Command, Cpu, Eye, EyeOff, Focus, Globe2, KeyRound, Languages,
+  Activity, Bell, BellOff, ChartArea, ChevronDown, Cloud, ChevronsLeft, ChevronsRight, Command, Cpu, Eye, EyeOff, Focus, Globe2, KeyRound, Languages,
   LayoutDashboard, LogOut, Maximize2, Monitor, Moon, Network, Plus, Route as RouteIcon, ScrollText, Search, Server, Settings as SettingsIcon, ShieldCheck,
   ShoppingBag, Star, Sun, UserPlus, Users as UsersIcon, Wallet, Waypoints, X, Zap,
 } from "lucide-react";
@@ -27,12 +27,13 @@ import { MissionControl } from "./pages/Mission";
 import { BillingPage } from "./pages/Billing";
 import { WalletPage } from "./pages/Wallet";
 import { RoutingPage } from "./pages/Routing";
+import { CDNPage } from "./pages/CDN";
 
 // ================================================================= routes
 
-export type Page = "overview" | "users" | "protocols" | "routing" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
+export type Page = "overview" | "users" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
 export type Route = { page: Page; arg?: string };
-const pages: Page[] = ["overview", "users", "protocols", "routing", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
+const pages: Page[] = ["overview", "users", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
 
 function parseHash(): Route {
   const [page, arg] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -50,6 +51,7 @@ export const navItems: NavItem[] = [
   { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "main" },
   { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "main" },
   { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "main" },
+  { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "main" },
   { page: "sales", key: "sales", icon: ShoppingBag, need: "admin", group: "main" },
   { page: "wallet", key: "wallet", icon: Wallet, need: "reseller", group: "main" },
   { page: "network", key: "networkCenter", icon: Network, need: "admin", group: "monitor" },
@@ -202,6 +204,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
               {page === "security" && <SecurityPage />}
               {page === "settings" && <SettingsPage arg={route.arg} />}
               {page === "routing" && <RoutingPage />}
+              {page === "cdn" && <CDNPage />}
               {page === "sales" && <BillingPage />}
               {page === "wallet" && <WalletPage />}
             </div>

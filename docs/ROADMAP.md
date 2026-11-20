@@ -104,7 +104,8 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       relay-only configs and per-port traffic and delay (v1.15)
 - [x] Reverse tunnels: the server abroad keeps pinned TLS links to the relay, multiplexed, TCP and UDP, limited to the
       relayed ports (v1.16)
-- [ ] CDN helper
+- [x] CDN helper: links through the CDN name and clean addresses, a check of every leg, and the Cloudflare DNS and
+      SSL/TLS setup with the owner's API token (v1.17)
 - [x] Routing: Iranian sites direct, blocked or through WARP (server) and direct on devices (subscriptions), ad and
       adult blocking, own domains; Cloudflare WARP for chosen sites or everything, for Mieru and TrustTunnel too (v1.14)
 - [x] REST API with tokens (v1.6)

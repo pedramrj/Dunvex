@@ -42,7 +42,8 @@ type Server struct {
 
 	Bot Bot // Telegram bot (optional)
 
-	WarpAPI string // Cloudflare's WARP API ("" = the real one; tests point it elsewhere)
+	WarpAPI       string // Cloudflare's WARP API ("" = the real one; tests point it elsewhere)
+	CloudflareAPI string // Cloudflare's API for the CDN setup ("" = the real one)
 
 	Tunnels *relay.Tunnels // this server's links to reverse relays in front of it
 

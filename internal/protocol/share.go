@@ -24,6 +24,9 @@ func SNIRouted(p *Preset) bool {
 }
 
 // SharedSNI is the server name that routes a shared Reality inbound.
+// Transport is the preset's transport: raw, xhttp, grpc, ws, httpupgrade, kcp, hysteria...
+func (p *Preset) Transport() string { return p.transport }
+
 func SharedSNI(in *store.Inbound) string {
 	return strings.ToLower(strings.TrimSpace(in.Str("sni")))
 }
