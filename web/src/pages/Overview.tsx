@@ -51,6 +51,7 @@ export function OverviewPage() {
   const todayTotal = d.today.down + d.today.up;
   const trend = yesterday > 0 ? ((todayTotal - yesterday) / yesterday) * 100 : null;
   const coresUp = d.cores.filter((c) => c.running).length;
+  const coresNeeded = d.cores.filter((c) => !c.idle).length; // a core with nothing to serve is stopped on purpose
   const show = (w: Widget) => prefs.widgets.includes(w);
   const order = (w: Widget) => ({ order: prefs.widgets.indexOf(w) });
   // a row of widgets sits where its first visible widget is in the chosen order
@@ -148,8 +149,8 @@ export function OverviewPage() {
             <StatCard icon={<Network className="size-[18px]" />} accent="var(--color-cdn)" label={t("protocols")} value={<span><Num value={d.inboundsOn} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={d.inbounds} /></span></span>}
               onClick={() => navigate("protocols")} sub={d.inboundErrs ? <span className="text-bad">{n(d.inboundErrs)} {t("error")}</span> : t("allGood")} />
             <StatCard icon={<Bell className="size-[18px]" />} accent={problems ? "var(--bad)" : "var(--text2)"} label={t("openAlerts")} value={<Num value={problems} />} onClick={() => navigate("alerts")} />
-            <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={coresUp === d.cores.length ? "var(--ok)" : "var(--warn)"} label={t("systemHealth")}
-              value={<span><Num value={coresUp} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={d.cores.length} /> {t("cores")}</span></span>} />
+            <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={coresUp >= coresNeeded ? "var(--ok)" : "var(--warn)"} label={t("systemHealth")}
+              value={<span><Num value={coresUp} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={coresNeeded} /> {t("cores")}</span></span>} />
             <StatCard icon={<Database className="size-[18px]" />} accent="var(--primary2)" label={t("activeSessions")} value={<Num value={d.devices ?? 0} />} sub={t("activeSessionsSub")} />
           </div>
         )}
@@ -181,9 +182,9 @@ export function OverviewPage() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-[13.5px]" dir="ltr">{c.name} <span className="mono text-[11.5px] text-ink3 font-normal">{c.version || "—"}</span></div>
-                      <div className="text-[12px] text-ink3">{c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.installed ? t("stopped") : t("notInstalled")}</div>
+                      <div className="text-[12px] text-ink3">{c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.idle ? t("notInUse") : c.installed ? t("stopped") : t("notInstalled")}</div>
                     </div>
-                    <Dot color={c.running ? "var(--ok)" : c.installed ? "var(--text3)" : "var(--bad)"} pulse={c.running} />
+                    <Dot color={c.running ? "var(--ok)" : c.idle || c.installed ? "var(--text3)" : "var(--bad)"} pulse={c.running} />
                   </li>
                 ))}
               </ul>

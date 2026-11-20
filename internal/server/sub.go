@@ -68,6 +68,8 @@ func (s *Server) serveSub(w http.ResponseWriter, r *http.Request, rest string) {
 		w.Write(s.singboxProfile(u, now))
 	case "info":
 		writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
+	case "conf":
+		s.confFile(w, r, u, now)
 	default:
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write([]byte(base64.StdEncoding.EncodeToString([]byte(strings.Join(s.subLinks(u, now), "\n")))))
@@ -145,8 +147,8 @@ func (s *Server) subLinks(u *store.User, now int64) []string {
 		out = append(out, dummyLink(statusLine(u, now)))
 	}
 	for _, c := range s.configsFor(u) {
-		if strings.HasPrefix(c.Link, "tg://") {
-			continue // the Telegram proxy opens in Telegram, not in VPN apps (it is on the user page)
+		if strings.HasPrefix(c.Link, "tg://") || c.File != "" {
+			continue // Telegram proxies and .conf files are not links for VPN apps (both are on the user page)
 		}
 		out = append(out, c.Link)
 	}
@@ -280,6 +282,25 @@ func (s *Server) singboxProfile(u *store.User, now int64) []byte {
 	return b
 }
 
+// confFile sends one AmneziaWG .conf of the user (?i=inbound id, else the first).
+func (s *Server) confFile(w http.ResponseWriter, r *http.Request, u *store.User, now int64) {
+	if reason := blockedReason(u, now); reason != "" {
+		http.Error(w, reason, http.StatusForbidden)
+		return
+	}
+	want := r.URL.Query().Get("i")
+	for _, c := range s.configsFor(u) {
+		if c.File == "" || (want != "" && want != fmt.Sprint(c.InboundID)) {
+			continue
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+c.File+`"`)
+		w.Write([]byte(c.Link))
+		return
+	}
+	http.NotFound(w, r)
+}
+
 // ---------------------------------------------------------------- user page
 
 type appLink struct {
@@ -322,11 +343,17 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	type cfg struct {
 		Name, Link string
 		QR         template.HTML
+		File       string // a .conf: shown as text with a download button
+		Download   string
 	}
 	var cfgs []cfg
 	if blockedReason(u, now) == "" {
 		for _, c := range s.configsFor(u) {
-			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link))})
+			if c.File != "" {
+				cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(c.QR), c.File, sub + "/conf?i=" + fmt.Sprint(c.InboundID)})
+				continue
+			}
+			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link)), "", ""})
 		}
 	}
 	data := map[string]any{

@@ -323,6 +323,7 @@ type Status struct {
 	Uptime    int64  `json:"uptime"`
 	Restarts  int    `json:"restarts"`
 	Error     string `json:"error"`
+	Idle      bool   `json:"idle,omitempty"` // nothing to serve, so it is stopped on purpose
 }
 
 // Status returns the current state.
@@ -335,6 +336,7 @@ func (c *Core) Status() Status {
 		s.Running = true
 		s.Uptime = int64(time.Since(c.startedAt).Seconds())
 	}
+	s.Idle = !s.Running && !c.wanted && c.lastErr == ""
 	return s
 }
 

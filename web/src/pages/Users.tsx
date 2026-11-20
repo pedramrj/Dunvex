@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CalendarClock, CalendarPlus, Copy, ExternalLink, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
+  CalendarClock, CalendarPlus, Copy, Download, ExternalLink, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
   Users as UsersIcon, Wifi,
 } from "lucide-react";
-import { api, qrURL, type ConfigEntry, type Event, type Inbound, type Status, type User } from "../lib/api";
+import { api, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Status, type User } from "../lib/api";
 import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
@@ -525,9 +525,12 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
                   <div className="flex items-center gap-2 ps-3.5 pe-1 h-12">
                     <span className="flex-1 min-w-0 truncate text-[13px]" dir="ltr">{c.name}</span>
                     <IconButton label="QR" onClick={() => setOpenQr(openQr === i ? null : i)}><QrCode className="size-4" /></IconButton>
+                    {c.file && <IconButton label={`${t("download")} ${c.file}`} onClick={() => saveText(c.file!, c.link)}><Download className="size-4" /></IconButton>}
                     <IconButton label={t("copy")} onClick={() => copyText(c.link).then(() => toast(t("copied")))}><Copy className="size-4" /></IconButton>
                   </div>
-                  {openQr === i && <div className="px-3 pb-3 flex justify-center"><div className="rounded-2xl bg-white p-2"><img src={qrURL(c.link)} alt="QR" className="w-56 h-56" /></div></div>}
+                  {openQr === i && <div className="px-3 pb-3 flex justify-center"><div className="rounded-2xl bg-white p-2">
+                    <img src={c.qr ? "data:image/svg+xml;charset=utf-8," + encodeURIComponent(c.qr) : qrURL(c.link)} alt="QR" className={c.qr ? "w-72 h-72" : "w-56 h-56"} />
+                  </div></div>}
                 </li>
               ))}
               {cfg.configs.length === 0 && <li className="text-ink3 text-sm">—</li>}

@@ -116,6 +116,7 @@ const fa = {
   blockTorrent: "مسدود کردن تورنت",
   running: "در حال اجرا",
   stopped: "متوقف",
+  notInUse: "بدون استفاده",
   notInstalled: "نصب نشده",
   saved: "ذخیره شد",
   lastOnline: "آخرین اتصال",
@@ -454,6 +455,7 @@ const fa = {
   keyExpires: "تا",
   keyRules: "کلیدها نمی‌توانند حساب‌ها، نشست‌ها یا کلیدهای دیگر را مدیریت کنند.",
   xdnsHelp: "پیش از ساخت، در DNS دامنه‌تان دو رکورد بسازید: یک رکورد A مثل ns.example.com که به IP این سرور اشاره کند، و یک رکورد NS مثل t.example.com که به ns.example.com اشاره کند. سپس t.example.com را دامنهٔ تونل بگذارید. نام رکورد A نباید زیرمجموعهٔ نام رکورد NS باشد. پورت ۵۳ (UDP) باید باز باشد.",
+  amneziawgHelp: "وایرگارد با پوشش ضدفیلتر: بسته‌های بیهوده، اندازه و سرآیندهای تصادفی، و در نسخهٔ ۳٫۱ رمز سرآیند. هر کاربر یک فایل .conf دارد که در برنامهٔ AmneziaVPN یا AmneziaWG وارد می‌کند (یا QR آن را اسکن می‌کند). پورت انتخابی (UDP) باید باز باشد. هر سرور یک AmneziaWG دارد.",
   mtprotoHelp: "کاربران لینک tg:// را باز می‌کنند یا در تلگرام از «تنظیمات › داده و حافظه › پروکسی» اضافه‌اش می‌کنند. همه یک لینک دارند؛ برای قطع دسترسی یک نفر، پروتکل را از نو بسازید.",
   fullAccess: "دسترسی کامل",
 };
@@ -573,6 +575,7 @@ const en: Dict = {
   blockTorrent: "Block torrent",
   running: "Running",
   stopped: "Stopped",
+  notInUse: "Not in use",
   notInstalled: "Not installed",
   saved: "Saved",
   lastOnline: "Last online",
@@ -911,6 +914,7 @@ const en: Dict = {
   keyExpires: "until",
   keyRules: "Keys cannot manage accounts, sessions or other keys.",
   xdnsHelp: "Before creating it, add two records in your domain's DNS: an A record such as ns.example.com pointing to this server's IP, and an NS record such as t.example.com pointing to ns.example.com. Then use t.example.com as the tunnel domain. The A record's name must not be under the NS record's name. UDP port 53 must be open.",
+  amneziawgHelp: "WireGuard with anti-censorship cover: junk packets, random sizes and headers, and in version 3.1 header encryption. Each user gets a .conf file to import in the AmneziaVPN or AmneziaWG app (or scan its QR). The chosen UDP port must be open. One AmneziaWG per server.",
   mtprotoHelp: "Users open the tg:// link, or add it in Telegram under Settings › Data and storage › Proxy. Everyone shares one link; to cut someone off, create the protocol again.",
   fullAccess: "Full access",
 };

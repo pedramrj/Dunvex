@@ -108,6 +108,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 			return "vless://" + u.UUID + "@" + hostPort(h, port) + "?" + q.Encode() + frag
 		}
 		return "vless://" + u.UUID + "@" + hostPort(host, in.Port) + "?" + q.Encode() + frag
+	case "amneziawg":
+		// not a URI: the .conf the AmneziaWG apps import (or scan as a QR)
+		return AWGConfig(in, u, env)
 	case "mtproto":
 		// opens straight in Telegram; one secret for everyone
 		q.Set("server", host)

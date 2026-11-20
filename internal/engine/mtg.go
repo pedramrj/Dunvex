@@ -41,11 +41,15 @@ func (m *Manager) Cores() []*Core {
 	return out
 }
 
-// CoreStatuses is the state of every core in Cores.
+// CoreStatuses is the state of every core in Cores, and of AmneziaWG once
+// it is installed or wanted.
 func (m *Manager) CoreStatuses() []Status {
 	var out []Status
 	for _, c := range m.Cores() {
 		out = append(out, c.Status())
+	}
+	if m.AWG.Installed() || m.AWG.Running() || m.AWG.LastError() != "" {
+		out = append(out, m.awgStatus())
 	}
 	return out
 }

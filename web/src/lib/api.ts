@@ -142,7 +142,7 @@ export interface StatusInfo {
   online: number;
   devices: number;
   users: number;
-  cores: { name: string; installed: boolean; running: boolean; version: string }[];
+  cores: { name: string; installed: boolean; running: boolean; version: string; idle?: boolean }[];
   problems: number;
   version: string;
 }
@@ -237,7 +237,7 @@ export interface NodeStatus {
   hostname: string;
   publicIp: string;
   certSha256: string;
-  cores: { name: string; installed: boolean; running: boolean; version: string; uptime: number; restarts: number; error: string }[];
+  cores: { name: string; installed: boolean; running: boolean; version: string; uptime: number; restarts: number; error: string; idle?: boolean }[];
   coreErrors: Record<string, string>;
   inboundErrors: Record<string, string>;
   cpu: number;
@@ -296,6 +296,8 @@ export interface CoreStatus {
   uptime: number;
   restarts: number;
   error: string;
+  /** nothing to serve, so stopped on purpose */
+  idle?: boolean;
 }
 
 export interface SystemInfo {
@@ -350,6 +352,19 @@ export interface ConfigEntry {
   preset: string;
   name: string;
   link: string;
+  /** set for a config that is a whole file (AmneziaWG .conf) */
+  file?: string;
+  /** its QR as SVG, sent inline so the private key never goes in a URL */
+  qr?: string;
+}
+
+/** saves text as a file in the browser */
+export function saveText(name: string, text: string) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 export const qrURL = (text: string) => BASE + "tools/qr?text=" + encodeURIComponent(text);

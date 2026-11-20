@@ -121,6 +121,12 @@ func nodeInit(home string, args []string) error {
 		} else {
 			fmt.Println("  ✓ mtg", v)
 		}
+		fmt.Println("• Downloading amneziawg-go (AmneziaWG) ...")
+		if v, err := coremgr.InstallAWG(binDir); err != nil {
+			fmt.Println("  ! amneziawg-go:", err)
+		} else {
+			fmt.Println("  ✓ amneziawg-go", v)
+		}
 	}
 	tok, err := node.Init(st, filepath.Join(home, "certs"), nodeHost(st), nodePort(st), false)
 	if err != nil {

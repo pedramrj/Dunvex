@@ -33,10 +33,11 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Installed bool   `json:"installed"`
 		Running   bool   `json:"running"`
 		Version   string `json:"version"`
+		Idle      bool   `json:"idle,omitempty"`
 	}
 	cores := []core{}
 	for _, x := range s.Mgr.CoreStatuses() {
-		cores = append(cores, core{x.Name, x.Installed, x.Running, x.Version})
+		cores = append(cores, core{x.Name, x.Installed, x.Running, x.Version, x.Idle})
 	}
 	ierr, cerr := s.Mgr.Errors()
 	problems := 0

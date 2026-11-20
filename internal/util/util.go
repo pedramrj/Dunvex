@@ -253,3 +253,16 @@ func OutboundIP() string {
 	}
 	return ""
 }
+
+// WireGuardPublic derives the public key from a standard-base64 private key.
+func WireGuardPublic(priv string) (string, error) {
+	k, err := base64.StdEncoding.DecodeString(strings.TrimSpace(priv))
+	if err != nil || len(k) != 32 {
+		return "", fmt.Errorf("bad WireGuard private key")
+	}
+	key, err := ecdh.X25519().NewPrivateKey(k)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(key.PublicKey().Bytes()), nil
+}

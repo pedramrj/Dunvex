@@ -645,6 +645,30 @@ type ConfigEntry struct {
 	Preset    string `json:"preset"`
 	Name      string `json:"name"`
 	Link      string `json:"link"`
+	// a config that is a whole file (AmneziaWG .conf) rather than a link:
+	// its file name, and its QR inline so the private key stays out of URLs
+	File string `json:"file,omitempty"`
+	QR   string `json:"qr,omitempty"`
+}
+
+// confName is a .conf file name that is also a valid interface name in the
+// apps (at most 15 letters, digits or -_.=+), unique per inbound.
+func confName(title string, id int64) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(title) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		}
+	}
+	base := b.String()
+	if base == "" {
+		base = "dunvex"
+	}
+	suffix := fmt.Sprintf("-%d", id)
+	if len(base)+len(suffix) > 15 {
+		base = base[:15-len(suffix)]
+	}
+	return base + suffix + ".conf"
 }
 
 func (s *Server) configsFor(u *store.User) []ConfigEntry {
@@ -665,7 +689,11 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		}
 		name := remarkFor(in, p, u, title, nodes)
 		if l := protocol.Link(p, in, u, s.envFor(in, local, nodes), name); l != "" {
-			out = append(out, ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l})
+			c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l}
+			if strings.HasPrefix(l, "[Interface]") {
+				c.File, c.QR = confName(title, in.ID), QRSVG(l)
+			}
+			out = append(out, c)
 		}
 	}
 	return out
@@ -813,6 +841,21 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		if in.NodeID == 0 && !s.Mgr.MTG.Installed() {
 			if _, err := coremgr.InstallMTG(s.Mgr.MTG.BinDir); err != nil {
 				fail(w, 502, "could not download mtg (the Telegram proxy): "+err.Error())
+				return
+			}
+		}
+	}
+	if p.Engine == "awg" {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has an AmneziaWG; one per server (it serves every user)")
+				return
+			}
+		}
+		// amneziawg-go arrives with the first AmneziaWG inbound
+		if in.NodeID == 0 && !s.Mgr.AWG.Installed() {
+			if _, err := coremgr.InstallAWG(s.Mgr.AWG.BinDir); err != nil {
+				fail(w, 502, "could not download amneziawg-go: "+err.Error())
 				return
 			}
 		}
@@ -1100,6 +1143,10 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 		s.Mgr.MTG.Stop()
 		ver, err = coremgr.InstallMTG(binDir)
 		s.Mgr.MTG.ResetVersion()
+	case "amneziawg":
+		s.Mgr.AWG.Stop()
+		ver, err = coremgr.InstallAWG(s.Mgr.AWG.BinDir)
+		s.Mgr.AWG.ResetVersion()
 	default:
 		fail(w, 404, "unknown core")
 		return
@@ -1126,6 +1173,9 @@ func (s *Server) applyCores(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) core(name string) interface{ Logs() []string } {
+	if name == "amneziawg" {
+		return s.Mgr.AWG
+	}
 	return s.Mgr.CoreByName(name)
 }
 
@@ -1146,6 +1196,9 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 	case "mtg":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(s.Mgr.MTGConfig())
+	case "amneziawg":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(s.Mgr.AWGConfig())
 	default:
 		w.Write(orEmpty(x))
 	}
@@ -1212,9 +1265,15 @@ func QRSVG(text string) string {
 	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 %d %d" shape-rendering="crispEdges"><rect x="-2" y="-2" width="%d" height="%d" fill="#fff"/><path fill="#000" d="`, n+4, n+4, n+4, n+4)
 	for y := 0; y < n; y++ {
 		for x := 0; x < n; x++ {
-			if code.Black(x, y) {
-				fmt.Fprintf(&b, "M%d %dh1v1h-1z", x, y)
+			if !code.Black(x, y) {
+				continue
 			}
+			run := 1 // one rectangle per run of dark modules keeps big codes (a .conf) small
+			for x+run < n && code.Black(x+run, y) {
+				run++
+			}
+			fmt.Fprintf(&b, "M%d %dh%dv1h-%dz", x, y, run, run)
+			x += run - 1
 		}
 	}
 	b.WriteString(`"/></svg>`)

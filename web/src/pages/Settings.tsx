@@ -400,7 +400,7 @@ function CoresPanel() {
               <div className="min-w-0">
                 <div className="font-semibold" dir="ltr">{c.name} <span className="text-ink3 font-normal mono text-[12px]">{c.version}</span></div>
                 <div className="text-[12.5px] text-ink3">
-                  {c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.installed ? t("stopped") : t("notInstalled")}
+                  {c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.idle ? t("notInUse") : c.installed ? t("stopped") : t("notInstalled")}
                   {c.name === "sing-box" && c.installed && <> · {t("perUserStats")}: {d.stats["sing-box"] ? "✓" : "✕"}</>}
                 </div>
                 {(d.errors[c.name] || c.error) && <div className="text-[12px] text-bad mt-1 break-all mono" dir="ltr">{d.errors[c.name] || c.error}</div>}

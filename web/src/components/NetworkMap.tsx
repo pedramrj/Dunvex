@@ -7,7 +7,7 @@ import { usePrefs } from "../lib/prefs";
 import { Logo } from "./Logo";
 
 export const shortName: Record<string, string> = {
-  "vless-xdns": "XDNS", "mtproto": "Telegram",
+  "vless-xdns": "XDNS", "mtproto": "Telegram", "amneziawg": "AmneziaWG",
   "vless-reality-vision": "Vision", "vless-reality-universal": "Vision U", "vless-reality-xhttp": "XHTTP", "vless-reality-grpc": "gRPC", "trojan-reality": "Trojan",
   "vless-xhttp-tls": "XHTTP", "vless-ws-tls": "WS", "vless-httpupgrade-tls": "HTTPUpgrade", "vless-grpc-tls": "gRPC",
   "trojan-ws-tls": "Trojan WS", "vmess-ws-tls": "VMess", "vmess-ws": "VMess WS", "trojan-tls": "Trojan", "vless-enc-xhttp": "PQ-XHTTP",

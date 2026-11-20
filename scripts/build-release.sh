@@ -45,10 +45,27 @@ for arch in amd64 arm64; do
 done
 rm -rf "$src"
 
-# 4. offline country data for the network map (DB-IP Country Lite, CC BY 4.0).
+# 4. amneziawg-go, the AmneziaWG server (upstream source, unchanged, MIT). Only v3
+#    releases: the panel speaks their control protocol. The binary prints an old
+#    built-in version, so the real tag travels next to it.
+AWG_TAG="${AWG_TAG:-$(git ls-remote --tags --refs https://github.com/amnezia-vpn/amneziawg-go.git 'v3.*' | sed 's|.*refs/tags/||' | grep -E '^v3\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)}"
+[ -n "$AWG_TAG" ] || { echo "cannot find the latest amneziawg-go tag" >&2; exit 1; }
+src=$(mktemp -d)
+git clone -q --depth 1 --branch "$AWG_TAG" https://github.com/amnezia-vpn/amneziawg-go.git "$src"
+for arch in amd64 arm64; do
+  tmp=$(mktemp -d)
+  (cd "$src" && CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w -buildid=" -o "$tmp/amneziawg-go" .)
+  echo "$AWG_TAG" > "$tmp/amneziawg-go.version"
+  tar -C "$tmp" -czf "$OUT/amneziawg-go-linux-$arch.tar.gz" amneziawg-go amneziawg-go.version
+  rm -rf "$tmp"
+done
+rm -rf "$src"
+
+# 5. offline country data for the network map (DB-IP Country Lite, CC BY 4.0).
 #    A failed download only skips the file: servers keep the copy they have.
 (cd "$ROOT" && go run ./scripts/geoipgen -out "$OUT/geoip-country.bin.gz") || echo "GeoIP data skipped"
 
 (cd "$OUT" && for f in *.gz; do sha256sum "$f" > "$f.sha256"; done)
 echo "sing-box: $SINGBOX_TAG"
+echo "amneziawg-go: $AWG_TAG"
 ls -la "$OUT"

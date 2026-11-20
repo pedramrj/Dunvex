@@ -66,6 +66,9 @@ var (
 	fXDNS      = Field{Key: "xdnsDomain", Label: "Tunnel domain (its NS record points to this server)", LabelFa: "دامنهٔ تونل (رکورد NS آن به این سرور اشاره می‌کند)", Type: "text"}
 	fResolver  = Field{Key: "resolver", Label: "DNS resolver in links (direct = straight to this server)", LabelFa: "DNS در لینک‌ها (direct = مستقیم به همین سرور)", Type: "select", Options: []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "direct"}}
 	fFakeTLS   = Field{Key: "sni", Label: "Fake TLS domain (the proxy looks like this site)", LabelFa: "دامنهٔ پوششی TLS (پراکسی شبیه این سایت دیده می‌شود)", Type: "text"}
+	fAWGVer    = Field{Key: "version", Label: "Version (3.1: newest apps · 2.0: older apps)", LabelFa: "نسخه (۳٫۱: برنامه‌های جدید · ۲٫۰: برنامه‌های قدیمی‌تر)", Type: "select", Options: []string{"3.1", "2.0"}}
+	fAWGDNS    = Field{Key: "dns", Label: "DNS for clients", LabelFa: "DNS برای کاربران", Type: "text", Advanced: true}
+	fAWGI1     = Field{Key: "i1", Label: "I1 signature packet (client side, optional)", LabelFa: "بستهٔ امضای I1 (سمت کاربر، اختیاری)", Type: "text", Advanced: true}
 )
 
 var presets = []*Preset{
@@ -189,6 +192,11 @@ var presets = []*Preset{
 		Desc:   "A proxy inside Telegram itself: users add it with one tap, no VPN app needed. It looks like an HTTPS visit to the site you choose, and can share port 443. One per server; one link for everyone, so usage is not counted per user.",
 		DescFa: "پراکسی داخل خود تلگرام: کاربر با یک لمس اضافه‌اش می‌کند و برنامهٔ VPN لازم نیست. شبیه بازدید HTTPS از سایتی است که انتخاب می‌کنید و می‌تواند پورت ۴۴۳ را شریک شود. هر سرور یکی؛ یک لینک برای همه، پس مصرف هر کاربر جدا شمرده نمی‌شود.",
 		Fields: []Field{fFakeTLS}},
+	{ID: "amneziawg", Name: "AmneziaWG", Engine: "awg", Group: "udp", Network: "udp", DefaultPort: 51821,
+		Security: "none", Status: "ready", proto: "amneziawg",
+		Desc:   "WireGuard that DPI cannot recognise: junk packets, padded messages, random headers and (3.1) header protection. A full VPN tunnel for the AmneziaWG and AmneziaVPN apps (import the .conf or scan its QR). One per server.",
+		DescFa: "وایرگاردی که DPI تشخیصش نمی‌دهد: بسته‌های بی‌معنی، پیام‌های پرشده، هدرهای تصادفی و (در ۳٫۱) محافظت از هدر. تونل کامل VPN برای برنامه‌های AmneziaWG و AmneziaVPN (فایل .conf را وارد کنید یا QR آن را اسکن کنید). هر سرور یکی.",
+		Fields: []Field{fAWGVer, fMTU, fAWGDNS, fAWGI1, fPub, fPriv}},
 	{ID: "vmess-kcp", Name: "VMess · mKCP", Engine: "xray", Group: "udp", Network: "udp", DefaultPort: 8390,
 		Security: "none", Status: "beta", proto: "vmess", transport: "kcp",
 		Desc: "UDP transport for unstable links.", DescFa: "ترابری UDP برای لینک‌های ناپایدار.",
@@ -282,6 +290,8 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		set("congestion", "bbr")
 	case "vless-xdns":
 		set("resolver", "8.8.8.8")
+	case "amneziawg":
+		awgDefaults(params)
 	case "mtproto":
 		set("sni", DefaultFakeTLS)
 		if k, _ := params["mtKey"].(string); len(k) != 32 {

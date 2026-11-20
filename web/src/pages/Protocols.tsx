@@ -7,6 +7,9 @@ import { Badge, Button, ConfirmButton, Empty, Input, Label, SectionTitle, Select
 import { PageHead, navigate } from "../App";
 import { shortName } from "../components/NetworkMap";
 
+/** the program that serves each engine, as shown on the cards */
+const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", xray: "Xray" };
+
 export function ProtocolsPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
   const toast = useToast();
@@ -82,7 +85,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <Badge color={color}><span className="mono" dir="ltr">:{i.port}</span></Badge>
-                            <Badge color="var(--color-ink2)">{p?.engine === "singbox" ? "sing-box" : "Xray"}</Badge>
+                            <Badge color="var(--color-ink2)">{engineName[p?.engine ?? ""] ?? "Xray"}</Badge>
                             {p?.network === "udp" && <Badge color="var(--color-udp)">UDP</Badge>}
                             {p?.status === "beta" && <Badge color="var(--color-violet)">{t("beta")}</Badge>}
                             {nodes.length > 0 && (
@@ -94,7 +97,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                           {i.error ? (
                             <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad">
                               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
-                              <bdi dir="ltr" className="break-words">{i.error}</bdi>
+                              <bdi dir="ltr" className="min-w-0 [overflow-wrap:anywhere]">{i.error}</bdi>
                             </div>
                           ) : (
                             <div className="mt-auto grid grid-cols-2 gap-3 pt-3 border-t border-hair text-[12px]">
@@ -124,7 +127,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 /** Setup steps some protocols need before they work. */
 function PresetHelp({ id }: { id: string }) {
   const { t } = useI18n();
-  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : null;
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : null;
   if (!key) return null;
   return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
 }
@@ -245,7 +248,7 @@ function EditSheet({ inbound, preset, nodes, onClose, onDone }: { inbound: Inbou
       <div className="flex flex-col gap-5">
         <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? preset.descFa : preset.desc}</p>
         <PresetHelp id={preset.id} />
-        {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px]">{inbound.error}</bdi></div>}
+        {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px] [overflow-wrap:anywhere]">{inbound.error}</bdi></div>}
         {nodes.length > 0 && <div className="grid sm:grid-cols-2 gap-3"><ServerPick nodes={nodes} value={server} onChange={setServer} /></div>}
         <div className="grid grid-cols-2 gap-3">
           <label><Label>{t("port")}</Label><Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="num" /></label>

@@ -722,6 +722,8 @@ func (in *Inbound) Str(key string) string {
 			return x
 		case float64:
 			return fmt.Sprintf("%v", x)
+		case int, int64:
+			return fmt.Sprintf("%d", x) // set in Go, before a trip through JSON
 		case bool:
 			if x {
 				return "true"

@@ -1,6 +1,6 @@
 # Protocols (research as of November 2026)
 
-Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, mtg **v2.3.0**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
+Versions checked: Xray-core **v26.11.9**, sing-box **v1.14.4**, mtg **v2.3.0**, amneziawg-go **v3.1.20261116**, Hysteria **v2.14.0**, Mieru **v3.39.0**, TrustTunnel **v1.3.1**.
 Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experimental · 🗺 = on the roadmap
 
 ## Xray-core
@@ -44,7 +44,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 ## Independent / lesser-known protocols (sidecars)
 | Protocol | What it is | Status |
 |---|---|---|
-| AmneziaWG 2.0 | WireGuard with junk packets and header obfuscation | 🗺 |
+| AmneziaWG 3.1 / 2.0 | WireGuard with junk packets, random sizes and message headers, and (3.1) header protection | ✅ amneziawg-go (MIT), userspace TUN with NAT; one per server, serving every user. Each user gets a `.conf` (download and QR on the user page and in the panel) for the AmneziaVPN / AmneziaWG apps. Users are added and removed live; usage, online state and devices come from the interface's counters. Tested with a real client: no packet on the wire looks like WireGuard. Built from upstream source with each release, downloaded with the first AmneziaWG |
 | Mieru | TCP/UDP with no fixed pattern | 🗺 |
 | TrustTunnel (AdGuard) | HTTP/2/3 VPN that looks like normal traffic | 🗺 |
 | MTProto (mtg) | Telegram proxy with FakeTLS | ✅ mtg 2.3.0 (MIT): one per server, one `tg://proxy` link for everyone (no per-user usage). Can share port 443 by SNI; probes see the fake domain's real site. Downloaded with the first Telegram proxy |

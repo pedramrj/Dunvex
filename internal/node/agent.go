@@ -229,10 +229,15 @@ func (a *Agent) Apply(s State) error {
 		if p == nil {
 			return fmt.Errorf("this node does not know the protocol %q; update it", in.Preset)
 		}
-		// mtg arrives with the first Telegram proxy
+		// mtg and amneziawg-go arrive with the first inbound that needs them
 		if p.Engine == "mtg" && in.Enabled && !a.Mgr.MTG.Installed() {
 			if _, err := coremgr.InstallMTG(a.Mgr.MTG.BinDir); err != nil {
 				log.Printf("node: mtg: %v", err) // the status reports it as a core error
+			}
+		}
+		if p.Engine == "awg" && in.Enabled && !a.Mgr.AWG.Installed() {
+			if _, err := coremgr.InstallAWG(a.Mgr.AWG.BinDir); err != nil {
+				log.Printf("node: amneziawg-go: %v", err)
 			}
 		}
 	}

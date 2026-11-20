@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/awg"
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -33,7 +34,8 @@ type Manager struct {
 	Store   *store.Store
 	Xray    *Core
 	SingBox *Core
-	MTG     *Core // the Telegram (MTProto) proxy
+	MTG     *Core       // the Telegram (MTProto) proxy
+	AWG     *awg.Server // AmneziaWG (its own interface)
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -63,6 +65,11 @@ type Manager struct {
 	liveGone  map[string]int64 // users removed live from Xray → when
 	lastKick  int64
 	overSince map[int64]int64 // user id → first moment over the device limit
+
+	awgNow   *awgPlan                // what AmneziaWG serves now
+	awgPrev  map[string]awg.PeerStat // last counters per peer
+	awgGen   int                     // amneziawg-go start those counters belong to
+	awgRetry int64                   // last time a stopped AmneziaWG was started again
 }
 
 // NewManager wires a manager for the given home directory.
@@ -73,6 +80,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		Xray:        &Core{Name: "xray", BinDir: binDir, ConfigPath: filepath.Join(runDir, "xray.json"), APIPort: 62789},
 		SingBox:     &Core{Name: "sing-box", BinDir: binDir, ConfigPath: filepath.Join(runDir, "sing-box.json"), APIPort: 62790},
 		MTG:         &Core{Name: "mtg", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mtg.toml"), APIPort: 62791},
+		AWG:         awg.New(binDir, "dvxawg0"),
 		Env:         env,
 		applyCh:     make(chan struct{}, 1),
 		inboundErrs: map[int64]string{},
@@ -149,6 +157,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.Xray.Stop()
 			m.SingBox.Stop()
 			m.MTG.Stop()
+			m.AWG.Stop()
 			return
 		case <-m.applyCh:
 			time.Sleep(1500 * time.Millisecond) // coalesce bursts of edits
@@ -190,7 +199,8 @@ func (m *Manager) SNIRoutes() (map[string]edge.Target, error) {
 // built is one generation of core configs plus the edge router's SNI table.
 type built struct {
 	xray, singbox []byte
-	mtg           []byte // the Telegram proxy (one per server)
+	mtg           []byte   // the Telegram proxy (one per server)
+	awg           *awgPlan // AmneziaWG (one per server)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -279,6 +289,12 @@ func (m *Manager) build() (b built, err error) {
 			}
 		}
 		switch p.Engine {
+		case "awg":
+			if b.awg != nil {
+				b.errs[in.ID] = "only one AmneziaWG can run on a server"
+				continue
+			}
+			b.awg = m.awgBuild(in, us)
 		case "mtg":
 			if b.mtg != nil {
 				b.errs[in.ID] = "only one Telegram proxy can run on a server"
@@ -412,6 +428,7 @@ func (m *Manager) Apply() error {
 		return err
 	}
 	xcfg, scfg, tcfg := b.xray, b.singbox, b.mtg
+	ierrs, active := b.errs, b.active
 	m.collect() // save counters before a restart wipes them
 	cerrs := map[string]string{}
 	for attempt := 0; attempt < 6; attempt++ {
@@ -442,6 +459,11 @@ func (m *Manager) Apply() error {
 			return err
 		}
 		xcfg, scfg, tcfg = b.xray, b.singbox, b.mtg
+		ierrs, active = b.errs, b.active
+	}
+	if err := m.awgApply(b.awg); err != nil {
+		cerrs["amneziawg"] = err.Error()
+		ierrs[b.awg.inbound] = err.Error()
 	}
 	if m.OnRoutes != nil {
 		m.OnRoutes(b.routes)
@@ -449,7 +471,6 @@ func (m *Manager) Apply() error {
 	if m.OnApplied != nil {
 		m.OnApplied()
 	}
-	ierrs, active := b.errs, b.active
 	m.mu.Lock()
 	prev := m.activeNames
 	m.inboundErrs, m.coreErrs, m.activeNames = ierrs, cerrs, active
@@ -568,13 +589,15 @@ func (m *Manager) collect() bool {
 			t := id[n]
 			if c.Dir == "uplink" {
 				t.Up += v
-				totUp += v
 			} else {
 				t.Down += v
-				totDown += v
 			}
 			id[n] = t
 		}
+	}
+	m.awgCollect(ud, id)
+	for _, t := range id {
+		totUp, totDown = totUp+t.Up, totDown+t.Down
 	}
 	if err := m.Store.AddTraffic(now, ud, id); err != nil {
 		log.Printf("store traffic: %v", err)

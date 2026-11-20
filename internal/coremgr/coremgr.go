@@ -394,3 +394,31 @@ func InstallMTG(binDir string) (string, error) {
 	}
 	return "", fmt.Errorf("no mtg build for %s/%s in %s", runtime.GOOS, arch, r.Tag)
 }
+
+// InstallAWG downloads amneziawg-go (the AmneziaWG server, by Amnezia, MIT),
+// built for Linux and published with the latest Dunvex release, into binDir.
+func InstallAWG(binDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("AmneziaWG runs on Linux servers only")
+	}
+	r, err := latest(Repo)
+	if err != nil {
+		return "", err
+	}
+	want := fmt.Sprintf("amneziawg-go-linux-%s.tar.gz", goarch())
+	for _, a := range r.Assets {
+		if a.Name != want {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		if err := extractTarGz(data, binDir, map[string]string{"amneziawg-go": "amneziawg-go", "amneziawg-go.version": "amneziawg-go.version"}); err != nil {
+			return "", err
+		}
+		v, _ := os.ReadFile(filepath.Join(binDir, "amneziawg-go.version"))
+		return strings.TrimSpace(string(v)), nil
+	}
+	return "", fmt.Errorf("%s is not published with %s yet", want, r.Tag)
+}
