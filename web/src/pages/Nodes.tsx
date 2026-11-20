@@ -183,7 +183,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
           <div className="text-[12.5px] text-ink3"><span className="mono sensitive" dir="ltr">{x.address}</span>{ns ? <> · <span dir="ltr">Dunvex {ns.version}</span></> : null}</div>
         </div>
         <div className="ms-auto flex flex-wrap items-center gap-1.5">
-          {isRelay && <Badge color="var(--color-violet)">{t("relayTo")} <bdi dir="ltr">{x.relayTarget ? x.targetName : t("thisServer")}</bdi></Badge>}
+          {isRelay && <Badge color="var(--color-violet)">{t("relayTo")} <bdi dir="ltr">{x.relayTarget ? x.targetName : t("thisServer")}</bdi>{x.relayMode === "reverse" ? ` · ${t("relayModeReverse")}` : ""}</Badge>}
           <Badge color={st.c}><Dot color={st.c} size={6} pulse={x.online} />{t(st.k)}</Badge>
           {owner && (
             <>
@@ -223,6 +223,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
               ? <KV label={t("relayShift")}><span className="num" dir="ltr">{x.relayShift > 0 ? "+" : ""}{n(x.relayShift)}</span></KV>
               : <KV label="TLS"><span className="mono text-[11.5px]" dir="ltr">{ns.certSha256 ? ns.certSha256.slice(0, 12) + "…" : "—"}</span></KV>}
           </div>
+          {isRelay && x.relayMode === "reverse" && <TunnelState x={x} />}
           {isRelay ? <RelayPorts list={ns.forwards ?? []} /> : (
             <div className="flex flex-wrap gap-2">
               {ns.cores.map((c) => (
@@ -253,6 +254,26 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
       {isRelay && <RelaySettings open={relaySet} node={x} servers={servers.filter((s) => s.id !== x.id)} onClose={() => setRelaySet(false)}
         onDone={() => { setRelaySet(false); onChange(); }} />}
     </Panel>
+  );
+}
+
+/** A reverse relay's tunnel: whether the target server keeps its links to it. */
+function TunnelState({ x }: { x: NodeView }) {
+  const { t, lang, n } = useI18n();
+  const tun = x.status?.tunnel;
+  const links = tun?.links ?? 0;
+  const err = tun?.error || (links === 0 ? x.tunnelError : "");
+  return (
+    <div className={cx("mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3 text-[13px]",
+      links > 0 ? "border-online/30 bg-online/[.06]" : "border-warn/40 bg-warn/[.08]")}>
+      <ArrowRightLeft className={cx("size-4 shrink-0", links > 0 ? "text-online" : "text-warn")} />
+      <span className="font-semibold">{t("relayTunnel")}</span>
+      <span className="text-ink3 num" dir="ltr">:{tun?.port ?? x.relayPort}</span>
+      {links > 0
+        ? <span className="num">{n(links)} {t("relayTunnelLinks")} <bdi dir="ltr" className="mono sensitive">{tun?.peer}</bdi>{tun?.since ? <span className="text-ink3"> · {ago(tun.since, lang)}</span> : null}</span>
+        : <span className="text-warn">{t("relayTunnelDown")}</span>}
+      {err && <bdi dir="ltr" className="basis-full text-[12px] text-bad break-words">{err}</bdi>}
+    </div>
   );
 }
 
@@ -292,14 +313,12 @@ function RelayPorts({ list }: { list: RelayStat[] }) {
 function RelaySettings({ open, node: x, servers, onClose, onDone }: { open: boolean; node: NodeView; servers: NodeView[]; onClose: () => void; onDone: () => void }) {
   const { t } = useI18n();
   const toast = useToast();
-  const [target, setTarget] = useState(String(x.relayTarget));
-  const [shift, setShift] = useState(String(x.relayShift));
-  const [only, setOnly] = useState(x.relayOnly);
+  const [f, setF] = useState<RelayForm>(relayForm(x));
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setTarget(String(x.relayTarget)); setShift(String(x.relayShift)); setOnly(x.relayOnly); } }, [open, x]);
+  useEffect(() => { if (open) setF(relayForm(x)); }, [open, x]);
   const save = () => {
     setBusy(true);
-    api(`nodes/${x.id}`, { method: "PUT", body: { relayTarget: Number(target), relayShift: Number(shift) || 0, relayOnly: only } })
+    api(`nodes/${x.id}`, { method: "PUT", body: relayBody(f) })
       .then(() => { toast(t("saved")); onDone(); })
       .catch((e) => toast(e.message, "error"))
       .finally(() => setBusy(false));
@@ -307,22 +326,43 @@ function RelaySettings({ open, node: x, servers, onClose, onDone }: { open: bool
   return (
     <Dialog open={open} onClose={onClose} title={<>{t("relaySettings")} · <bdi dir="ltr">{x.name}</bdi></>}
       footer={<><Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} onClick={save}>{t("save")}</Button></>}>
-      <RelayFields servers={servers} target={target} setTarget={setTarget} shift={shift} setShift={setShift} only={only} setOnly={setOnly} />
+      <RelayFields servers={servers} f={f} set={setF} />
     </Dialog>
   );
 }
 
-function RelayFields({ servers, target, setTarget, shift, setShift, only, setOnly }: {
-  servers: NodeView[]; target: string; setTarget: (v: string) => void; shift: string; setShift: (v: string) => void; only: boolean; setOnly: (v: boolean) => void;
-}) {
+/** What a relay form edits. */
+interface RelayForm { target: string; shift: string; only: boolean; mode: "forward" | "reverse"; port: string }
+
+const relayForm = (x?: NodeView): RelayForm => ({
+  target: String(x?.relayTarget ?? 0), shift: String(x?.relayShift ?? 0), only: x?.relayOnly ?? false,
+  mode: x?.relayMode === "reverse" ? "reverse" : "forward", port: x?.relayPort ? String(x.relayPort) : "8443",
+});
+
+const relayBody = (f: RelayForm) => ({
+  relayTarget: Number(f.target), relayShift: Number(f.shift) || 0, relayOnly: f.only, relayMode: f.mode,
+  ...(f.mode === "reverse" ? { relayPort: Number(f.port) || 0 } : {}),
+});
+
+function RelayFields({ servers, f, set }: { servers: NodeView[]; f: RelayForm; set: (f: RelayForm) => void }) {
   const { t } = useI18n();
+  const up = <K extends keyof RelayForm>(k: K, v: RelayForm[K]) => set({ ...f, [k]: v });
   return (
     <div className="flex flex-col gap-4">
       <label><Label>{t("relayTarget")}</Label>
-        <Select value={target} onChange={setTarget} options={[{ value: "0", label: t("thisServer") }, ...servers.map((s) => ({ value: String(s.id), label: s.name }))]} /></label>
+        <Select value={f.target} onChange={(v) => up("target", v)} options={[{ value: "0", label: t("thisServer") }, ...servers.map((s) => ({ value: String(s.id), label: s.name }))]} /></label>
+      <div>
+        <Label>{t("relayMode")}</Label>
+        <Segmented value={f.mode} onChange={(v) => up("mode", v)} options={[{ value: "forward", label: t("relayModeForward") }, { value: "reverse", label: t("relayModeReverse") }]} />
+        <p className="text-[12.5px] text-ink3 mt-2">{f.mode === "reverse" ? t("relayModeReverseHint") : t("relayModeForwardHint")}</p>
+      </div>
+      {f.mode === "reverse" && (
+        <label><Label hint={t("relayTunnelPortHint")}>{t("relayTunnelPort")}</Label>
+          <Input type="number" min={1} max={65535} dir="ltr" className="num max-w-40" value={f.port} onChange={(e) => up("port", e.target.value)} /></label>
+      )}
       <label><Label hint={t("relayShiftHint")}>{t("relayShift")}</Label>
-        <Input type="number" min={-60000} max={60000} dir="ltr" className="num max-w-40" value={shift} onChange={(e) => setShift(e.target.value)} /></label>
-      <Toggle checked={only} onChange={setOnly} label={t("relayOnlyLabel")} hint={t("relayOnlyHint")} />
+        <Input type="number" min={-60000} max={60000} dir="ltr" className="num max-w-40" value={f.shift} onChange={(e) => up("shift", e.target.value)} /></label>
+      <Toggle checked={f.only} onChange={(v) => up("only", v)} label={t("relayOnlyLabel")} hint={t("relayOnlyHint")} />
     </div>
   );
 }
@@ -334,14 +374,12 @@ function AddServerDialog({ open, servers, onClose, onDone }: { open: boolean; se
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
   const [role, setRole] = useState<"server" | "relay">("server");
-  const [target, setTarget] = useState("0");
-  const [shift, setShift] = useState("0");
-  const [only, setOnly] = useState(false);
+  const [rf, setRf] = useState<RelayForm>(relayForm());
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setName(""); setToken(""); setRole("server"); setTarget("0"); setShift("0"); setOnly(false); } }, [open]);
+  useEffect(() => { if (open) { setName(""); setToken(""); setRole("server"); setRf(relayForm()); } }, [open]);
   const add = () => {
     setBusy(true);
-    const relay = role === "relay" ? { role, relayTarget: Number(target), relayShift: Number(shift) || 0, relayOnly: only } : {};
+    const relay = role === "relay" ? { role, ...relayBody(rf) } : {};
     api<NodeView>("nodes", { body: { name: name.trim(), token: token.trim(), ...relay } })
       .then((x) => { x.paired ? toast(t("serverAdded")) : toast(x.error || t("nodePairing"), "error"); onDone(); })
       .catch((e) => toast(e.message, "error"))
@@ -365,7 +403,7 @@ function AddServerDialog({ open, servers, onClose, onDone }: { open: boolean; se
           <Segmented value={role} onChange={setRole} options={[{ value: "server", label: t("roleServer") }, { value: "relay", label: t("roleRelay") }]} />
           <p className="text-[12.5px] text-ink3 mt-2">{role === "relay" ? t("roleRelayHint") : t("roleServerHint")}</p>
         </div>
-        {role === "relay" && <RelayFields servers={servers} target={target} setTarget={setTarget} shift={shift} setShift={setShift} only={only} setOnly={setOnly} />}
+        {role === "relay" && <RelayFields servers={servers} f={rf} set={setRf} />}
         <p className="text-[12px] text-ink3 inline-flex items-start gap-1.5"><ShieldCheck className="size-4 shrink-0 text-primary2" />{t("nodeSecure")}</p>
       </div>
     </Dialog>

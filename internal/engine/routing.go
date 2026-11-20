@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/geodata"
+	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/warp"
 )
@@ -36,6 +37,7 @@ type routePlan struct {
 	router   int           // port of the routing inbound
 	warpTest int           // port of the WARP check inbound
 	usque    int           // port of the MASQUE SOCKS proxy (usque)
+	serves   bool          // this server runs protocols the routing applies to
 }
 
 func (m *Manager) routePlan() *routePlan {
@@ -44,16 +46,33 @@ func (m *Manager) routePlan() *routePlan {
 		rp.dat = m.Xray.BinDir
 	}
 	// a registered device is always reachable through the check port, even
-	// before any traffic is sent to it
-	if rp.acct = routing.Account(m.Store); rp.acct == nil && rp.set.UsesWarp() {
+	// before any traffic is sent to it. A server without such protocols (a
+	// relay, or one still empty) never registers WARP or installs usque.
+	rp.serves = m.servesProtocols()
+	rp.acct = routing.Account(m.Store)
+	switch {
+	case !rp.serves:
+	case rp.acct == nil && rp.set.UsesWarp():
 		m.registerWarpLater()
-	} else if rp.acct != nil && rp.acct.Masque() && !m.Usque.Installed() {
+	case rp.acct != nil && rp.acct.Masque() && !m.Usque.Installed():
 		m.installUsqueLater()
 	}
 	return rp
 }
 
 func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+// servesProtocols reports whether this server runs protocols the routing
+// applies to (AmneziaWG and the Telegram proxy do not take routing rules).
+func (m *Manager) servesProtocols() bool {
+	ins, _ := m.Store.Inbounds()
+	for _, in := range ins {
+		if p := protocol.Get(in.Preset); in.Enabled && in.NodeID == 0 && p != nil && p.Engine != "awg" && p.Engine != "mtg" {
+			return true
+		}
+	}
+	return false
+}
 
 // warp reports whether WARP is in use and ready.
 func (rp *routePlan) warp() bool { return rp.acct != nil && rp.set.UsesWarp() }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -231,3 +232,127 @@ func mustNode(t *testing.T, st *store.Store, id int64) *store.Node {
 	}
 	return n
 }
+
+// The target dials the relay: users reach the panel's protocols through the
+// relay without the relay ever connecting to the panel's server.
+func TestPanelWithReverseRelay(t *testing.T) {
+	ndir := t.TempDir()
+	nst, err := store.Open(filepath.Join(ndir, "node.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nst.Close()
+	nenv := protocol.Env{Host: "127.0.0.1"}
+	agent := &node.Agent{Version: "test", St: nst, Sys: sysinfo.NewSampler(), Env: func() protocol.Env { return nenv }}
+	agent.Mgr = engine.NewManager(nst, filepath.Join(ndir, "bin"), filepath.Join(ndir, "run"), agent.Env)
+	ncert, _, _ := node.LoadOrCreateCert(filepath.Join(ndir, "certs"), "agent", "dunvex-node")
+	nts := httptest.NewUnstartedServer(agent.Handler())
+	nts.TLS = agent.TLSConfig(ncert)
+	nts.StartTLS()
+	defer nts.Close()
+	nport := nts.Listener.Addr().(*net.TCPAddr).Port
+	agent.Relay = relay.New(map[int]string{nport: "the Dunvex agent"})
+	agent.Relay.SetCert(ncert)
+	defer agent.Relay.Close()
+	tok, err := node.Init(nst, filepath.Join(ndir, "certs"), "127.0.0.1", nport, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	hash, _ := HashPassword("owner-pass-1")
+	st.UpsertAdmin("boss", hash)
+	st.SetSetting("host", "127.0.0.1")
+	srv := &Server{Home: dir, Version: "test", St: st, Sys: sysinfo.NewSampler(), Tunnels: relay.NewTunnels("")}
+	defer srv.Tunnels.Close()
+	srv.Mgr = engine.NewManager(st, dir, filepath.Join(dir, "run"), func() protocol.Env { return srv.Env() })
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	owner := newClient(t, ts.URL)
+	owner.do("POST", "/login", map[string]string{"username": "boss", "password": "owner-pass-1"})
+	reality := freeBoth(t, 32500)
+	hy := freeBoth(t, reality+20)
+	tunnelPort := freeBoth(t, hy+20)
+	for _, x := range []struct {
+		preset string
+		port   int
+	}{{"vless-reality-vision", reality}, {"hysteria2", hy}} {
+		p := protocol.Get(x.preset)
+		st.CreateInbound(&store.Inbound{Preset: x.preset, Port: x.port, Enabled: true, Params: protocol.Defaults(p, nil, "")})
+	}
+	standIn(t, reality, hy)
+
+	if code, _ := owner.do("POST", "/nodes", map[string]any{"name": "Tehran", "token": tok.String(), "role": "relay", "relayMode": "reverse"}); code != 400 {
+		t.Error("a reverse relay without a tunnel port was accepted")
+	}
+	code, out := owner.do("POST", "/nodes", map[string]any{"name": "Tehran", "token": tok.String(), "role": "relay", "relayMode": "reverse",
+		"relayPort": tunnelPort, "relayShift": 7})
+	if code != 200 || out["relayMode"] != "reverse" || out["paired"] != true {
+		t.Fatalf("add reverse relay: %d %v", code, out)
+	}
+	relayID := int64(out["id"].(float64))
+	n := mustNode(t, st, relayID)
+	if n.RelaySecret == "" || strings.Contains(fmtJSON(out), n.RelaySecret) {
+		t.Fatal("the tunnel secret is missing, or reached the page")
+	}
+
+	// the panel's server keeps links to the relay; the relay never dials it
+	for i := 0; i < 100; i++ {
+		if s := agent.Relay.TunnelStat(); s != nil && s.Links == relay.Links {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if s := agent.Relay.TunnelStat(); s == nil || s.Links != relay.Links || s.Port != tunnelPort {
+		t.Fatalf("relay tunnel: %+v", s)
+	}
+	for _, f := range agent.Relay.Stats() {
+		if !f.Reverse || !f.Listening {
+			t.Fatalf("forward: %+v", f)
+		}
+	}
+	c, err := net.Dial("tcp", "127.0.0.1:"+strconv.Itoa(reality+7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Write([]byte("hello"))
+	c.(*net.TCPConn).CloseWrite()
+	got, _ := io.ReadAll(c)
+	c.Close()
+	if string(got) != "echo:hello" {
+		t.Errorf("TCP through the reverse tunnel: %q", got)
+	}
+	u, _ := net.Dial("udp", "127.0.0.1:"+strconv.Itoa(hy+7))
+	u.SetDeadline(time.Now().Add(3 * time.Second))
+	u.Write([]byte("quic"))
+	buf := make([]byte, 64)
+	k, err := u.Read(buf)
+	u.Close()
+	if err != nil || string(buf[:k]) != "pong:quic" {
+		t.Errorf("UDP through the reverse tunnel: %q %v", buf[:k], err)
+	}
+
+	// the panel shows its links to the relay
+	_, list := owner.do("GET", "/nodes", nil)
+	if r0 := list["list"].([]any)[0].(map[string]any); r0["tunnelLinks"] != float64(relay.Links) {
+		t.Errorf("node view: %v", r0)
+	}
+	// back to forward mode: the links stop
+	if code, _ := owner.do("PUT", "/nodes/"+itoa(relayID), map[string]any{"relayMode": "forward"}); code != 200 {
+		t.Fatal("back to forward")
+	}
+	srv.hub().sync(mustNode(t, st, relayID))
+	if s := agent.Relay.TunnelStat(); s != nil {
+		t.Errorf("the tunnel port is still open: %+v", s)
+	}
+	if cs := srv.Tunnels.Stats(); len(cs) != 0 {
+		t.Errorf("the panel still keeps links: %+v", cs)
+	}
+}
+
+func fmtJSON(v any) string { b, _ := json.Marshal(v); return string(b) }

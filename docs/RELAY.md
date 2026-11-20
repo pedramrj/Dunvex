@@ -1,4 +1,4 @@
-# Relay servers (v1.15)
+# Relay servers (v1.15) and reverse tunnels (v1.16)
 
 A **relay** is a second server, usually inside Iran, that users connect to instead of the server abroad. It
 passes their traffic, unchanged, to the server that runs the protocols. Users reach a domestic address (often
@@ -15,6 +15,22 @@ target server. Usage, limits and expiry are still counted on the target, exactly
    panel's server or one of your nodes.
 
 The panel and the relay talk over mutual TLS with pinned certificates, as with any node.
+
+## Forward or reverse
+
+- **Forward** (default): the relay connects to the target server for each user connection.
+- **Reverse**: the target server connects to the relay instead and keeps a few links open to the relay's **tunnel
+  port**; user connections travel back over those links. Nothing ever connects from the relay to the server abroad,
+  which helps when connections from Iran to abroad are blocked or slow while the other direction still works.
+
+The reverse links are TLS 1.3 to the relay's own certificate (the same one the panel pins for the relay), plus a
+32-character secret the panel makes for each relay. Many user connections share each link (multiplexed with
+[smux](https://github.com/xtaci/smux), MIT), and the links reconnect by themselves. The target server reaches only
+the ports of the protocols it relays, never anything else on itself. The relay's card shows the tunnel: how many
+links are up and where they come from.
+
+The tunnel port must be open on the relay and differ from the protocols' ports (with a port shift, from the shifted
+ones). The target can be this panel's server or a node; a node keeps its links even after a restart.
 
 ## What it forwards
 
@@ -44,12 +60,15 @@ bytes in each direction and the delay from the relay to the target (or that the 
 
 ## Good to know
 
-- The target sees users' connections coming from the relay's address. Device limits count all of a user's devices
-  that come through one relay as one device.
-- The relay needs its ports open in its own firewall and must be able to reach the target.
+- The target sees users' connections coming from the relay's address (in reverse mode, from itself). Device limits
+  count all of a user's devices that come through one relay as one device.
+- The relay needs its ports open in its own firewall. In forward mode it must be able to reach the target; in reverse
+  mode the target must be able to reach the relay's tunnel port.
+- A relay runs no routing rules and never registers WARP: those belong to the server that runs the protocols.
 - A relay cannot point at another relay, and a server with protocols must be emptied before it becomes a relay.
 
 ## API
 
 `POST /nodes` and `PUT /nodes/{id}` take `"role": "relay"`, `"relayTarget"` (0 = this server, else a node id),
-`"relayShift"` and `"relayOnly"`. A relay's status lists its `forwards`.
+`"relayShift"`, `"relayOnly"`, `"relayMode"` (`forward` or `reverse`) and `"relayPort"` (the tunnel port in reverse
+mode). A relay's status lists its `forwards` and, in reverse mode, its `tunnel`.

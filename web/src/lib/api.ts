@@ -252,6 +252,8 @@ export interface NodeStatus {
   users: number;
   inbounds: number;
   forwards?: RelayStat[];
+  tunnel?: { port: number; listening: boolean; error?: string; links: number; peer?: string; since?: number } | null;
+  tunnelLinks?: { name: string; addr: string; links: number; error?: string; since?: number; streams: number }[];
   time: number;
 }
 
@@ -291,7 +293,11 @@ export interface NodeView {
   relayTarget: number; // 0 = this panel's server
   relayOnly: boolean;
   relayShift: number;
+  relayMode: "forward" | "reverse";
+  relayPort: number; // a reverse relay's tunnel port
   targetName?: string;
+  tunnelLinks: number; // this server's links to a reverse relay in front of it
+  tunnelError?: string;
 }
 
 export interface Line {

@@ -50,3 +50,35 @@ func TestRelayForwardsSurviveARestart(t *testing.T) {
 		t.Errorf("forwards left: %+v", st)
 	}
 }
+
+// A protocol server behind a reverse relay keeps its links, also after a restart.
+func TestTunnelLinksSurviveARestart(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "n.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	env := func() protocol.Env { return protocol.Env{Host: "127.0.0.1"} }
+	mk := func() *Agent {
+		a := &Agent{Version: "test", St: st, Sys: sysinfo.NewSampler(), Env: env, Relay: relay.New(nil), Tunnels: relay.NewTunnels("")}
+		a.Mgr = engine.NewManager(st, filepath.Join(dir, "bin"), filepath.Join(dir, "run"), env)
+		return a
+	}
+	link := relay.TunnelClient{Name: "Tehran", Addr: "127.0.0.1:9", Fingerprint: "00", Secret: "x", Ports: []int{443}}
+	a := mk()
+	a.Apply(State{Tunnels: []relay.TunnelClient{link}})
+	if s := a.Status(); len(s.TunnelLinks) != 1 || s.TunnelLinks[0].Name != "Tehran" {
+		t.Fatalf("status: %+v", s.TunnelLinks)
+	}
+	a.Tunnels.Close()
+	a.Relay.Close()
+
+	b := mk()
+	defer b.Relay.Close()
+	defer b.Tunnels.Close()
+	b.RestoreForwards()
+	if s := b.Tunnels.Stats(); len(s) != 1 || s[0].Addr != "127.0.0.1:9" {
+		t.Fatalf("after a restart: %+v", s)
+	}
+}

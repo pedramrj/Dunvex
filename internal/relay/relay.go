@@ -5,6 +5,7 @@
 package relay
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -20,13 +21,23 @@ import (
 
 // Forward is one forwarded port.
 type Forward struct {
-	Name    string `json:"name"`    // what it carries, for the status
-	Listen  int    `json:"listen"`  // port on the relay
-	Network string `json:"network"` // tcp, udp or tcp+udp
-	Target  string `json:"target"`  // host:port of the server
+	Name    string `json:"name"`              // what it carries, for the status
+	Listen  int    `json:"listen"`            // port on the relay
+	Network string `json:"network"`           // tcp, udp or tcp+udp
+	Target  string `json:"target"`            // host:port of the server
+	Reverse bool   `json:"reverse,omitempty"` // carried over the tunnel the server keeps to the relay
 }
 
-func (f Forward) key() string { return fmt.Sprintf("%d/%s/%s", f.Listen, f.Network, f.Target) }
+func (f Forward) key() string {
+	return fmt.Sprintf("%d/%s/%s/%v", f.Listen, f.Network, f.Target, f.Reverse)
+}
+
+// port is the server's port the forward goes to.
+func (f Forward) port() int {
+	_, p, _ := net.SplitHostPort(f.Target)
+	n, _ := strconv.Atoi(p)
+	return n
+}
 
 func (f Forward) has(network string) bool { return f.Network == network || f.Network == "tcp+udp" }
 
@@ -54,10 +65,13 @@ type Relay struct {
 	fwds     map[string]*fwd
 	reserved map[int]string // ports the relay must not take (its own agent)
 	stop     chan struct{}
+	cert     *tls.Certificate
+	tun      atomic.Pointer[tunnelServer] // the reverse tunnel's port, if any
 }
 
 type fwd struct {
 	Forward
+	rel   *Relay
 	tcp   net.Listener
 	udp   *net.UDPConn
 	err   string
@@ -72,9 +86,12 @@ type fwd struct {
 	flows map[string]*flow  // UDP flows by client address
 }
 
+// flow is one UDP client: straight to the server, or a tunnel stream.
 type flow struct {
-	conn *net.UDPConn
-	last atomic.Int64 // unix nano of the last packet
+	send  func([]byte) error
+	recv  func([]byte) (int, error)
+	close func() error
+	last  atomic.Int64 // unix nano of the last packet
 }
 
 // New makes a relay; reserved ports (e.g. the agent's) are never forwarded.
@@ -102,9 +119,11 @@ func (r *Relay) Apply(list []Forward) {
 		if _, ok := r.fwds[k]; ok {
 			continue
 		}
-		x := &fwd{Forward: f, done: make(chan struct{}), open: map[net.Conn]bool{}, flows: map[string]*flow{}}
+		x := &fwd{Forward: f, rel: r, done: make(chan struct{}), open: map[net.Conn]bool{}, flows: map[string]*flow{}}
 		if what, ok := r.reserved[f.Listen]; ok {
 			x.err = fmt.Sprintf("port %d is used by %s on the relay", f.Listen, what)
+		} else if t := r.tun.Load(); t != nil && t.cfg.Port == f.Listen {
+			x.err = fmt.Sprintf("port %d is the relay's tunnel port", f.Listen)
 		} else if err := x.start(); err != nil {
 			x.err = err.Error()
 			log.Printf("relay: %s: %v", f.Name, err)
@@ -139,6 +158,9 @@ func (r *Relay) Close() {
 		f.close()
 		delete(r.fwds, k)
 	}
+	if t := r.tun.Swap(nil); t != nil {
+		t.close()
+	}
 }
 
 // health measures how long a TCP connection to each server takes.
@@ -156,7 +178,7 @@ func (r *Relay) health() {
 		r.mu.Lock()
 		var list []*fwd
 		for _, f := range r.fwds {
-			if f.has("tcp") {
+			if f.has("tcp") && !f.Reverse { // a reverse forward has no address to try
 				list = append(list, f)
 			}
 		}
@@ -231,7 +253,7 @@ func (f *fwd) close() {
 		c.Close()
 	}
 	for _, fl := range f.flows {
-		fl.conn.Close()
+		fl.close()
 	}
 	f.mu.Unlock()
 	f.wg.Wait()
@@ -279,7 +301,13 @@ func (f *fwd) serveTCP(in net.Conn) {
 	}
 	f.conns.Add(1)
 	defer func() { f.conns.Add(-1); f.track(in, false); in.Close() }()
-	out, err := net.DialTimeout("tcp", f.Target, DialTimeout)
+	var out net.Conn
+	var err error
+	if f.Reverse {
+		out, err = f.rel.tunnelOpen('t', f.port())
+	} else {
+		out, err = net.DialTimeout("tcp", f.Target, DialTimeout)
+	}
 	if err != nil {
 		return
 	}
@@ -343,7 +371,7 @@ func (f *fwd) readUDP() {
 			continue
 		}
 		fl.last.Store(time.Now().UnixNano())
-		if _, err := fl.conn.Write(buf[:k]); err == nil {
+		if err := fl.send(buf[:k]); err == nil {
 			f.up.Add(int64(k))
 		}
 	}
@@ -359,27 +387,35 @@ func (f *fwd) flowFor(from *net.UDPAddr) *flow {
 		return fl
 	}
 	f.mu.Unlock()
-	ta, err := net.ResolveUDPAddr("udp", f.Target)
-	if err != nil {
-		return nil
+	if f.Reverse {
+		st, err := f.rel.tunnelOpen('u', f.port())
+		if err != nil {
+			return nil
+		}
+		fl = &flow{send: func(b []byte) error { return writeFrame(st, b) }, recv: func(b []byte) (int, error) { return readFrame(st, b) }, close: st.Close}
+	} else {
+		ta, err := net.ResolveUDPAddr("udp", f.Target)
+		if err != nil {
+			return nil
+		}
+		c, err := net.DialUDP("udp", nil, ta)
+		if err != nil {
+			return nil
+		}
+		fl = &flow{send: func(b []byte) error { _, err := c.Write(b); return err }, recv: c.Read, close: c.Close}
 	}
-	c, err := net.DialUDP("udp", nil, ta)
-	if err != nil {
-		return nil
-	}
-	fl = &flow{conn: c}
 	fl.last.Store(time.Now().UnixNano())
 	f.mu.Lock()
 	select {
 	case <-f.done:
 		f.mu.Unlock()
-		c.Close()
+		fl.close()
 		return nil
 	default:
 	}
 	if other := f.flows[key]; other != nil {
 		f.mu.Unlock()
-		c.Close()
+		fl.close()
 		return other
 	}
 	f.flows[key] = fl
@@ -399,12 +435,12 @@ func (f *fwd) backUDP(key string, to *net.UDPAddr, fl *flow) {
 			delete(f.flows, key)
 		}
 		f.mu.Unlock()
-		fl.conn.Close()
+		fl.close()
 		f.conns.Add(-1)
 	}()
 	buf := make([]byte, 64<<10)
 	for {
-		k, err := fl.conn.Read(buf)
+		k, err := fl.recv(buf)
 		if err != nil {
 			return
 		}
@@ -430,7 +466,7 @@ func (f *fwd) sweepUDP() {
 		f.mu.Lock()
 		for _, fl := range f.flows {
 			if fl.last.Load() < cut {
-				fl.conn.Close() // backUDP removes it
+				fl.close() // backUDP removes it
 			}
 		}
 		f.mu.Unlock()

@@ -2,10 +2,13 @@ package engine
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pedramrj/dunvex/internal/geodata"
 	"github.com/pedramrj/dunvex/internal/protocol"
@@ -226,6 +229,8 @@ func TestWarpOverMasque(t *testing.T) {
 	a.Transport, a.MasqueKey, a.MasquePeer, a.MasqueV4 = warp.MASQUE, "a2V5", "-----BEGIN PUBLIC KEY-----", "162.159.198.2"
 	routing.SaveAccount(st, a)
 	routing.Save(st, routing.Settings{Iran: routing.IranDirect, Warp: routing.WarpSites, WarpDomains: []string{"chatgpt.com"}})
+	p := protocol.Get("vless-reality-vision")
+	st.CreateInbound(&store.Inbound{Preset: p.ID, Port: 2443, Enabled: true, Params: protocol.Defaults(p, nil, "")})
 	rp := m.routePlan()
 	_, outs, _, _ := rp.xrayRouting(true, false)
 	want := `{"protocol":"socks","settings":{"servers":[{"address":"127.0.0.1","port":` + js(m.Usque.APIPort) + `}]},"tag":"warp"}`
@@ -248,5 +253,26 @@ func TestWarpOverMasque(t *testing.T) {
 	routing.SaveAccount(st, fakeAccount())
 	if b, _ = m.build(); b.usque != nil {
 		t.Error("usque runs for a WireGuard device")
+	}
+}
+
+// A relay (or a server with no protocols yet) never registers WARP, even when
+// the panel's routing asks for it.
+func TestNoWarpWithoutProtocols(t *testing.T) {
+	m, st := routingSetup(t)
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; http.Error(w, "no", 500) }))
+	defer srv.Close()
+	m.WarpClient = &warp.Client{Base: srv.URL, HTTP: srv.Client()}
+	warpReg.Lock()
+	warpReg.last = time.Time{} // no wait from an earlier test
+	warpReg.Unlock()
+	routing.Save(st, routing.Settings{Iran: routing.IranDirect, Warp: routing.WarpAll})
+	if rp := m.routePlan(); rp.serves {
+		t.Fatal("an empty server counted as serving")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if calls != 0 {
+		t.Errorf("an empty server asked Cloudflare for a WARP device %d time(s)", calls)
 	}
 }

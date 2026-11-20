@@ -40,7 +40,8 @@ type Agent struct {
 	Mgr     *engine.Manager
 	Sys     *sysinfo.Sampler
 	Env     func() protocol.Env
-	Relay   *relay.Relay // forwards to another server when this node is a relay
+	Relay   *relay.Relay   // forwards to another server when this node is a relay
+	Tunnels *relay.Tunnels // links this node keeps to reverse relays in front of it
 
 	mu    sync.Mutex // one state push or stats batch at a time
 	fails int
@@ -197,7 +198,10 @@ func (a *Agent) Status() Status {
 		Users: len(users), Inbounds: len(inbounds), Time: time.Now().Unix(),
 	}
 	if a.Relay != nil {
-		st.Forwards = a.Relay.Stats()
+		st.Forwards, st.Tunnel = a.Relay.Stats(), a.Relay.TunnelStat()
+	}
+	if a.Tunnels != nil {
+		st.TunnelLinks = a.Tunnels.Stats()
 	}
 	if st.CoreErrors == nil {
 		st.CoreErrors = map[string]string{}
@@ -273,8 +277,14 @@ func (a *Agent) Apply(s State) error {
 		}
 	}
 	if a.Relay != nil {
+		a.Relay.ApplyTunnel(s.Tunnel) // first: forwards must know the tunnel's port
 		a.Relay.Apply(s.Forwards)
 		a.saveJSON(keyForwards, s.Forwards) // brought back at the next start
+		a.saveJSON(keyTunnel, s.Tunnel)
+	}
+	if a.Tunnels != nil {
+		a.Tunnels.Apply(s.Tunnels)
+		a.saveJSON(keyTunnels, s.Tunnels)
 	}
 	a.Mgr.ClearPortErrors()
 	if err := a.Mgr.Apply(); err != nil {
@@ -285,15 +295,30 @@ func (a *Agent) Apply(s State) error {
 
 // ---------------------------------------------------------------- traffic
 
-// keyForwards keeps a relay's forwards across restarts.
-const keyForwards = "relay_forwards"
+// What a relay and its targets keep across restarts.
+const (
+	keyForwards = "relay_forwards"
+	keyTunnel   = "relay_tunnel"
+	keyTunnels  = "relay_tunnels"
+)
 
-// RestoreForwards starts the forwards the panel sent last.
+// RestoreForwards starts the forwards, tunnel port and tunnel links the
+// panel sent last, so a restarted server serves before the panel calls.
 func (a *Agent) RestoreForwards() {
 	var list []relay.Forward
+	var tun *relay.TunnelServer
+	var links []relay.TunnelClient
 	a.loadJSON(keyForwards, &list)
-	if a.Relay != nil && len(list) > 0 {
-		a.Relay.Apply(list)
+	a.loadJSON(keyTunnel, &tun)
+	a.loadJSON(keyTunnels, &links)
+	if a.Relay != nil {
+		a.Relay.ApplyTunnel(tun)
+		if len(list) > 0 {
+			a.Relay.Apply(list)
+		}
+	}
+	if a.Tunnels != nil && len(links) > 0 {
+		a.Tunnels.Apply(links)
 	}
 }
 

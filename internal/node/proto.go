@@ -147,34 +147,38 @@ type User struct {
 // State is everything the node should serve. A relay serves no protocols:
 // it forwards ports to another server.
 type State struct {
-	Inbounds []*store.Inbound  `json:"inbounds"`
-	Users    []User            `json:"users"`
-	Settings map[string]string `json:"settings"`
-	Forwards []relay.Forward   `json:"forwards,omitempty"`
+	Inbounds []*store.Inbound     `json:"inbounds"`
+	Users    []User               `json:"users"`
+	Settings map[string]string    `json:"settings"`
+	Forwards []relay.Forward      `json:"forwards,omitempty"`
+	Tunnel   *relay.TunnelServer  `json:"tunnel,omitempty"`  // a reverse relay's tunnel port
+	Tunnels  []relay.TunnelClient `json:"tunnels,omitempty"` // reverse relays this server keeps links to
 }
 
 // Status is the node's health, as the panel shows it.
 type Status struct {
-	Version       string            `json:"version"`
-	Epoch         string            `json:"epoch"`
-	Hostname      string            `json:"hostname"`
-	PublicIP      string            `json:"publicIp"`
-	CertSHA256    string            `json:"certSha256"` // of the protocols' TLS certificate
-	Cores         []engine.Status   `json:"cores"`
-	CoreErrors    map[string]string `json:"coreErrors"`
-	InboundErrors map[int64]string  `json:"inboundErrors"`
-	CPU           float64           `json:"cpu"`
-	MemUsed       uint64            `json:"memUsed"`
-	MemTotal      uint64            `json:"memTotal"`
-	DiskUsed      uint64            `json:"diskUsed"`
-	DiskTotal     uint64            `json:"diskTotal"`
-	Uptime        uint64            `json:"uptime"`
-	NetUp         uint64            `json:"netUp"`
-	NetDown       uint64            `json:"netDown"`
-	Users         int               `json:"users"`
-	Inbounds      int               `json:"inbounds"`
-	Forwards      []relay.Stat      `json:"forwards,omitempty"` // a relay's ports
-	Time          int64             `json:"time"`
+	Version       string             `json:"version"`
+	Epoch         string             `json:"epoch"`
+	Hostname      string             `json:"hostname"`
+	PublicIP      string             `json:"publicIp"`
+	CertSHA256    string             `json:"certSha256"` // of the protocols' TLS certificate
+	Cores         []engine.Status    `json:"cores"`
+	CoreErrors    map[string]string  `json:"coreErrors"`
+	InboundErrors map[int64]string   `json:"inboundErrors"`
+	CPU           float64            `json:"cpu"`
+	MemUsed       uint64             `json:"memUsed"`
+	MemTotal      uint64             `json:"memTotal"`
+	DiskUsed      uint64             `json:"diskUsed"`
+	DiskTotal     uint64             `json:"diskTotal"`
+	Uptime        uint64             `json:"uptime"`
+	NetUp         uint64             `json:"netUp"`
+	NetDown       uint64             `json:"netDown"`
+	Users         int                `json:"users"`
+	Inbounds      int                `json:"inbounds"`
+	Forwards      []relay.Stat       `json:"forwards,omitempty"`    // a relay's ports
+	Tunnel        *relay.TunnelStat  `json:"tunnel,omitempty"`      // a reverse relay's tunnel
+	TunnelLinks   []relay.ClientStat `json:"tunnelLinks,omitempty"` // this server's links to reverse relays
+	Time          int64              `json:"time"`
 }
 
 // Batch is the traffic since the last acknowledged batch.

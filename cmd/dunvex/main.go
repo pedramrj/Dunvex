@@ -28,6 +28,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/server"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
@@ -309,6 +310,8 @@ func serve(home string) error {
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
 	go keepGeoIP(home, stopMgr)
+	srv.Tunnels = relay.NewTunnels(os.Getenv("DUNVEX_LISTEN")) // links to reverse relays in front of this server
+	defer srv.Tunnels.Close()
 	go srv.RunNodes(stopMgr)
 
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}

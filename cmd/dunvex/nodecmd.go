@@ -208,7 +208,10 @@ func nodeServe(home string) error {
 	mgr.InstallUsque = func() error { _, err := coremgr.InstallUsque(binDir); return err }
 	rl := relay.New(map[int]string{nodePort(st): "the Dunvex agent"})
 	defer rl.Close()
-	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env, Relay: rl}
+	rl.SetCert(cert) // a reverse tunnel serves the agent's certificate, which the panel pins
+	tunnels := relay.NewTunnels(os.Getenv("DUNVEX_LISTEN"))
+	defer tunnels.Close()
+	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env, Relay: rl, Tunnels: tunnels}
 	agent.RestoreForwards()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

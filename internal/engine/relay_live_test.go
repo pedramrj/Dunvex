@@ -3,9 +3,18 @@
 package engine
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -73,93 +82,133 @@ func TestRelayWithRealCores(t *testing.T) {
 		t.Fatalf("apply: %v %v", err, m.Xray.Logs())
 	}
 
-	// the relay listens on each port +1000, as a relay with that shift does
-	const shift = 1000
-	rl := relay.New(nil)
-	defer rl.Close()
-	var fwds []relay.Forward
-	for _, in := range ins {
-		p := protocol.Get(in.Preset)
-		fwds = append(fwds, relay.Forward{Name: p.Name, Listen: in.Port + shift, Network: protocol.Networks(p), Target: "127.0.0.1:" + strconv.Itoa(in.Port)})
-	}
-	rl.Apply(fwds)
-	for _, s := range rl.Stats() {
-		if !s.Listening {
-			t.Fatalf("relay: %+v", s)
+	// forward: the relay dials the server; reverse: the server keeps tunnel
+	// links to the relay, and the relay never dials it
+	for _, mode := range []string{"forward", "reverse"} {
+		shift := 1000
+		rl := relay.New(nil)
+		defer rl.Close()
+		if mode == "reverse" {
+			shift = 2000
+			cert, fp := liveCert(t)
+			rl.SetCert(cert)
+			tport := nextFree(43500)
+			rl.ApplyTunnel(&relay.TunnelServer{Port: tport, Secret: "live-tunnel-secret-0123456789"})
+			var ports []int
+			for _, in := range ins {
+				ports = append(ports, in.Port)
+			}
+			tun := relay.NewTunnels("")
+			defer tun.Close()
+			tun.Apply([]relay.TunnelClient{{Name: "relay", Addr: "127.0.0.1:" + strconv.Itoa(tport), Fingerprint: fp, Secret: "live-tunnel-secret-0123456789", Ports: ports}})
+			for i := 0; i < 100; i++ {
+				if s := rl.TunnelStat(); s != nil && s.Links == relay.Links {
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			if s := rl.TunnelStat(); s == nil || s.Links != relay.Links {
+				t.Fatalf("tunnel: %+v %+v", s, tun.Stats())
+			}
 		}
-	}
+		var fwds []relay.Forward
+		for _, in := range ins {
+			p := protocol.Get(in.Preset)
+			fwds = append(fwds, relay.Forward{Name: p.Name, Listen: in.Port + shift, Network: protocol.Networks(p), Target: "127.0.0.1:" + strconv.Itoa(in.Port), Reverse: mode == "reverse"})
+		}
+		rl.Apply(fwds)
+		for _, s := range rl.Stats() {
+			if !s.Listening {
+				t.Fatalf("relay: %+v", s)
+			}
+		}
 
-	for _, in := range ins {
-		p := protocol.Get(in.Preset)
-		// the config users get through the relay: the relay's address and port
-		via := *in
-		via.Port = in.Port + shift
-		via.Params = map[string]any{}
-		for k, v := range in.Params {
-			via.Params[k] = v
-		}
-		via.Params["address"] = "127.0.0.1"
-		mixed := nextFree(43400)
-		cfile := filepath.Join(dir, "client-"+in.Preset+".json")
-		var client *exec.Cmd
-		if p.Security == "reality" {
-			// sing-box apps get no Xray Reality configs: a real Xray client, as users run
-			cfg, _ := json.Marshal(map[string]any{
-				"log":      map[string]any{"loglevel": "warning"},
-				"inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": mixed, "protocol": "socks", "settings": map[string]any{"udp": false}}},
-				"outbounds": []any{map[string]any{"protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{
-					"address": protocol.LinkHost(&via, env), "port": via.Port, "users": []any{map[string]any{"id": u.UUID, "encryption": "none", "flow": "xtls-rprx-vision"}}}}},
-					"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
-						"serverName": via.Str("sni"), "fingerprint": "chrome", "password": via.Str("publicKey"), "shortId": via.Str("shortId")}}}},
-			})
-			os.WriteFile(cfile, cfg, 0o600)
-			client = exec.Command(filepath.Join(bin, "xray"), "run", "-c", cfile)
-			client.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+bin)
-		} else {
-			_, outs := protocol.SingboxOutbound(p, &via, u, env, "relay")
-			if len(outs) == 0 {
-				t.Fatalf("%s: no outbound", p.Name)
+		for _, in := range ins {
+			p := protocol.Get(in.Preset)
+			// the config users get through the relay: the relay's address and port
+			via := *in
+			via.Port = in.Port + shift
+			via.Params = map[string]any{}
+			for k, v := range in.Params {
+				via.Params[k] = v
 			}
-			cfg, _ := json.MarshalIndent(map[string]any{
-				"log":       map[string]any{"level": "warn"},
-				"inbounds":  []any{map[string]any{"type": "mixed", "listen": "127.0.0.1", "listen_port": mixed}},
-				"outbounds": outs,
-				"route":     map[string]any{"final": "relay"},
-			}, "", "  ")
-			os.WriteFile(cfile, cfg, 0o600)
-			client = exec.Command(filepath.Join(bin, "sing-box"), "run", "-c", cfile)
-		}
-		before := rl.Stats()
-		logf, _ := os.Create(cfile + ".log")
-		client.Stdout, client.Stderr = logf, logf
-		if err := client.Start(); err != nil {
-			t.Fatal(err)
-		}
-		waitPort(mixed)
-		var exit string
-		for i := 0; i < 5 && exit == ""; i++ {
-			_, body := fetch(mixed, "https://1.1.1.1/cdn-cgi/trace")
-			exit = traceField(body, "ip")
+			via.Params["address"] = "127.0.0.1"
+			mixed := nextFree(43400)
+			cfile := filepath.Join(dir, "client-"+in.Preset+".json")
+			var client *exec.Cmd
+			if p.Security == "reality" {
+				// sing-box apps get no Xray Reality configs: a real Xray client, as users run
+				cfg, _ := json.Marshal(map[string]any{
+					"log":      map[string]any{"loglevel": "warning"},
+					"inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": mixed, "protocol": "socks", "settings": map[string]any{"udp": false}}},
+					"outbounds": []any{map[string]any{"protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{
+						"address": protocol.LinkHost(&via, env), "port": via.Port, "users": []any{map[string]any{"id": u.UUID, "encryption": "none", "flow": "xtls-rprx-vision"}}}}},
+						"streamSettings": map[string]any{"network": "raw", "security": "reality", "realitySettings": map[string]any{
+							"serverName": via.Str("sni"), "fingerprint": "chrome", "password": via.Str("publicKey"), "shortId": via.Str("shortId")}}}},
+				})
+				os.WriteFile(cfile, cfg, 0o600)
+				client = exec.Command(filepath.Join(bin, "xray"), "run", "-c", cfile)
+				client.Env = append(os.Environ(), "XRAY_LOCATION_ASSET="+bin)
+			} else {
+				_, outs := protocol.SingboxOutbound(p, &via, u, env, "relay")
+				if len(outs) == 0 {
+					t.Fatalf("%s: no outbound", p.Name)
+				}
+				cfg, _ := json.MarshalIndent(map[string]any{
+					"log":       map[string]any{"level": "warn"},
+					"inbounds":  []any{map[string]any{"type": "mixed", "listen": "127.0.0.1", "listen_port": mixed}},
+					"outbounds": outs,
+					"route":     map[string]any{"final": "relay"},
+				}, "", "  ")
+				os.WriteFile(cfile, cfg, 0o600)
+				client = exec.Command(filepath.Join(bin, "sing-box"), "run", "-c", cfile)
+			}
+			before := rl.Stats()
+			logf, _ := os.Create(cfile + ".log")
+			client.Stdout, client.Stderr = logf, logf
+			if err := client.Start(); err != nil {
+				t.Fatal(err)
+			}
+			waitPort(mixed)
+			var exit string
+			for i := 0; i < 5 && exit == ""; i++ {
+				_, body := fetch(mixed, "https://1.1.1.1/cdn-cgi/trace")
+				exit = traceField(body, "ip")
+				if exit == "" {
+					time.Sleep(time.Second)
+				}
+			}
+			client.Process.Kill()
+			client.Wait()
 			if exit == "" {
-				time.Sleep(time.Second)
+				b, _ := os.ReadFile(cfile + ".log")
+				t.Errorf("%s through the %s relay: no internet\nclient: %s\nserver: %v", p.Name, mode, lastLines(string(b), 6), lastLines(fmt.Sprint(m.Xray.Logs()), 6))
+				continue
 			}
-		}
-		client.Process.Kill()
-		client.Wait()
-		if exit == "" {
-			b, _ := os.ReadFile(cfile + ".log")
-			t.Errorf("%s through the relay: no internet\nclient: %s\nserver: %v", p.Name, lastLines(string(b), 6), lastLines(fmt.Sprint(m.Xray.Logs()), 6))
-			continue
-		}
-		var moved int64
-		for i, s := range rl.Stats() {
-			if s.Listen == in.Port+shift {
-				moved = s.Up + s.Down - before[i].Up - before[i].Down
+			var moved int64
+			for i, s := range rl.Stats() {
+				if s.Listen == in.Port+shift {
+					moved = s.Up + s.Down - before[i].Up - before[i].Down
+				}
 			}
+			if moved < 1000 {
+				t.Errorf("%s: the traffic did not go through the relay (%d bytes)", p.Name, moved)
+			}
+			t.Logf("%s through the %s relay (%s): leaves as %s, %d bytes relayed", p.Name, mode, protocol.Networks(p), exit, moved)
 		}
-		if moved < 1000 {
-			t.Errorf("%s: the traffic did not go through the relay (%d bytes)", p.Name, moved)
-		}
-		t.Logf("%s through the relay (%s): leaves as %s, %d bytes relayed", p.Name, protocol.Networks(p), exit, moved)
 	}
+}
+
+// liveCert is a self-signed certificate for a test relay's tunnel.
+func liveCert(t *testing.T) (tls.Certificate, string) {
+	t.Helper()
+	k, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "dunvex-node"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tpl, tpl, &k.PublicKey, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(der)
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: k}, hex.EncodeToString(sum[:])
 }

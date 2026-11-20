@@ -66,7 +66,7 @@ func (s *Server) relayForwards(n *store.Node) []relay.Forward {
 		network := protocol.Networks(p)
 		f := byPort[in.Port]
 		if f == nil {
-			f = &relay.Forward{Listen: listen, Network: network, Target: net.JoinHostPort(host, strconv.Itoa(in.Port))}
+			f = &relay.Forward{Listen: listen, Network: network, Target: net.JoinHostPort(host, strconv.Itoa(in.Port)), Reverse: n.Reverse()}
 			byPort[in.Port] = f
 		} else if f.Network != network {
 			f.Network = "tcp+udp" // e.g. Reality on TCP 443 and Hysteria2 on UDP 443
@@ -87,6 +87,33 @@ func (s *Server) relayForwards(n *store.Node) []relay.Forward {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Listen < out[j].Listen })
 	return out
+}
+
+// tunnelLinks are the reverse relays server target (0 = this one) keeps
+// links to, each allowed to reach only the ports it relays.
+func (s *Server) tunnelLinks(target int64) []relay.TunnelClient {
+	list, _ := s.St.Nodes()
+	var out []relay.TunnelClient
+	for _, n := range list {
+		if !n.Reverse() || !n.Enabled || !n.Paired() || n.RelayTarget != target || n.RelayPort == 0 || n.RelaySecret == "" {
+			continue
+		}
+		c := relay.TunnelClient{Name: n.Name, Addr: net.JoinHostPort(n.Address, strconv.Itoa(n.RelayPort)), Fingerprint: n.Fingerprint, Secret: n.RelaySecret}
+		for _, f := range s.relayForwards(n) {
+			_, p, _ := net.SplitHostPort(f.Target)
+			port, _ := strconv.Atoi(p)
+			c.Ports = append(c.Ports, port)
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// applyTunnels brings this server's own links to its reverse relays in line.
+func (s *Server) applyTunnels() {
+	if s.Tunnels != nil {
+		s.Tunnels.Apply(s.tunnelLinks(0))
+	}
 }
 
 // relaysFor lists the relays users can reach an inbound through.

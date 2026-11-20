@@ -18,7 +18,9 @@ import (
 
 	"github.com/pedramrj/dunvex/internal/node"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/util"
 )
 
 // nodeHub keeps every other server in step with the panel: it pushes each one
@@ -72,6 +74,7 @@ func (s *Server) RunNodes(stop <-chan struct{}) {
 	t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
 	for {
+		s.applyTunnels() // this server's own links to reverse relays
 		h.round()
 		select {
 		case <-stop:
@@ -161,10 +164,15 @@ func (s *Server) desired(n *store.Node) node.State {
 		"routing":       s.St.GetSetting("routing", ""),
 	}}
 	if n.IsRelay() {
-		// a relay forwards ports; it needs no protocols or users
+		// a relay forwards ports; it needs no protocols, users or routing
+		st.Settings["routing"] = ""
 		st.Forwards = s.relayForwards(n)
+		if n.Reverse() {
+			st.Tunnel = &relay.TunnelServer{Port: n.RelayPort, Secret: n.RelaySecret}
+		}
 		return st
 	}
+	st.Tunnels = s.tunnelLinks(n.ID)
 	inbounds, _ := s.St.Inbounds()
 	for _, in := range inbounds {
 		if in.NodeID == n.ID {
@@ -194,7 +202,7 @@ func (s *Server) desired(n *store.Node) node.State {
 
 func stateHash(st node.State) string {
 	// counters change all the time and say nothing about what to serve
-	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards}
+	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards, Tunnel: st.Tunnel, Tunnels: st.Tunnels}
 	for _, in := range st.Inbounds {
 		c := *in
 		c.Up, c.Down = 0, 0
@@ -373,15 +381,18 @@ func remarkFor(in *store.Inbound, p *protocol.Preset, u *store.User, title strin
 
 type nodeView struct {
 	*store.Node
-	TargetName string       `json:"targetName,omitempty"` // a relay's target ("" = this server)
-	Paired     bool         `json:"paired"`
-	Online     bool         `json:"online"`
-	Error      string       `json:"error"`
-	LastTry    int64        `json:"lastTry"`
-	Status     *node.Status `json:"status"`
-	Inbounds   int          `json:"inbounds"`
-	RateUp     int64        `json:"rateUp"`
-	RateDown   int64        `json:"rateDown"`
+	TargetName string `json:"targetName,omitempty"` // a relay's target ("" = this server)
+	// a reverse relay to this server: how this server's links to it are doing
+	TunnelLinks int          `json:"tunnelLinks"`
+	TunnelError string       `json:"tunnelError,omitempty"`
+	Paired      bool         `json:"paired"`
+	Online      bool         `json:"online"`
+	Error       string       `json:"error"`
+	LastTry     int64        `json:"lastTry"`
+	Status      *node.Status `json:"status"`
+	Inbounds    int          `json:"inbounds"`
+	RateUp      int64        `json:"rateUp"`
+	RateDown    int64        `json:"rateDown"`
 }
 
 func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
@@ -398,6 +409,14 @@ func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
 			v.TargetName = t.Name
 		} else {
 			v.TargetName = "?"
+		}
+	}
+	if n.Reverse() && n.RelayTarget == 0 && s.Tunnels != nil {
+		addr := net.JoinHostPort(n.Address, strconv.Itoa(n.RelayPort))
+		for _, c := range s.Tunnels.Stats() {
+			if c.Addr == addr {
+				v.TunnelLinks, v.TunnelError = c.Links, c.Error
+			}
 		}
 	}
 	return v
@@ -425,6 +444,8 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		RelayTarget int64  `json:"relayTarget"`
 		RelayOnly   bool   `json:"relayOnly"`
 		RelayShift  int    `json:"relayShift"`
+		RelayMode   string `json:"relayMode"`
+		RelayPort   int    `json:"relayPort"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -460,6 +481,10 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		n.Role, n.RelayTarget, n.RelayOnly, n.RelayShift = store.RoleRelay, in.RelayTarget, in.RelayOnly, in.RelayShift
+		if msg := setRelayMode(n, in.RelayMode, in.RelayPort); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
 	}
 	if err := s.St.CreateNode(n); err != nil {
 		fail(w, 400, err.Error())
@@ -467,7 +492,8 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	}
 	a := adminOf(r)
 	s.St.Log("node", "%s added the server %s (%s)", a.Username, n.Name, n.Address)
-	s.hub().sync(n) // pair now, so the answer says whether it worked
+	s.hub().sync(n)  // pair now, so the answer says whether it worked
+	s.applyTunnels() // a reverse relay to this server: start the links now
 	inbounds, _ := s.St.Inbounds()
 	if fresh, err := s.St.NodeByID(n.ID); err == nil {
 		n = fresh
@@ -489,6 +515,8 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		RelayTarget *int64  `json:"relayTarget"`
 		RelayOnly   *bool   `json:"relayOnly"`
 		RelayShift  *int    `json:"relayShift"`
+		RelayMode   *string `json:"relayMode"`
+		RelayPort   *int    `json:"relayPort"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -549,6 +577,19 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		}
 		n.RelayShift = *in.RelayShift
 	}
+	if in.RelayMode != nil || in.RelayPort != nil {
+		mode, port := n.RelayMode, n.RelayPort
+		if in.RelayMode != nil {
+			mode = *in.RelayMode
+		}
+		if in.RelayPort != nil {
+			port = *in.RelayPort
+		}
+		if msg := setRelayMode(n, mode, port); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+	}
 	if n.IsRelay() {
 		if msg := s.checkRelayTarget(n.ID, n.RelayTarget); msg != "" {
 			fail(w, 400, msg)
@@ -560,8 +601,32 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.KickNodes()
+	s.applyTunnels()
 	inbounds, _ := s.St.Inbounds()
 	writeJSON(w, 200, s.viewNode(n, inbounds))
+}
+
+// setRelayMode sets how a relay reaches its target: "forward" (the relay
+// dials it) or "reverse" (the target keeps links to the relay's tunnel port).
+func setRelayMode(n *store.Node, mode string, port int) string {
+	switch mode {
+	case "", store.RelayForward:
+		n.RelayMode = store.RelayForward
+	case store.RelayReverse:
+		if port < 1 || port > 65535 {
+			return "give the relay's tunnel port (1-65535)"
+		}
+		if port == n.AgentPort {
+			return fmt.Sprintf("port %d is the relay's Dunvex agent; choose another tunnel port", port)
+		}
+		n.RelayMode, n.RelayPort = store.RelayReverse, port
+		if n.RelaySecret == "" {
+			n.RelaySecret = util.RandomString(32)
+		}
+	default:
+		return "the relay mode is forward or reverse"
+	}
+	return ""
 }
 
 func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
@@ -588,6 +653,7 @@ func (s *Server) deleteNode(w http.ResponseWriter, r *http.Request) {
 	delete(h.clients, n.ID)
 	h.mu.Unlock()
 	s.St.Log("node", "%s removed the server %s and its protocols", adminOf(r).Username, n.Name)
+	s.applyTunnels()
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 

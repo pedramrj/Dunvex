@@ -266,7 +266,7 @@ func (m *Manager) build() (b built, err error) {
 	env := m.Env()
 	now := time.Now().Unix()
 	rp := m.routePlan()
-	if rp.acct != nil && rp.acct.Masque() {
+	if rp.acct != nil && rp.acct.Masque() && rp.serves {
 		b.usque = rp.acct.UsqueConfig()
 	}
 	router := "" // Mieru and TrustTunnel leave through Xray when routing rules are on

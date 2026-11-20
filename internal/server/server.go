@@ -24,6 +24,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/protocol"
+	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
 	"github.com/pedramrj/dunvex/internal/util"
@@ -42,6 +43,8 @@ type Server struct {
 	Bot Bot // Telegram bot (optional)
 
 	WarpAPI string // Cloudflare's WARP API ("" = the real one; tests point it elsewhere)
+
+	Tunnels *relay.Tunnels // this server's links to reverse relays in front of it
 
 	Bill     *billing.Service // the shop (made on first use when nil)
 	billOnce sync.Once

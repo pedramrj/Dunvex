@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/shirou/gopsutil/v4 v4.26.10
+	github.com/xtaci/smux v1.5.60
 	golang.org/x/crypto v0.59.0
 	golang.org/x/net v0.62.0
 	google.golang.org/grpc v1.85.0
@@ -39,6 +40,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
+	github.com/pion/transport/v5 v5.1.4 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
