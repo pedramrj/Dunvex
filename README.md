@@ -27,6 +27,12 @@ The first install already serves **VLESS Reality** and **Hysteria2**: add a user
 
 Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: `uninstall`.
 
+The installer shows the DV logo, a live step log with download progress and checksum check, and ends with the
+login details and a QR code of the panel address. `dunvex menu` is a full-screen control centre (arrow keys) with
+live service, core, CPU, RAM, disk, network and user status, plus restart, users, live logs, admin reset, panel port,
+backup, updates and network tuning. Plain output: `DUNVEX_PLAIN=1`. GitHub blocked on the server? Copy the binary over
+and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
+
 ### What you get
 - **26 protocol presets**, all validated against the real cores (Xray 26.11, sing-box 1.14):
   VLESS Reality (Vision · XHTTP · gRPC · universal), XHTTP/WS/HTTPUpgrade/gRPC over TLS (CDN),
@@ -71,6 +77,11 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 بعد از نصب، **VLESS Reality** و **Hysteria2** آماده‌اند؛ فقط کاربر بسازید و لینک را بفرستید.
 
 مدیریت از SSH: ‏`dunvex menu` · به‌روزرسانی: همان دستور با `update` · حذف: `uninstall`.
+
+نصب‌کننده لوگوی DV، گزارش زندهٔ مراحل با نوار دانلود و بررسی checksum را نشان می‌دهد و در پایان اطلاعات ورود و QR آدرس پنل را می‌دهد.
+‏`dunvex menu` یک مرکز کنترل تمام‌صفحه با کلیدهای جهت است: وضعیت زندهٔ سرویس، هسته‌ها، CPU، RAM، دیسک، شبکه و کاربران،
+به‌علاوهٔ ری‌استارت، فهرست کاربران، لاگ زنده، بازنشانی مدیر، پورت پنل، پشتیبان، به‌روزرسانی و تنظیمات شبکه.
+اگر گیت‌هاب روی سرور بسته است، فایل باینری را منتقل کنید و با `DUNVEX_BINARY=/root/dunvex bash install.sh` نصب کنید.
 
 ### امکانات
 - **۲۶ پروتکل آماده** که همه با هسته‌های واقعی تست شده‌اند (فهرست کامل در [docs/PROTOCOLS.md](docs/PROTOCOLS.md)).

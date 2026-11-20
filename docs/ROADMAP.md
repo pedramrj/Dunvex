@@ -40,7 +40,12 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Presentation mode, intro, Persian event texts, WCAG AA contrast in every theme, phone layouts
 - [x] License changed to GNU AGPL-3.0-or-later (© Pedram)
 
-## Phase 3: More protocols (v1.3)
+## Terminal (v1.3) ✅
+- [x] Installer with the DV logo, matrix intro, live step log, download bar, checksum, access box and panel QR
+- [x] `dunvex menu`: full-screen control centre with live status and the common server tasks
+- [x] Offline install from a local binary (`DUNVEX_BINARY`), `dunvex qr`
+
+## Phase 3: More protocols (v1.4)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)

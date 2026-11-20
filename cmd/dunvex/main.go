@@ -83,6 +83,12 @@ func main() {
 		err = core(home, args)
 	case "menu":
 		err = menu(home)
+	case "qr":
+		if len(args) == 0 {
+			err = fmt.Errorf("usage: dunvex qr <text>")
+		} else {
+			err = printQR(strings.Join(args, " "), "")
+		}
 	case "update":
 		var tag string
 		tag, err = coremgr.UpdateSelf()
@@ -114,6 +120,8 @@ Usage: dunvex [--home DIR] <command>
   admin <user> <pass>   reset the admin username and password
   set <key> <value>     change a setting (panel_port, panel_path, sub_path, domain, host)
   core install          download/update Xray and sing-box
+  menu                  interactive control centre for SSH
+  qr <text>             print a QR code in the terminal
   menu                  interactive menu (status, restart, reset admin, update…)
   update                update Dunvex itself
   version               print version
