@@ -139,7 +139,9 @@ func TestBotFlows(t *testing.T) {
 
 	// admin opens the bot
 	fake.push(msg(42, "/start"))
-	fake.waitFor(t, "admin menu", func(m map[string]any) bool { return m["_method"] == "sendMessage" && strings.Contains(text(m), "Dunvex") })
+	fake.waitFor(t, "admin menu", func(m map[string]any) bool {
+		return m["_method"] == "sendMessage" && strings.Contains(text(m), "Dunvex")
+	})
 
 	// admin creates a user in one line
 	fake.push(msg(42, "/new ali 5 30 2"))
@@ -155,7 +157,9 @@ func TestBotFlows(t *testing.T) {
 	// status button
 	fake.push(map[string]any{"callback_query": map[string]any{"id": "c1", "data": "st",
 		"message": map[string]any{"message_id": 9, "chat": map[string]any{"id": 42}}}})
-	fake.waitFor(t, "status", func(m map[string]any) bool { return m["_method"] == "editMessageText" && strings.Contains(text(m), "CPU") })
+	fake.waitFor(t, "status", func(m map[string]any) bool {
+		return m["_method"] == "editMessageText" && strings.Contains(text(m), "CPU")
+	})
 
 	// +30 days button
 	before := u.ExpireAt

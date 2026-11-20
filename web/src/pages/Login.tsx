@@ -41,8 +41,8 @@ export function Login({ onDone }: { onDone: () => void }) {
         {/* the logo stage */}
         <div className="flex flex-col items-center justify-center px-8 pt-14 pb-6 lg:py-12">
           <div className="relative">
-            <div className="absolute inset-0 -z-10 blur-3xl rounded-full bg-[#2f8cff]/25 scale-75" aria-hidden />
-            <Logo part="full" className="w-[230px] sm:w-[300px] lg:w-[420px] drop-shadow-[0_24px_60px_rgba(47,140,255,.28)]" />
+            <div className="absolute inset-0 -z-10 blur-3xl rounded-full bg-primary/25 scale-75" aria-hidden />
+            <Logo part="full" className="w-[230px] sm:w-[300px] lg:w-[420px] drop-shadow-[0_24px_60px_color-mix(in_oklab,var(--primary)_30%,transparent)]" />
           </div>
           <p className="hidden lg:block text-ink2 mt-2 max-w-sm text-center text-[15px]">
             {lang === "fa" ? "همهٔ پروتکل‌ها، یک پنل. ساده، سریع و دقیق." : "Every protocol, one panel. Simple, fast and precise."}
@@ -53,7 +53,7 @@ export function Login({ onDone }: { onDone: () => void }) {
         <div className="flex flex-col justify-center px-5 pb-12 lg:py-12">
           <form onSubmit={submit} className="rise glass-strong edge w-full max-w-[400px] mx-auto rounded-[26px] p-7 sm:p-8 shadow-[0_40px_100px_-40px_rgba(0,0,0,.9)]">
             <div className="flex items-center gap-3 mb-7">
-              <span className="grid place-items-center size-11 rounded-2xl brand-gradient text-white shadow-[0_10px_30px_-10px_rgba(47,140,255,.8)]">
+              <span className="grid place-items-center size-11 rounded-2xl brand-gradient text-white shadow-[0_10px_30px_-10px_color-mix(in_oklab,var(--primary)_80%,transparent)]">
                 {need2fa ? <ShieldCheck className="size-5" /> : <Lock className="size-5" />}
               </span>
               <div>
@@ -87,7 +87,7 @@ export function Login({ onDone }: { onDone: () => void }) {
               </label>
             )}
 
-            {err && <div role="alert" className="mb-4 rounded-xl border border-bad/40 bg-bad/[.08] px-3 py-2.5 text-sm text-[#ffc2cc]">{err}</div>}
+            {err && <div role="alert" className="mb-4 rounded-xl border border-bad/40 bg-bad/[.08] px-3 py-2.5 text-sm text-bad">{err}</div>}
             <Button variant="primary" size="lg" className="w-full" loading={busy} type="submit" icon={<Arrow className="size-4" />}>
               {t("login")}
             </Button>

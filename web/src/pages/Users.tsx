@@ -3,17 +3,16 @@ import {
   CalendarClock, CalendarPlus, Copy, ExternalLink, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
   Users as UsersIcon, Wifi,
 } from "lucide-react";
-import { api, qrURL, type ConfigEntry, type Inbound, type Status, type User } from "../lib/api";
-import { GB, ago, bytes, copyText, cx, date, speed, statusMeta } from "../lib/format";
+import { api, qrURL, type ConfigEntry, type Event, type Inbound, type Status, type User } from "../lib/api";
+import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
-import {
-  Avatar, Badge, Button, ConfirmButton, CopyField, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
-  Skeleton, StatusBadge, Tabs, Toggle, useToast,
-} from "../components/ui";
+import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
+  Skeleton, StatusBadge, Tabs, Toggle, useToast, ContextMenu, useConfirm, type MenuItem, EventMsg } from "../components/ui";
 import { UsageChart } from "../components/charts";
-import { PageHead, can, navigate, useSession } from "../App";
+import { PageHead, can, eventMeta, navigate, useSession } from "../App";
 
 type Filter = "" | "online" | Status;
+type SortKey = "created" | "name" | "status" | "usage" | "expiry" | "devices" | "speed";
 
 export function UsersPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
@@ -41,12 +40,29 @@ export function UsersPage({ arg }: { arg?: string }) {
     return c;
   }, [users]);
 
+  const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: "created", dir: -1 });
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return (users ?? []).filter(
-      (u) => (!s || (u.name + " " + u.note + " " + (u.owner ?? "")).toLowerCase().includes(s)) && (filter === "" || (filter === "online" ? u.online : u.status === filter)),
-    );
-  }, [users, q, filter]);
+    const val = (u: User): number | string => {
+      switch (sort.k) {
+        case "name": return u.name.toLowerCase();
+        case "usage": return u.used;
+        case "expiry": return u.daysLeft ?? 1e9;
+        case "devices": return u.devices;
+        case "speed": return u.speedDown + u.speedUp;
+        case "status": return u.status;
+        default: return u.id;
+      }
+    };
+    return (users ?? [])
+      .filter((u) => (!s || (u.name + " " + u.note + " " + (u.owner ?? "")).toLowerCase().includes(s)) && (filter === "" || (filter === "online" ? u.online : u.status === filter)))
+      .sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
+  }, [users, q, filter, sort]);
+  const Sh = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
+    <button onClick={() => setSort((o) => ({ k, dir: o.k === k ? (o.dir === 1 ? -1 : 1) : -1 }))} className={cx("inline-flex items-center gap-1 text-start hover:text-ink transition-colors", sort.k === k && "text-ink")}>
+      {children}{sort.k === k && <span aria-hidden>{sort.dir === 1 ? "↑" : "↓"}</span>}
+    </button>
+  );
 
   const bulk = (action: string, extra: Record<string, unknown> = {}) =>
     api<{ affected: number }>("users/bulk", { body: { ids: [...sel], action, ...extra } })
@@ -59,6 +75,20 @@ export function UsersPage({ arg }: { arg?: string }) {
       .catch((e) => toast(e.message, "error"));
 
   const editing = arg && arg !== "new" ? users?.find((u) => String(u.id) === arg) : undefined;
+  const confirm = useConfirm();
+  const one = (_u: User, path: string, method = "POST", body: unknown = {}) =>
+    api(path, { method, body }).then(() => { toast(t("saved")); load(); }).catch((e) => toast(e.message, "error"));
+  const rowMenu = (u: User): MenuItem[] => [
+    { label: t("open"), icon: <Pencil />, onClick: () => navigate("users", String(u.id)) },
+    { label: t("copyLink"), icon: <Copy />, onClick: () => copyText(u.subUrl).then(() => toast(t("copied"))) },
+    { label: "QR", icon: <QrCode />, onClick: () => setQr(u) },
+    { divider: true, label: "" },
+    { label: `${t("extend")} ${n(30)} ${t("days")}`, icon: <CalendarPlus />, onClick: () => api("users/bulk", { body: { ids: [u.id], action: "extend", days: 30 } }).then(() => { toast(t("saved")); load(); }) },
+    { label: t("resetUsage"), icon: <RotateCcw />, onClick: () => one(u, `users/${u.id}/reset`) },
+    { label: u.enabled ? t("disable") : t("enable"), icon: <Power />, onClick: () => one(u, `users/${u.id}`, "PUT", { enabled: !u.enabled }) },
+    { divider: true, label: "" },
+    { label: t("delete"), icon: <Trash2 />, danger: true, onClick: async () => { if (await confirm({ title: `${t("delete")} ${u.name}`, body: t("confirmDelete"), danger: true })) api(`users/${u.id}`, { method: "DELETE" }).then(() => { toast(t("deleted")); load(); }); } },
+  ];
   const close = () => navigate("users");
   const totalUsed = (users ?? []).reduce((s, u) => s + u.used, 0);
   const speedNow = (users ?? []).reduce((s, u) => s + u.speedDown + u.speedUp, 0);
@@ -121,24 +151,26 @@ export function UsersPage({ arg }: { arg?: string }) {
         <div className="glass rounded-[20px]"><Empty icon={<Search className="size-7" />} title={t("noMatch")} /></div>
       ) : (
         <div className="glass edge rounded-[20px] overflow-hidden">
-          <div className="hidden lg:grid grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-3 px-5 h-12 text-[12px] text-ink3 font-medium border-b border-white/[.07] bg-white/[.015]">
-            <input type="checkbox" aria-label={t("all")} className="accent-[#4c8dff] size-4 cursor-pointer" checked={sel.size > 0 && sel.size === list.length}
+          <div className="hidden lg:grid grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-3 px-5 h-12 text-[12px] text-ink3 font-medium border-b border-hair bg-fg/[.015]">
+            <input type="checkbox" aria-label={t("all")} className="accent-[var(--primary)] size-4 cursor-pointer" checked={sel.size > 0 && sel.size === list.length}
               onChange={(e) => setSel(e.target.checked ? new Set(list.map((u) => u.id)) : new Set())} />
-            <span>{t("name")}</span>
-            <span>{t("status")}</span>
-            <span>{t("usage")}</span>
-            <span>{t("expiry")}</span>
-            <span>{t("devices")}</span>
-            <span>{t("speed")}</span>
+            <Sh k="name">{t("name")}</Sh>
+            <Sh k="status">{t("status")}</Sh>
+            <Sh k="usage">{t("usage")}</Sh>
+            <Sh k="expiry">{t("expiry")}</Sh>
+            <Sh k="devices">{t("devices")}</Sh>
+            <Sh k="speed">{t("speed")}</Sh>
             <span />
           </div>
-          <ul>
+          <div role="list">
             {list.map((u) => (
-              <UserRow key={u.id} u={u} checked={sel.has(u.id)}
-                onCheck={(v) => setSel((s) => { const x = new Set(s); v ? x.add(u.id) : x.delete(u.id); return x; })}
-                onQr={() => setQr(u)} onCopy={() => copyText(u.subUrl).then(() => toast(t("copied")))} />
+              <ContextMenu key={u.id} items={rowMenu(u)}>
+                <UserRow u={u} checked={sel.has(u.id)}
+                  onCheck={(v) => setSel((s) => { const x = new Set(s); v ? x.add(u.id) : x.delete(u.id); return x; })}
+                  onQr={() => setQr(u)} onCopy={() => copyText(u.subUrl).then(() => toast(t("copied")))} />
+              </ContextMenu>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
@@ -147,9 +179,9 @@ export function UsersPage({ arg }: { arg?: string }) {
       <Sheet open={!!qr} onClose={() => setQr(null)} title={<span dir="ltr">{qr?.name}</span>} sub={t("subLink")}>
         {qr && (
           <div className="flex flex-col items-center gap-5">
-            <div className="rounded-3xl p-4 bg-white shadow-[0_20px_60px_-20px_rgba(76,141,255,.6)]"><img src={qrURL(qr.subUrl)} alt="QR" className="w-64 h-64" /></div>
+            <div className="rounded-3xl p-4 bg-white shadow-[0_20px_60px_-24px_color-mix(in_oklab,var(--primary)_60%,transparent)]"><img src={qrURL(qr.subUrl)} alt="QR" className="w-64 h-64 sensitive" /></div>
             <CopyField value={qr.subUrl} className="w-full" />
-            <a className="inline-flex items-center gap-1.5 text-[13px] text-[#8db6ff] hover:text-white" href={qr.subUrl} target="_blank" rel="noreferrer">{t("openUserPage")} <ExternalLink className="size-3.5" /></a>
+            <a className="inline-flex items-center gap-1.5 text-[13px] text-primary2 hover:text-ink" href={qr.subUrl} target="_blank" rel="noreferrer">{t("openUserPage")} <ExternalLink className="size-3.5" /></a>
           </div>
         )}
       </Sheet>
@@ -190,16 +222,16 @@ function ExpiryCell({ u }: { u: User }) {
 }
 
 function UserRow({ u, checked, onCheck, onQr, onCopy }: { u: User; checked: boolean; onCheck: (v: boolean) => void; onQr: () => void; onCopy: () => void }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, pc } = useI18n();
   const pct = u.dataLimit > 0 ? (u.used / u.dataLimit) * 100 : 0;
   return (
-    <li className={cx("border-b border-white/[.05] last:border-b-0 transition-colors", checked ? "bg-cdn/[.08]" : "hover:bg-white/[.025]")}>
+    <div role="listitem" style={{ contentVisibility: "auto", containIntrinsicSize: "0 var(--row)" }} className={cx("border-b border-hair transition-colors", checked ? "bg-primary/[.08]" : "hover:bg-fg/[.025]")}>
       <div className="grid grid-cols-[28px_1fr_auto] lg:grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-x-3 gap-y-2.5 px-4 lg:px-5 py-3.5">
-        <input type="checkbox" aria-label={u.name} className="accent-[#4c8dff] size-4 cursor-pointer" checked={checked} onChange={(e) => onCheck(e.target.checked)} />
+        <input type="checkbox" aria-label={u.name} className="accent-[var(--primary)] size-4 cursor-pointer" checked={checked} onChange={(e) => onCheck(e.target.checked)} />
         <a href={`#/users/${u.id}`} className="min-w-0 flex items-center gap-3 group">
           <Avatar name={u.name} size={38} online={u.online} />
           <span className="min-w-0">
-            <span className="block font-semibold truncate group-hover:text-white" dir="ltr">{u.name}</span>
+            <span className="block font-semibold truncate group-hover:text-primary2" dir="ltr">{u.name}</span>
             <span className="block text-[12px] text-ink3 truncate">
               {u.note || (u.online ? <span className="text-online">{t("online")}</span> : ago(u.lastOnlineAt, lang))}
               {u.owner && <span className="text-violet"> · {u.owner}</span>}
@@ -215,7 +247,7 @@ function UserRow({ u, checked, onCheck, onQr, onCopy }: { u: User; checked: bool
           <div className="flex justify-between items-baseline gap-2 text-[12.5px] num mb-1.5">
             <span className="font-medium">{bytes(u.used, lang)}</span>
             {u.dataLimit > 0 ? (
-              <span className="text-ink3 inline-flex gap-1.5"><bdi>{bytes(u.dataLimit, lang)}</bdi><bdi className={cx(pct >= 90 && "text-bad", pct >= 75 && pct < 90 && "text-warn")}>{n(pct, 0)}%</bdi></span>
+              <span className="text-ink3 inline-flex gap-1.5"><bdi>{bytes(u.dataLimit, lang)}</bdi><bdi className={cx(pct >= 90 && "text-bad", pct >= 75 && pct < 90 && "text-warn")}>{pc(pct, 0)}</bdi></span>
             ) : (
               <span className="text-ink3">{t("unlimited")}</span>
             )}
@@ -224,7 +256,7 @@ function UserRow({ u, checked, onCheck, onQr, onCopy }: { u: User; checked: bool
         </div>
         <div className="hidden lg:block"><ExpiryCell u={u} /></div>
         <div className="hidden lg:flex items-center gap-1.5 text-[13px] num">
-          <Smartphone className={cx("size-4", u.devices > 0 ? "text-[#8db6ff]" : "text-ink3")} />
+          <Smartphone className={cx("size-4", u.devices > 0 ? "text-primary2" : "text-ink3")} />
           <span className={cx(u.ipLimit > 0 && u.devices > u.ipLimit && "text-bad")}>{n(u.devices)}</span>
           <span className="text-ink3">/ {u.ipLimit > 0 ? n(u.ipLimit) : "∞"}</span>
         </div>
@@ -235,7 +267,7 @@ function UserRow({ u, checked, onCheck, onQr, onCopy }: { u: User; checked: bool
           <IconButton label={t("edit")} onClick={() => navigate("users", String(u.id))}><Pencil className="size-4" /></IconButton>
         </div>
       </div>
-    </li>
+    </div>
   );
 }
 
@@ -337,10 +369,10 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
             <Segmented value={f.inboundIds.length ? "some" : "all"} onChange={(v) => set("inboundIds", v === "all" ? [] : inbounds.map((i) => i.id))}
               options={[{ value: "all", label: t("allProtocols") }, { value: "some", label: t("onlyThese") }]} />
             {f.inboundIds.length > 0 && (
-              <div className="mt-3 flex flex-col gap-1 rounded-2xl border border-white/10 p-2">
+              <div className="mt-3 flex flex-col gap-1 rounded-2xl border border-hair p-2">
                 {inbounds.map((i) => (
-                  <label key={i.id} className="flex items-center gap-3 h-10 px-2.5 rounded-xl hover:bg-white/[.04] cursor-pointer">
-                    <input type="checkbox" className="accent-[#4c8dff] size-4" checked={f.inboundIds.includes(i.id)}
+                  <label key={i.id} className="flex items-center gap-3 h-10 px-2.5 rounded-xl hover:bg-fg/[.04] cursor-pointer">
+                    <input type="checkbox" className="accent-[var(--primary)] size-4" checked={f.inboundIds.includes(i.id)}
                       onChange={(e) => set("inboundIds", e.target.checked ? [...f.inboundIds, i.id] : f.inboundIds.filter((x) => x !== i.id))} />
                     <span className="text-[13.5px]" dir="ltr">{i.remark || i.name}</span>
                     <bdi dir="ltr" className="ms-auto text-ink3 text-[12px] mono">:{i.port}</bdi>
@@ -357,8 +389,8 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-2xl bg-white/[.025] border border-white/[.07] p-4">
-      <h3 className="text-[12px] font-semibold uppercase tracking-wide text-ink3 mb-3">{title}</h3>
+    <section className="rounded-2xl bg-fg/[.025] border border-hair p-4">
+      <h3 className="text-[12px] font-semibold text-ink3 mb-3">{title}</h3>
       {children}
     </section>
   );
@@ -371,17 +403,27 @@ interface Detail extends User {
 }
 
 function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; onChanged: () => void }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, pc } = useI18n();
   const toast = useToast();
   const [cfg, setCfg] = useState<{ subUrl: string; configs: ConfigEntry[] } | null>(null);
   const [series, setSeries] = useState<{ t: number; up: number; down: number }[]>([]);
   const [det, setDet] = useState<Detail | null>(null);
   const [edit, setEdit] = useState(false);
   const [openQr, setOpenQr] = useState<number | null>(null);
+  const [tab, setTab] = useState<"overview" | "configs" | "devices" | "usage" | "activity">("overview");
+  const [days, setDays] = useState(30);
+  const [activity, setActivity] = useState<Event[] | null>(null);
+  const confirm = useConfirm();
+  const { me } = useSession();
   useEffect(() => {
     api<{ subUrl: string; configs: ConfigEntry[] }>(`users/${u.id}/configs`).then(setCfg).catch(() => {});
-    api<typeof series>(`users/${u.id}/usage?days=30`).then(setSeries).catch(() => {});
   }, [u.id, u.subToken]);
+  useEffect(() => {
+    api<typeof series>(`users/${u.id}/usage?days=${days}`).then(setSeries).catch(() => {});
+  }, [u.id, days]);
+  useEffect(() => {
+    if (tab === "activity" && can(me.admin.role, "admin")) api<Event[]>(`events?limit=300&q=${encodeURIComponent(u.name)}`).then(setActivity).catch(() => setActivity([]));
+  }, [tab, u.name, me.admin.role]);
   useEffect(() => {
     const load = () => api<Detail>(`users/${u.id}`).then(setDet).catch(() => {});
     load();
@@ -402,7 +444,7 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
           <Button size="sm" icon={<Pencil className="size-4" />} onClick={() => setEdit(true)}>{t("edit")}</Button>
           <Button size="sm" icon={<RotateCcw className="size-4" />} onClick={() => act(`users/${cur.id}/reset`)}>{t("resetUsage")}</Button>
           <Button size="sm" icon={<Power className="size-4" />} onClick={() => act(`users/${cur.id}`, "PUT", { enabled: !cur.enabled })}>{cur.enabled ? t("disable") : t("enable")}</Button>
-          <Button size="sm" icon={<KeyRound className="size-4" />} onClick={() => act(`users/${cur.id}/regenerate`)}>{t("regenerate")}</Button>
+          <Button size="sm" icon={<KeyRound className="size-4" />} onClick={async () => { if (await confirm({ title: t("regenerate"), body: t("regenerateHint") })) act(`users/${cur.id}/regenerate`); }}>{t("regenerate")}</Button>
           <span className="ms-auto" />
           <ConfirmButton icon={<Trash2 className="size-4" />} onConfirm={() => api(`users/${cur.id}`, { method: "DELETE" }).then(() => { onChanged(); onClose(); })}>{t("delete")}</ConfirmButton>
         </div>
@@ -416,11 +458,20 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
           </div>
         )}
 
-        <div className="grid sm:grid-cols-[auto_1fr] gap-5 items-center rounded-2xl bg-white/[.025] border border-white/[.07] p-4">
+        <Tabs value={tab} onChange={setTab} items={[
+          { id: "overview", label: t("overview") },
+          { id: "configs", label: t("configs"), count: cfg?.configs.length },
+          { id: "devices", label: t("devices"), count: det?.deviceList.length },
+          { id: "usage", label: t("usage") },
+          ...(can(me.admin.role, "admin") ? [{ id: "activity" as const, label: t("activity") }] : []),
+        ]} />
+
+        {tab === "overview" && <>
+        <div className="grid sm:grid-cols-[auto_1fr] gap-5 items-center rounded-2xl bg-fg/[.025] border border-hair p-4">
           <Ring value={cur.dataLimit > 0 ? pct : 100} size={128} stroke={11} color={cur.dataLimit > 0 ? ringColor(pct) : "url(#ring-ok)"}>
             <div>
               <div className="text-[19px] font-bold num leading-tight">{bytes(cur.used, lang)}</div>
-              <div className="text-[11.5px] text-ink3 num">{cur.dataLimit > 0 ? <><bdi>{n(pct, 0)}%</bdi> · <bdi>{bytes(cur.dataLimit, lang)}</bdi></> : "∞"}</div>
+              <div className="text-[11.5px] text-ink3 num">{cur.dataLimit > 0 ? <><bdi>{pc(pct, 0)}</bdi> · <bdi>{bytes(cur.dataLimit, lang)}</bdi></> : "∞"}</div>
             </div>
           </Ring>
           <div className="grid grid-cols-2 gap-x-5 gap-y-3.5">
@@ -435,35 +486,42 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
 
         <Panel icon={<QrCode className="size-4" />} title={t("subLink")} className="!rounded-2xl">
           <div className="flex gap-4 items-start">
-            <div className="rounded-2xl bg-white p-2 shrink-0"><img src={qrURL(cur.subUrl)} alt="QR" className="size-28" /></div>
+            <div className="rounded-2xl bg-white p-2 shrink-0"><img src={qrURL(cur.subUrl)} alt="QR" className="size-28 sensitive" /></div>
             <div className="flex-1 min-w-0 flex flex-col gap-2.5">
               <CopyField value={cur.subUrl} />
-              <a className="inline-flex items-center gap-1.5 text-[13px] text-[#8db6ff] hover:text-white" href={cur.subUrl} target="_blank" rel="noreferrer">{t("openUserPage")} <ExternalLink className="size-3.5" /></a>
+              <a className="inline-flex items-center gap-1.5 text-[13px] text-primary2 hover:text-ink" href={cur.subUrl} target="_blank" rel="noreferrer">{t("openUserPage")} <ExternalLink className="size-3.5" /></a>
             </div>
           </div>
         </Panel>
 
-        <Panel icon={<Wifi className="size-4" />} title={t("devices")} sub={cur.ipLimit > 0 ? `${t("deviceLimit")}: ${n(cur.ipLimit)}` : undefined} className="!rounded-2xl">
+        <div className="grid grid-cols-2 gap-3 text-[12.5px] text-ink2">
+          <div>{t("created")}: <span className="text-ink">{date(cur.createdAt, lang)}</span></div>
+          <div>{t("resetPeriod")}: <span className="text-ink">{t(cur.resetPeriod === "none" ? "none" : cur.resetPeriod)}</span></div>
+          <div className="col-span-2 truncate">UUID: <bdi dir="ltr" className="text-ink mono text-[11.5px] sensitive">{cur.uuid}</bdi></div>
+        </div>
+        </>}
+
+        {tab === "devices" && <Panel icon={<Wifi className="size-4" />} title={t("devices")} sub={cur.ipLimit > 0 ? `${t("deviceLimit")}: ${n(cur.ipLimit)}` : undefined} className="!rounded-2xl">
           {!det ? <Skeleton className="h-12" /> : det.deviceList.length === 0 ? (
             <div className="text-ink3 text-[13px] py-2">{t("noDevices")}</div>
           ) : (
             <ul className="flex flex-col gap-1.5">
               {det.deviceList.map((d) => (
-                <li key={d.ip} className="flex items-center gap-3 h-11 px-3 rounded-xl bg-white/[.03] border border-white/[.05]">
-                  <Smartphone className="size-4 text-[#8db6ff]" />
+                <li key={d.ip} className="flex items-center gap-3 h-11 px-3 rounded-xl bg-fg/[.03] border border-hair">
+                  <Smartphone className="size-4 text-primary2" />
                   <bdi dir="ltr" className="mono text-[12.5px]">{d.ip}</bdi>
                   <span className="ms-auto text-[12px] text-ink3">{ago(d.lastSeen, lang)}</span>
                 </li>
               ))}
             </ul>
           )}
-        </Panel>
+        </Panel>}
 
-        <Panel icon={<Gauge className="size-4" />} title={t("configs")} sub={cfg ? n(cfg.configs.length) : ""} className="!rounded-2xl">
+        {tab === "configs" && <Panel icon={<Gauge className="size-4" />} title={t("configs")} sub={cfg ? n(cfg.configs.length) : ""} className="!rounded-2xl">
           {!cfg ? <Skeleton className="h-24" /> : (
             <ul className="flex flex-col gap-1.5">
               {cfg.configs.map((c, i) => (
-                <li key={i} className="rounded-xl bg-white/[.03] border border-white/[.06]">
+                <li key={i} className="rounded-xl bg-fg/[.03] border border-hair">
                   <div className="flex items-center gap-2 ps-3.5 pe-1 h-12">
                     <span className="flex-1 min-w-0 truncate text-[13px]" dir="ltr">{c.name}</span>
                     <IconButton label="QR" onClick={() => setOpenQr(openQr === i ? null : i)}><QrCode className="size-4" /></IconButton>
@@ -475,20 +533,28 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
               {cfg.configs.length === 0 && <li className="text-ink3 text-sm">—</li>}
             </ul>
           )}
-        </Panel>
+        </Panel>}
 
-        <Panel title={t("usage30")} className="!rounded-2xl">
-          <UsageChart series={series} height={180} />
-        </Panel>
+        {tab === "usage" && <Panel title={t("usageHistory")} className="!rounded-2xl"
+          action={<Segmented value={days} onChange={setDays} options={[{ value: 7, label: t("r7d") }, { value: 30, label: t("r30d") }, { value: 90, label: t("r90d") }]} />}>
+          <UsageChart series={series} days={days} height={200} exportName={`dunvex-${cur.name}-${days}d`} />
+        </Panel>}
 
-        <div className="grid grid-cols-2 gap-3 text-[12.5px] text-ink2">
-          <div>{t("created")}: <span className="text-ink">{date(cur.createdAt, lang)}</span></div>
-          <div>{t("resetPeriod")}: <span className="text-ink">{t(cur.resetPeriod === "none" ? "none" : cur.resetPeriod)}</span></div>
-          <div className="col-span-2 truncate">UUID: <bdi dir="ltr" className="text-ink mono text-[11.5px]">{cur.uuid}</bdi></div>
-        </div>
+        {tab === "activity" && <Panel title={t("activity")} className="!rounded-2xl">
+          {!activity ? <Skeleton className="h-24" /> : activity.length === 0 ? <div className="text-ink3 text-[13px] py-4">{t("noEvents")}</div> : (
+            <ol className="relative flex flex-col gap-4 ps-5 before:absolute before:top-1 before:bottom-1 before:[inset-inline-start:5px] before:w-px before:bg-hair">
+              {activity.map((e) => (
+                <li key={e.id} className="relative">
+                  <span className="absolute [inset-inline-start:-19px] top-1.5 size-2.5 rounded-full border-2 border-panel" style={{ background: eventMeta(e.kind).color }} />
+                  <EventMsg message={e.message} className="block text-[13px]" />
+                  <div className="text-[11.5px] text-ink3">{ago(e.at, lang)}</div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </Panel>}
       </div>
     </Sheet>
   );
 }
 
-export const _statusMeta = statusMeta;

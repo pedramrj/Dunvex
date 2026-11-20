@@ -2,53 +2,54 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><meta name="theme-color" content="#060a15">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#080c13"><meta name="color-scheme" content="dark light">
 <link rel="icon" type="image/png" href="{{.Brand}}favicon-64.png">
 <title>{{.Title}} · {{.User.Name}}</title>
 <style>
 @font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}fa.woff2") format("woff2");font-weight:100 900;font-display:swap;unicode-range:U+0600-06FF,U+0750-077F,U+FB50-FDFF,U+FE70-FEFF,U+200C-200F,U+06F0-06F9}
 @font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en.woff2") format("woff2");font-weight:400;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
 @font-face{font-family:"Dunvex Sans";src:url("{{.FontBase}}en-bold.woff2") format("woff2");font-weight:600 700;font-display:swap;unicode-range:U+0000-024F,U+2000-206F}
-:root{--bg:#060a15;--text:#f1f4fa;--muted:#a9b5cf;--dim:#7d8bab;--line:rgba(140,165,220,.14);--azure:#2f8cff;--sky:#35b8ff;--reality:#f0474f;--cdn:#4c8dff;--udp:#f2a93b;--classic:#34b37a;--ok:#3ddc97;--bad:#ff5d73;--violet:#9b7bff}
+:root{--bg:#080c13;--surface:#111c30;--surface2:#172238;--text:#f4f7ff;--muted:#9aaac2;--dim:#7487a5;--line:#26344a;--accent:{{.Accent}};--cyan:#24cfd2;--reality:#f0656f;--cdn:#4f8cff;--udp:#f0b85b;--classic:#25c99a;--ok:#25c99a;--bad:#f06b78;--violet:#a48bff;--warnc:#f0b85b;--ring:#0f1a2c;--logo:none}
+@media (prefers-color-scheme:light){:root{--bg:#f3f6fb;--surface:#ffffff;--surface2:#f6f8fc;--text:#0b1324;--muted:#4a5b77;--dim:#5b6b85;--line:#dde4ef;--ok:#0b7a5c;--bad:#b8324a;--warnc:#8a5a0f;--violet:#6a4fd6;--cyan:#0c7c7f;--ring:#ffffff;--logo:brightness(.55) contrast(1.35)}}
 *{box-sizing:border-box}
 html{background:var(--bg)}
 body{margin:0;min-height:100vh;color:var(--text);font:15px/1.8 "Dunvex Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
-  background:radial-gradient(50rem 30rem at 15% -10%,rgba(47,140,255,.2),transparent 60%),radial-gradient(36rem 26rem at 95% 0%,rgba(53,184,255,.1),transparent 60%),radial-gradient(34rem 24rem at 80% 105%,rgba(240,71,79,.07),transparent 60%),var(--bg)}
-::selection{background:rgba(47,140,255,.4)}
+  background:radial-gradient(50rem 30rem at 50% -12%,color-mix(in oklab,var(--accent) 20%,transparent),transparent 62%),radial-gradient(34rem 24rem at 95% 0%,color-mix(in oklab,var(--cyan) 9%,transparent),transparent 60%),var(--bg)}
+::selection{background:color-mix(in oklab,var(--accent) 40%,transparent)}
 .wrap{max-width:720px;margin:0 auto;padding:24px 16px 56px}
 .brand{display:flex;flex-direction:column;align-items:center;gap:6px;margin:4px 0 22px}
 .lg{background:url("{{.Brand}}dunvex-logo-512.png") no-repeat}
 .lg-em{height:64px;aspect-ratio:1.454;background-size:132.7% auto;background-position:56.63% 34.44%;filter:drop-shadow(0 8px 24px rgba(47,140,255,.35))}
-.lg-wm{width:150px;aspect-ratio:8.482;background-size:104.85% auto;background-position:53.45% 80.32%}
-.glass{background:linear-gradient(180deg,rgba(22,33,64,.78),rgba(12,19,38,.84));border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 24px 60px -36px rgba(0,0,0,.9);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
+.lg-wm{filter:var(--logo);width:150px;aspect-ratio:8.482;background-size:104.85% auto;background-position:53.45% 80.32%}
+.glass{background:linear-gradient(180deg,var(--surface),var(--surface2));border:1px solid var(--line);box-shadow:inset 0 1px 0 color-mix(in oklab,#fff 6%,transparent),0 24px 60px -36px rgba(0,0,0,.6);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
 .hero{border-radius:24px;padding:22px;display:flex;gap:22px;align-items:center;flex-wrap:wrap;position:relative;overflow:hidden}
-.hero::before{content:"";position:absolute;inset-inline:24px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,rgba(160,200,255,.55),transparent)}
-.ring{--p:{{.PctCSS}};width:124px;height:124px;border-radius:50%;background:conic-gradient({{.RingColor}} calc(var(--p)*1%),rgba(255,255,255,.07) 0);display:grid;place-items:center;flex:none}
-.ring>div{width:102px;height:102px;border-radius:50%;background:#0d1530;display:grid;place-items:center;text-align:center;font-weight:700;font-size:20px;line-height:1.25}
+.hero::before{content:"";position:absolute;inset-inline:24px;top:-1px;height:1px;background:linear-gradient(90deg,transparent,color-mix(in oklab,var(--accent) 80%,#fff),transparent)}
+.ring{--p:{{.PctCSS}};width:124px;height:124px;border-radius:50%;background:conic-gradient({{.RingColor}} calc(var(--p)*1%),color-mix(in oklab,var(--text) 8%,transparent) 0);display:grid;place-items:center;flex:none}
+.ring>div{width:102px;height:102px;border-radius:50%;background:var(--ring);display:grid;place-items:center;text-align:center;font-weight:700;font-size:20px;line-height:1.25}
 .ring small{display:block;font-weight:400;color:var(--muted);font-size:12px;direction:ltr;margin-top:2px}
 h1{margin:0;font-size:24px;line-height:1.35}
 .muted{color:var(--muted);font-size:13px}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:999px;padding:3px 12px;font-size:13px;line-height:1.7;color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:color-mix(in oklab,var(--text) 3%,transparent);border-radius:999px;padding:3px 12px;font-size:13px;line-height:1.7;color:var(--muted)}
 .chip b{font-weight:600;color:var(--text)}
 .dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;box-shadow:0 0 10px currentColor}
-.ok{color:var(--ok);border-color:rgba(61,220,151,.35);background:rgba(61,220,151,.08)}
-.bad{color:var(--bad);border-color:rgba(255,93,115,.4);background:rgba(255,93,115,.08)}
-.warn{color:var(--udp);border-color:rgba(242,169,59,.35);background:rgba(242,169,59,.08)}
-.vio{color:var(--violet);border-color:rgba(155,123,255,.4);background:rgba(155,123,255,.08)}
+.ok{color:var(--ok);border-color:color-mix(in oklab,var(--ok) 35%,transparent);background:color-mix(in oklab,var(--ok) 9%,transparent)}
+.bad{color:var(--bad);border-color:color-mix(in oklab,var(--bad) 40%,transparent);background:color-mix(in oklab,var(--bad) 9%,transparent)}
+.warn{color:var(--warnc);border-color:color-mix(in oklab,var(--warnc) 35%,transparent);background:color-mix(in oklab,var(--warnc) 9%,transparent)}
+.vio{color:var(--violet);border-color:color-mix(in oklab,var(--violet) 40%,transparent);background:color-mix(in oklab,var(--violet) 9%,transparent)}
 .card{border-radius:22px;padding:18px;margin-top:14px}
 .card h2{font-size:15px;margin:0 0 12px;font-weight:700;display:flex;align-items:center;gap:10px}
-.card h2 i{width:22px;height:4px;border-radius:9px;background:linear-gradient(90deg,var(--azure),var(--sky));box-shadow:0 0 10px var(--azure)}
+.card h2 i{width:22px;height:4px;border-radius:9px;background:linear-gradient(90deg,var(--accent),var(--cyan));box-shadow:0 0 10px var(--accent)}
 .row{display:flex;gap:10px;align-items:center}
-input.copy{flex:1;min-width:0;background:rgba(7,12,26,.85);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:0 14px;height:46px;direction:ltr;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-button,.btn{background:linear-gradient(135deg,#1f6bff,#2f8cff 50%,#35b8ff);color:#fff;border:0;border-radius:14px;height:46px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;box-shadow:0 10px 30px -12px rgba(47,140,255,.8),inset 0 1px 0 rgba(255,255,255,.25);transition:filter .2s,transform .1s}
+input.copy{flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--muted);border-radius:14px;padding:0 14px;height:46px;direction:ltr;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+button,.btn{background:linear-gradient(135deg,color-mix(in oklab,var(--accent) 75%,#fff),var(--accent));color:#fff;border:0;border-radius:14px;height:46px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;box-shadow:0 10px 30px -12px color-mix(in oklab,var(--accent) 80%,transparent),inset 0 1px 0 rgba(255,255,255,.25);transition:filter .2s,transform .1s}
 button:hover,.btn:hover{filter:brightness(1.1)}
 button:active,.btn:active{transform:scale(.97)}
-.btn.ghost{background:rgba(255,255,255,.04);border:1px solid var(--line);color:var(--text);font-weight:500;box-shadow:none}
-.btn.ghost:hover{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22)}
-:focus-visible{outline:2px solid var(--azure);outline-offset:2px}
+.btn.ghost{background:color-mix(in oklab,var(--text) 4%,transparent);border:1px solid var(--line);color:var(--text);font-weight:500;box-shadow:none}
+.btn.ghost:hover{background:color-mix(in oklab,var(--text) 8%,transparent);border-color:var(--dim)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .apps{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
-.qr{width:196px;height:196px;margin:16px auto 0;display:block;background:#fff;color:#060a15;border-radius:18px;padding:9px;box-shadow:0 20px 60px -24px rgba(47,140,255,.7)}
+.qr{width:196px;height:196px;margin:16px auto 0;display:block;background:#fff;color:#060a15;border-radius:18px;padding:9px;box-shadow:0 20px 60px -24px color-mix(in oklab,var(--accent) 70%,transparent)}
 .qr svg{width:100%;height:100%}
 details{border-top:1px solid var(--line);padding:11px 0}
 details:first-of-type{border-top:0}
@@ -56,8 +57,8 @@ summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-cont
 summary::-webkit-details-marker{display:none}
 summary::after{content:"";width:8px;height:8px;border-inline-end:2px solid var(--dim);border-bottom:2px solid var(--dim);transform:rotate(45deg);margin-top:-4px;flex:none}
 details[open] summary::after{transform:rotate(225deg);margin-top:4px}
-.alert{border-radius:16px;padding:12px 16px;margin-top:14px;border:1px solid}
-.alert.bad{color:#ffd5dc}.alert.vio{color:#e2d9ff}.alert.note{color:#d6e7ff;background:rgba(47,140,255,.08);border-color:rgba(47,140,255,.35)}
+.alert{display:flex;align-items:flex-start;gap:12px;border-radius:16px;padding:14px 16px;margin-top:14px;border:1px solid;line-height:1.9;font-weight:500}.alert.bad,.alert.vio,.alert.warn,.alert.note{color:var(--text)}.alert>i{flex:none;width:9px;height:9px;border-radius:50%;margin-top:.72em;background:var(--accent);box-shadow:0 0 10px var(--accent)}.alert.bad>i{background:var(--bad);box-shadow:0 0 10px var(--bad)}.alert.vio>i{background:var(--violet);box-shadow:0 0 10px var(--violet)}.alert>div{display:flex;flex-direction:column;gap:2px;min-width:0}.alert>div>b{font-weight:700}.alert>div>span{color:var(--muted)}
+.alert.note{background:color-mix(in oklab,var(--accent) 9%,transparent);border-color:color-mix(in oklab,var(--accent) 35%,transparent)}
 .tg{margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 footer{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -80,9 +81,9 @@ footer{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
     </div>
   </div>
 </div>
-{{if .Announce}}<div class="alert note">{{.Announce}}</div>{{end}}
-{{if .Reason}}<div class="alert bad">{{.Reason}} — برای تمدید با پشتیبانی تماس بگیرید.</div>{{end}}
-{{if .Paused}}<div class="alert vio">از تعداد مجاز دستگاه هم‌زمان بیشتر وصل شده بودید؛ اتصال تا ساعت <b dir="ltr">{{.Paused}}</b> متوقف است و بعد خودکار برمی‌گردد.</div>{{end}}
+{{if .Announce}}<div class="alert note"><i></i><div>{{.Announce}}</div></div>{{end}}
+{{if .Reason}}<div class="alert bad"><i></i><div><b>{{.Reason}}</b><span>برای تمدید با پشتیبانی تماس بگیرید.</span></div></div>{{end}}
+{{if .Paused}}<div class="alert vio"><i></i><div>از تعداد مجاز دستگاه هم‌زمان بیشتر وصل شده بودید؛ اتصال تا ساعت <b dir="ltr">{{.Paused}}</b> متوقف است و بعد خودکار برمی‌گردد.</div></div>{{end}}
 
 <div class="card glass">
   <h2><i></i>لینک اشتراک</h2>

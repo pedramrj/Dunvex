@@ -72,7 +72,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                               <span className="size-4 rounded-full border-[4px] bg-ground" style={{ borderColor: state }} />
                             </span>
                             <a href={`#/protocols/${i.id}`} className="min-w-0 flex-1 group">
-                              <div className="font-semibold truncate group-hover:text-white" dir="ltr">{i.remark || shortName[i.preset] || i.name}</div>
+                              <div className="font-semibold truncate group-hover:text-primary2" dir="ltr">{i.remark || shortName[i.preset] || i.name}</div>
                               <div className="text-[12px] text-ink3 truncate" dir="ltr">{p?.name}</div>
                             </a>
                             <Toggle checked={i.enabled} onChange={(v) => toggle(i, v)} />
@@ -84,12 +84,12 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                             {p?.status === "beta" && <Badge color="var(--color-violet)">{t("beta")}</Badge>}
                           </div>
                           {i.error ? (
-                            <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-[#ffc2cc]">
+                            <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad">
                               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
                               <bdi dir="ltr" className="break-words">{i.error}</bdi>
                             </div>
                           ) : (
-                            <div className="mt-auto grid grid-cols-2 gap-3 pt-3 border-t border-white/[.06] text-[12px]">
+                            <div className="mt-auto grid grid-cols-2 gap-3 pt-3 border-t border-hair text-[12px]">
                               <div><div className="text-ink3">{t("download")}</div><div className="num font-medium text-[13px]">{bytes(i.down, lang)}</div></div>
                               <div><div className="text-ink3">{t("upload")}</div><div className="num font-medium text-[13px]">{bytes(i.up, lang)}</div></div>
                             </div>
@@ -152,7 +152,7 @@ function AddSheet({ open, group, presets, onClose, onDone }: { open: boolean; gr
                   {list.map((p) => (
                     <button key={p.id} onClick={() => setPick(p)}
                       style={{ borderInlineStartColor: g.color }}
-                      className="text-start rounded-2xl border border-white/10 border-s-[3px] bg-white/[.03] hover:bg-white/[.06] hover:border-white/20 px-4 py-3.5 transition-all duration-200 hover:-translate-y-0.5">
+                      className="text-start rounded-2xl border border-hair border-s-[3px] bg-fg/[.03] hover:bg-fg/[.06] hover:border-hair2 px-4 py-3.5 transition-[background-color,border-color] duration-200 hover:-translate-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-[13.5px]" dir="ltr">{p.name}</span>
                         {p.recommended && <Badge color="var(--color-udp)" icon={<Sparkles className="size-3" />} className="h-5 text-[10.5px] px-2">{t("recommended")}</Badge>}
@@ -255,7 +255,7 @@ function Params({ fields, values, onChange, group }: { fields: Field[]; values: 
     <div className="flex flex-col gap-4">
       {basic.map(render)}
       {advanced.length > 0 && (
-        <div className="rounded-2xl border border-white/10 bg-white/[.02]">
+        <div className="rounded-2xl border border-hair bg-fg/[.02]">
           <button type="button" onClick={() => setAdv(!adv)} className="w-full flex items-center justify-between h-11 px-3.5 text-[13.5px] text-ink2 hover:text-ink">
             {t("advanced")}
             <ChevronDown className={cx("size-4 transition-transform", adv && "rotate-180")} />
@@ -282,7 +282,7 @@ function SniTest({ onPick }: { onPick: (d: string) => void }) {
         <div className="rise absolute z-10 mt-2 [inset-inline-end:0] w-72 max-h-72 overflow-auto rounded-2xl glass-strong p-1.5 shadow-[0_18px_44px_-12px_rgba(0,0,0,.8)]">
           {res.map((r) => (
             <button key={r.domain} type="button" disabled={!r.ok} onClick={() => { onPick(r.domain); setRes(null); }}
-              className="w-full flex items-center gap-2 h-10 px-2.5 rounded-xl text-[13px] hover:bg-white/[.06] disabled:opacity-45">
+              className="w-full flex items-center gap-2 h-10 px-2.5 rounded-xl text-[13px] hover:bg-fg/[.06] disabled:opacity-45">
               <span className={cx("size-2 rounded-full", r.ok ? "bg-online" : "bg-bad")} />
               <span dir="ltr" className="truncate">{r.domain}</span>
               <span className="ms-auto num text-ink3">{r.ok ? `${n(r.latencyMs)}ms` : "✕"}</span>

@@ -1,39 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Cpu, Database, HardDrive, KeyRound, MemoryStick, Network, Server,
-  Settings2, Smartphone, Sparkles, User as UserIcon, Users as UsersIcon, Wifi, Zap,
+  Activity, AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, Bell, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Cpu, Database, HardDrive, LayoutGrid,
+  Network, Server, ShieldAlert, Smartphone, Sparkles, UserCheck, UserX, Users as UsersIcon, Wifi, Zap,
 } from "lucide-react";
-import { api, type Event, type Group, type Overview } from "../lib/api";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { api, type Group, type Overview } from "../lib/api";
 import { ago, bytes, cx, duration, speed, statusMeta } from "../lib/format";
-import { useI18n } from "../lib/i18n";
-import { Avatar, Badge, Dot, Meter, Panel, Ring, ringColor, Skeleton, StatCard } from "../components/ui";
+import { useI18n, type Key } from "../lib/i18n";
+import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
+import { ArcGauge, Avatar, Badge, Button, Bytes, Dot, ErrorState, EventMsg, Meter, Num, Panel, Ring, ringColor, Segmented, Sheet, Skeleton, StatCard, Timeline, Toggle } from "../components/ui";
 import { NetworkMap } from "../components/NetworkMap";
 import { LiveChart, Spark, StackBar, UsageChart } from "../components/charts";
-import { NewUserButton, PageHead, can, navigate, useSession } from "../App";
+import { NewUserButton, PageHead, can, eventMeta, navigate, useSession } from "../App";
+
+const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", network: "network", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
 
 export function OverviewPage() {
-  const { t, lang, n } = useI18n();
-  const { me } = useSession();
+  const { t, lang, n, pc } = useI18n();
+  const { me, events } = useSession();
+  const { prefs } = usePrefs();
   const [d, setD] = useState<Overview | null>(null);
-  const [events, setEvents] = useState<Event[]>([]);
+  const [err, setErr] = useState("");
+  const [days, setDays] = useState(30);
+  const [custom, setCustom] = useState(false);
   const isAdmin = can(me.admin.role, "admin");
+
   useEffect(() => {
     let alive = true;
-    const load = () => api<Overview>("overview").then((r) => alive && setD(r)).catch(() => {});
-    const loadEvents = () => isAdmin && api<Event[]>("events").then((r) => alive && setEvents(r.slice(0, 8))).catch(() => {});
+    const load = () => api<Overview>(`overview?days=${days}`).then((r) => { if (alive) { setD(r); setErr(""); } }).catch((e) => alive && setErr(e.message));
     load();
-    loadEvents();
     const id = setInterval(load, 5000);
-    const id2 = setInterval(loadEvents, 15000);
-    return () => {
-      alive = false;
-      clearInterval(id);
-      clearInterval(id2);
-    };
-  }, [isAdmin]);
+    return () => { alive = false; clearInterval(id); };
+  }, [days]);
 
-  if (!d) return <OverviewSkeleton />;
-  if (d.role === "reseller") return <ResellerOverview d={d} />;
+  if (!d) return err ? <ErrorState message={err} onRetry={() => location.reload()} /> : <OverviewSkeleton />;
+  if (d.role === "reseller") return <ResellerOverview d={d} days={days} setDays={setDays} />;
 
   const sys = d.system;
   const live = d.live.slice(-60);
@@ -44,6 +45,16 @@ export function OverviewPage() {
   const problems = coreErr.length + (d.inboundErrs ?? 0);
   const pct = (a: number, b: number) => (b > 0 ? (a / b) * 100 : 0);
   const statusParts = (["active", "pending", "paused", "limited", "expired", "disabled"] as const).map((s) => ({ value: d.statuses[s] ?? 0, color: statusMeta[s].color, label: t(statusMeta[s].key) }));
+  const activeSubs = (d.statuses.active ?? 0) + (d.statuses.pending ?? 0);
+  const endedSubs = (d.statuses.expired ?? 0) + (d.statuses.limited ?? 0);
+  const yesterday = yesterdayTotal(d.series);
+  const todayTotal = d.today.down + d.today.up;
+  const trend = yesterday > 0 ? ((todayTotal - yesterday) / yesterday) * 100 : null;
+  const coresUp = d.cores.filter((c) => c.running).length;
+  const show = (w: Widget) => prefs.widgets.includes(w);
+  const order = (w: Widget) => ({ order: prefs.widgets.indexOf(w) });
+  // a row of widgets sits where its first visible widget is in the chosen order
+  const rowOrder = (ws: Widget[]) => ({ order: Math.min(...ws.map((w) => { const i = prefs.widgets.indexOf(w); return i < 0 ? 99 : i; })) });
 
   return (
     <div>
@@ -52,161 +63,196 @@ export function OverviewPage() {
         title={t("overview")}
         sub={
           <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="inline-flex items-center gap-1.5"><Server className="size-3.5 text-ink3" /><bdi className="mono text-[12.5px]" dir="ltr">{sys.publicIp || "—"}</bdi></span>
-            <span className="text-ink3">·</span>
-            <span>{sys.os}</span>
-            <span className="text-ink3">·</span>
-            <span>{t("uptime")}: {duration(sys.uptime, lang)}</span>
+            <span className="inline-flex items-center gap-1.5"><Server className="size-3.5 text-ink3" /><bdi className="mono text-[12.5px] sensitive" dir="ltr">{sys.publicIp || "—"}</bdi></span>
+            <span className="text-ink3">·</span><span>{sys.os}</span><span className="text-ink3">·</span><span>{t("uptime")}: {duration(sys.uptime, lang)}</span>
           </span>
         }
         action={
           <>
             {problems === 0 ? (
-              <Badge color="var(--color-online)" icon={<CheckCircle2 className="size-3.5" />} className="h-8 px-3">{t("allGood")}</Badge>
+              <Badge color="var(--ok)" icon={<CheckCircle2 className="size-3.5" />} className="h-9 px-3">{t("allGood")}</Badge>
             ) : (
-              <Badge color="var(--color-bad)" icon={<AlertTriangle className="size-3.5" />} className="h-8 px-3">{t("issues")} · {n(problems)}</Badge>
+              <Badge color="var(--bad)" icon={<AlertTriangle className="size-3.5" />} className="h-9 px-3">{t("issues")} · {n(problems)}</Badge>
             )}
+            <Button icon={<LayoutGrid className="size-4" />} onClick={() => setCustom(true)}>{t("customize")}</Button>
             <NewUserButton />
           </>
         }
       />
 
       {coreErr.length > 0 && (
-        <div className="rise mb-5 flex gap-3 rounded-2xl border border-bad/40 bg-bad/[.07] px-4 py-3 text-[13.5px]">
-          <AlertTriangle className="size-5 text-bad shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            {coreErr.map(([k, v]) => (
-              <div key={k} className="break-words"><b dir="ltr">{k}</b>: <bdi dir="ltr" className="text-ink2 mono text-[12px]">{v}</bdi></div>
-            ))}
-          </div>
-        </div>
+        <div className="rise mb-5"><ErrorState message={coreErr.map(([k, v]) => `${k}: ${v}`).join(" · ")} /></div>
       )}
 
-      <div className="stagger grid gap-4 xl:grid-cols-12">
-        {/* live traffic */}
-        <Panel className="xl:col-span-8" icon={<Activity className="size-4" />} title={t("liveTraffic")} sub={lang === "fa" ? "۵ دقیقهٔ اخیر · هر ۵ ثانیه" : "last 5 minutes · every 5 s"}
-          action={<span className="inline-flex items-center gap-2 text-[12px] text-online"><Dot color="var(--color-online)" pulse size={7} />LIVE</span>}>
-          <div className="flex flex-wrap gap-x-8 gap-y-3 mb-3">
-            <Speed icon={<ArrowDown className="size-4" />} color="#6ea4ff" label={t("download")} value={speed(last.down, lang)} />
-            <Speed icon={<ArrowUp className="size-4" />} color="#a68cff" label={t("upload")} value={speed(last.up, lang)} />
-            <div className="ms-auto text-end">
-              <div className="text-[11.5px] text-ink3">{t("onlineNow")}</div>
-              <div className="text-[22px] font-bold num text-online leading-tight">{n(d.online)} <span className="text-[13px] text-ink3 font-normal">/ {n(d.users)}</span></div>
-            </div>
-          </div>
-          <LiveChart live={live} height={170} />
-        </Panel>
-
-        {/* server health */}
-        <Panel className="xl:col-span-4" icon={<Cpu className="size-4" />} title={t("serverHealth")} sub={<span dir="ltr" className="mono">{server}</span>}>
-          <div className="grid grid-cols-3 gap-2">
-            <Gauge label={t("cpu")} value={sys.cpu} text={`${n(sys.cpu, 0)}%`} sub={`${n(sys.cores)} ${lang === "fa" ? "هسته" : "cores"}`} />
-            <Gauge label={t("ram")} value={pct(sys.memUsed, sys.memTotal)} text={`${n(pct(sys.memUsed, sys.memTotal), 0)}%`} sub={bytes(sys.memTotal, lang, 0)} />
-            <Gauge label={t("disk")} value={pct(sys.diskUsed, sys.diskTotal)} text={`${n(pct(sys.diskUsed, sys.diskTotal), 0)}%`} sub={bytes(sys.diskTotal, lang, 0)} />
-          </div>
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-[11.5px] text-ink3 mb-1"><span>{t("cpu")} · 6 min</span><span className="num">{n(Math.max(0, ...hist.map((h) => h.cpu)), 0)}% max</span></div>
-            <Spark values={hist.map((h) => h.cpu)} color="#f2a93b" height={36} />
-          </div>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px]">
-            <Row k={t("netNow")} v={<span className="num">↓{speed(sys.netDown, lang)} ↑{speed(sys.netUp, lang)}</span>} />
-            <Row k={t("connections")} v={<span className="num">TCP {n(sys.tcp)} · UDP {n(sys.udp)}</span>} />
-            <Row k={t("load")} v={<span className="num mono text-[12px]" dir="ltr">{(sys.load ?? []).map((x) => x.toFixed(2)).join("  ") || "—"}</span>} />
-            <Row k={t("swap")} v={<span className="num">{sys.swapTotal ? `${bytes(sys.swapUsed, lang)} / ${bytes(sys.swapTotal, lang)}` : "—"}</span>} />
-          </dl>
-        </Panel>
-
-        {/* KPIs */}
-        <div className="xl:col-span-12 grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={<Wifi className="size-[18px]" />} accent="#3ddc97" label={t("onlineNow")} value={<span className="text-online">{n(d.online)}</span>}
-            sub={<span className="inline-flex items-center gap-1"><Smartphone className="size-3.5" />{n(d.devices ?? 0)} {t("devicesNow")}</span>}>
-            <Spark values={live.map((s) => s.down + s.up)} color="#3ddc97" height={30} />
-          </StatCard>
-          <StatCard icon={<UsersIcon className="size-[18px]" />} accent="#4c8dff" label={t("users")} value={n(d.users)}
-            sub={<span>{n((d.statuses.active ?? 0) + (d.statuses.pending ?? 0))} {t("active")}</span>}>
-            <StackBar parts={statusParts} />
-            <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-2 text-[11px] text-ink3">
-              {statusParts.filter((p) => p.value > 0).map((p) => <span key={p.label} className="inline-flex items-center gap-1"><Dot color={p.color} size={6} />{n(p.value)}</span>)}
-            </div>
-          </StatCard>
-          <StatCard icon={<Zap className="size-[18px]" />} accent="#f2a93b" label={t("today")} value={bytes(d.today.down + d.today.up, lang)}
-            sub={<span>↓ {bytes(d.today.down, lang)} · ↑ {bytes(d.today.up, lang)}</span>}>
-            <Meter value={d.today.down} max={d.today.down + d.today.up} plain color="linear-gradient(90deg,#f2c94c,#f2a93b)" />
-          </StatCard>
-          <StatCard icon={<CalendarDays className="size-[18px]" />} accent="#9b7bff" label={t("thisMonth")} value={bytes(d.month.down + d.month.up, lang)}
-            sub={<span>{t("lifetime")}: {bytes(d.lifetime, lang)}</span>}>
-            <Meter value={d.month.down + d.month.up} max={Math.max(d.lifetime, 1)} plain color="linear-gradient(90deg,#4c8dff,#9b7bff)" />
-          </StatCard>
+      <div className="flex flex-col gap-[var(--gap)]">
+        <div className="grid gap-[var(--gap)] xl:grid-cols-12" style={rowOrder(["live", "health"])}>
+          {show("live") && (
+            <Panel className="xl:col-span-8 overflow-hidden" icon={<Activity className="size-4" />} title={t("liveTraffic")} sub={t("liveSub")}
+              action={<span className="inline-flex items-center gap-2 text-[11.5px] font-semibold text-online tracking-wider"><Dot color="var(--ok)" pulse size={7} />LIVE</span>}>
+              <div className="flex flex-wrap gap-x-8 gap-y-3 mb-3">
+                <Speed icon={<ArrowDown className="size-4" />} color="var(--primary2)" label={t("download")} value={last.down} />
+                <Speed icon={<ArrowUp className="size-4" />} color="var(--cyan)" label={t("upload")} value={last.up} />
+                <div className="ms-auto text-end">
+                  <div className="text-[11.5px] text-ink3">{t("onlineNow")}</div>
+                  <div className="text-[24px] font-bold text-online leading-tight"><Num value={d.online} /> <span className="text-[13px] text-ink3 font-normal">/ <Num value={d.users} /></span></div>
+                </div>
+              </div>
+              <LiveChart live={live} height={170} />
+              <BorderBeam size={90} duration={9} colorFrom="var(--primary2)" colorTo="var(--cyan)" />
+            </Panel>
+          )}
+          {show("health") && (
+            <Panel className="xl:col-span-4" icon={<Cpu className="size-4" />} title={t("serverHealth")} sub={<span dir="ltr" className="mono">{server}</span>}>
+              <ArcGauge value={sys.cpu} label={t("cpu")} sub={`${n(sys.cores)} ${t("coresUnit")}`} />
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <Res label={t("ram")} value={pct(sys.memUsed, sys.memTotal)} sub={`${bytes(sys.memUsed, lang, 1)} / ${bytes(sys.memTotal, lang, 0)}`} />
+                <Res label={t("disk")} value={pct(sys.diskUsed, sys.diskTotal)} sub={`${bytes(sys.diskUsed, lang, 0)} / ${bytes(sys.diskTotal, lang, 0)}`} />
+              </div>
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-[11.5px] text-ink3 mb-1"><span>{t("cpu")} · {t("last6min")}</span><span className="num">{t("peak")} {pc(Math.max(0, ...hist.map((h) => h.cpu)), 0)}</span></div>
+                <Spark values={hist.map((h) => h.cpu)} color="var(--warn)" height={36} />
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px]">
+                <Row k={t("netNow")} v={<span className="num">↓{speed(sys.netDown, lang)} ↑{speed(sys.netUp, lang)}</span>} />
+                <Row k={t("connections")} v={<span className="num">TCP {n(sys.tcp)} · UDP {n(sys.udp)}</span>} />
+                <Row k={t("load")} v={<span className="mono text-[12px]" dir="ltr">{(sys.load ?? []).map((x) => x.toFixed(2)).join("  ") || "—"}</span>} />
+                <Row k={t("swap")} v={<span className="num">{sys.swapTotal ? `${bytes(sys.swapUsed, lang)} / ${bytes(sys.swapTotal, lang)}` : "—"}</span>} />
+              </dl>
+            </Panel>
+          )}
         </div>
 
-        {/* network map */}
-        <Panel className="xl:col-span-12" icon={<Network className="size-4" />} title={t("network")}
-          sub={<span className="num">{n(d.inboundsOn)} / {n(d.inbounds)} {t("stations")}</span>}
-          action={isAdmin && <a href="#/protocols/add" className="text-[13px] text-[#8db6ff] hover:text-white">{t("addProtocol")} +</a>}>
-          <NetworkMap lines={d.lines} online={d.online} server={server} onStation={(id) => navigate("protocols", String(id))} onAdd={(g: Group) => navigate("protocols", "add-" + g)} />
-        </Panel>
+        {show("kpis") && (
+          <div style={order("kpis")} className="stagger flex sm:grid gap-[var(--gap)] sm:grid-cols-2 xl:grid-cols-4 overflow-x-auto sm:overflow-visible snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 sm:pb-0 [&>*]:shrink-0 [&>*]:w-[78%] [&>*]:snap-start sm:[&>*]:w-auto">
+            <StatCard icon={<UsersIcon className="size-[18px]" />} label={t("totalUsers")} value={<Num value={d.users} />} onClick={() => navigate("users")} tip={t("openUsers")}>
+              <StackBar parts={statusParts} />
+            </StatCard>
+            <StatCard icon={<Wifi className="size-[18px]" />} accent="var(--ok)" label={t("onlineNow")} value={<span className="text-online"><Num value={d.online} /></span>}
+              sub={<span className="inline-flex items-center gap-1"><Smartphone className="size-3.5" /><Num value={d.devices ?? 0} /> {t("devicesNow")}</span>} />
+            <StatCard icon={<UserCheck className="size-[18px]" />} accent="var(--cyan)" label={t("activeSubs")} value={<Num value={activeSubs} />}
+              sub={<span><Num value={d.statuses.pending ?? 0} /> {t("pending")}</span>} />
+            <StatCard icon={<UserX className="size-[18px]" />} accent="var(--bad)" label={t("endedSubs")} value={<Num value={endedSubs} />}
+              sub={<span><Num value={d.statuses.limited ?? 0} /> {t("limited")} · <Num value={d.statuses.expired ?? 0} /> {t("expired")}</span>} />
+            <StatCard icon={<Zap className="size-[18px]" />} accent="var(--warn)" label={t("today")} value={<Bytes value={todayTotal} />} trend={trend}
+              sub={<span>{t("vsYesterday")} · {bytes(yesterday, lang)}</span>}
+              foot={<Spark values={d.series.slice(-24).map((p) => p.up + p.down)} color="var(--warn)" height={34} />} />
+            <StatCard icon={<CalendarDays className="size-[18px]" />} accent="var(--color-violet)" label={t("thisMonth")} value={<Bytes value={d.month.down + d.month.up} />}
+              sub={<span>{t("lifetime")}: {bytes(d.lifetime, lang)}</span>}
+              foot={<Spark values={d.series.map((p) => p.up + p.down)} color="var(--color-violet)" height={34} />} />
+            <StatCard icon={<ArrowDownUp className="size-[18px]" />} accent="var(--cyan)" label={t("throughput")} value={<Bytes value={last.down + last.up} rate />}
+              sub={<span>↓ {speed(last.down, lang)} · ↑ {speed(last.up, lang)}</span>}
+              foot={<Spark values={live.map((s) => s.down + s.up)} color="var(--cyan)" height={34} />} />
+            <StatCard icon={<Server className="size-[18px]" />} accent="var(--ok)" label={t("nodes")} value={<span><Num value={1} /></span>} onClick={() => navigate("nodes")}
+              sub={<span className="inline-flex items-center gap-1.5"><Dot color={problems ? "var(--bad)" : "var(--ok)"} size={6} />{problems ? t("issues") : t("healthy")}</span>}
+              foot={<Spark values={hist.map((h) => h.cpu)} color="var(--ok)" height={34} />} />
+            <StatCard icon={<Network className="size-[18px]" />} accent="var(--color-cdn)" label={t("protocols")} value={<span><Num value={d.inboundsOn} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={d.inbounds} /></span></span>}
+              onClick={() => navigate("protocols")} sub={d.inboundErrs ? <span className="text-bad">{n(d.inboundErrs)} {t("error")}</span> : t("allGood")} />
+            <StatCard icon={<Bell className="size-[18px]" />} accent={problems ? "var(--bad)" : "var(--text2)"} label={t("openAlerts")} value={<Num value={problems} />} onClick={() => navigate("alerts")} />
+            <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={coresUp === d.cores.length ? "var(--ok)" : "var(--warn)"} label={t("systemHealth")}
+              value={<span><Num value={coresUp} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={d.cores.length} /> {t("cores")}</span></span>} />
+            <StatCard icon={<Database className="size-[18px]" />} accent="var(--primary2)" label={t("activeSessions")} value={<Num value={d.devices ?? 0} />} sub={t("activeSessionsSub")} />
+          </div>
+        )}
 
-        {/* usage */}
-        <Panel className="xl:col-span-8" icon={<Database className="size-4" />} title={t("usage30")}>
-          <UsageChart series={d.series} />
-        </Panel>
-        <TopUsers top={d.top} className="xl:col-span-4" />
+        {show("network") && (
+          <div style={order("network")}>
+          <Panel icon={<Network className="size-4" />} title={t("network")} sub={<span className="num">{n(d.inboundsOn)} / {n(d.inbounds)} {t("stations")}</span>}
+            action={isAdmin && <a href="#/network" className="text-[13px] text-primary2 hover:underline">{t("networkCenter")}</a>}>
+            <NetworkMap lines={d.lines} online={d.online} server={server} onStation={(id) => navigate("protocols", String(id))} onAdd={(g: Group) => navigate("protocols", "add-" + g)} />
+          </Panel>
+          </div>
+        )}
 
-        {/* cores + events */}
-        <Panel className="xl:col-span-4" icon={<Server className="size-4" />} title={t("cores")}>
-          <ul className="flex flex-col gap-3">
-            {d.cores.map((c) => (
-              <li key={c.name} className="flex items-center gap-3 rounded-2xl bg-white/[.03] border border-white/[.06] p-3">
-                <span className={cx("grid place-items-center size-10 rounded-xl", c.running ? "bg-online/12 text-online" : "bg-white/[.05] text-ink3")}>
-                  {c.name === "xray" ? <Sparkles className="size-5" /> : <HardDrive className="size-5" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-semibold text-[13.5px]" dir="ltr">{c.name} <span className="mono text-[11.5px] text-ink3 font-normal">{c.version || "—"}</span></div>
-                  <div className="text-[12px] text-ink3">{c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.installed ? t("stopped") : t("notInstalled")}</div>
-                </div>
-                <Dot color={c.running ? "var(--color-online)" : c.installed ? "var(--color-ink3)" : "var(--color-bad)"} pulse={c.running} />
-              </li>
-            ))}
-          </ul>
-        </Panel>
-        {isAdmin && (
-          <Panel className="xl:col-span-8" icon={<KeyRound className="size-4" />} title={t("recentEvents")}>
-            {events.length === 0 ? (
-              <div className="text-ink3 text-sm py-8 text-center">{t("noEvents")}</div>
-            ) : (
-              <ol className="flex flex-col">
-                {events.map((e) => (
-                  <li key={e.id} className="flex items-start gap-3 py-2.5 border-b border-white/[.05] last:border-0">
-                    <EventIcon kind={e.kind} />
-                    <span className="min-w-0 flex-1 text-[13px] text-ink break-words" dir="ltr" style={{ textAlign: lang === "fa" ? "right" : "left" }}>{e.message}</span>
-                    <span className="text-[11.5px] text-ink3 whitespace-nowrap">{ago(e.at, lang)}</span>
+        <div className="grid gap-[var(--gap)] xl:grid-cols-12" style={rowOrder(["usage", "top", "cores", "events"])}>
+          {show("usage") && (
+            <Panel className="xl:col-span-8" icon={<Database className="size-4" />} title={t("usageHistory")}
+              action={<Segmented value={days} onChange={setDays} options={[{ value: 1, label: t("r24h") }, { value: 7, label: t("r7d") }, { value: 30, label: t("r30d") }, { value: 90, label: t("r90d") }]} />}>
+              <UsageChart series={d.series} days={days} exportName={`dunvex-usage-${days}d`} />
+            </Panel>
+          )}
+          {show("top") && <TopUsers top={d.top} className="xl:col-span-4" />}
+          {show("cores") && (
+            <Panel className="xl:col-span-4" icon={<Server className="size-4" />} title={t("cores")}>
+              <ul className="flex flex-col gap-3">
+                {d.cores.map((c) => (
+                  <li key={c.name} className="flex items-center gap-3 rounded-2xl bg-fg/[.025] border border-hair p-3">
+                    <span className={cx("grid place-items-center size-10 rounded-xl", c.running ? "bg-online/12 text-online" : "bg-fg/[.05] text-ink3")}>
+                      {c.name === "xray" ? <Sparkles className="size-5" /> : <HardDrive className="size-5" />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[13.5px]" dir="ltr">{c.name} <span className="mono text-[11.5px] text-ink3 font-normal">{c.version || "—"}</span></div>
+                      <div className="text-[12px] text-ink3">{c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.installed ? t("stopped") : t("notInstalled")}</div>
+                    </div>
+                    <Dot color={c.running ? "var(--ok)" : c.installed ? "var(--text3)" : "var(--bad)"} pulse={c.running} />
                   </li>
                 ))}
-              </ol>
-            )}
-          </Panel>
-        )}
+              </ul>
+            </Panel>
+          )}
+          {show("events") && isAdmin && (
+            <Panel className="xl:col-span-8" icon={<Bell className="size-4" />} title={t("recentEvents")} action={<a href="#/alerts" className="text-[13px] text-primary2 hover:underline">{t("viewAll")}</a>}>
+              {events.length === 0 ? (
+                <div className="text-ink3 text-sm py-8 text-center">{t("noEvents")}</div>
+              ) : (
+                <Timeline items={events.slice(0, 7).map((e) => {
+                  const m = eventMeta(e.kind);
+                  return { id: e.id, icon: m.icon, color: m.color, title: <EventMsg message={e.message} className="block" />, meta: ago(e.at, lang), tag: <Badge color={m.color}>{t(m.key)}</Badge> };
+                })} />
+              )}
+            </Panel>
+          )}
+        </div>
       </div>
+
+      <CustomizeSheet open={custom} onClose={() => setCustom(false)} />
     </div>
   );
 }
 
-function EventIcon({ kind }: { kind: string }) {
-  const m: Record<string, [typeof UserIcon, string]> = {
-    user: [UserIcon, "#4c8dff"], limit: [Smartphone, "#9b7bff"], core: [Cpu, "#f2a93b"], auth: [KeyRound, "#3ddc97"], settings: [Settings2, "#a9b5cf"],
+function yesterdayTotal(series: { t: number; up: number; down: number }[]) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
+  return series.filter((p) => p.t >= start - 86400 && p.t < start).reduce((s, p) => s + p.up + p.down, 0);
+}
+
+function CustomizeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useI18n();
+  const { prefs, set } = usePrefs();
+  const hidden = allWidgets.filter((w) => !prefs.widgets.includes(w));
+  const move = (w: Widget, dir: -1 | 1) => {
+    const list = [...prefs.widgets];
+    const i = list.indexOf(w);
+    const j = i + dir;
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    set("widgets", list);
   };
-  const [Icon, color] = m[kind] ?? [Activity, "#a9b5cf"];
   return (
-    <span className="grid place-items-center size-7 rounded-lg shrink-0" style={{ color, background: `color-mix(in oklab, ${color} 14%, transparent)` }}>
-      <Icon className="size-3.5" />
-    </span>
+    <Sheet open={open} onClose={onClose} title={t("customize")} sub={t("customizeSub")}>
+      <ul className="flex flex-col gap-2">
+        {[...prefs.widgets, ...hidden].map((w) => {
+          const on = prefs.widgets.includes(w);
+          return (
+            <li key={w} className="flex items-center gap-3 rounded-2xl border border-hair bg-fg/[.02] px-3 h-14">
+              <Toggle checked={on} onChange={(v) => set("widgets", v ? [...prefs.widgets, w] : prefs.widgets.filter((x) => x !== w))} />
+              <span className={cx("flex-1 text-[14px]", !on && "text-ink3")}>{t(widgetKey[w])}</span>
+              {on && <>
+                <button onClick={() => move(w, -1)} className="grid place-items-center size-8 rounded-lg hover:bg-fg/[.06]" aria-label="up"><ChevronUp className="size-4" /></button>
+                <button onClick={() => move(w, 1)} className="grid place-items-center size-8 rounded-lg hover:bg-fg/[.06]" aria-label="down"><ChevronDown className="size-4" /></button>
+              </>}
+            </li>
+          );
+        })}
+      </ul>
+      <Button className="mt-4" variant="quiet" onClick={() => set("widgets", allWidgets)}>{t("resetLayout")}</Button>
+    </Sheet>
   );
 }
 
 function TopUsers({ top, className }: { top: Overview["top"]; className?: string }) {
   const { t, lang, n } = useI18n();
   return (
-    <Panel className={className} icon={<UsersIcon className="size-4" />} title={t("topUsers")} sub={lang === "fa" ? "۳۰ روز" : "30 days"}>
+    <Panel className={className} icon={<UsersIcon className="size-4" />} title={t("topUsers")} sub={t("r30d")}>
       {top.length === 0 ? (
         <div className="text-ink3 text-sm py-8 text-center">—</div>
       ) : (
@@ -216,7 +262,7 @@ function TopUsers({ top, className }: { top: Overview["top"]; className?: string
               <a href={`#/users/${u.id}`} className="flex items-center gap-3 text-[13.5px] group">
                 <span className="w-4 text-ink3 num text-[12px]">{n(i + 1)}</span>
                 <Avatar name={u.name} size={30} />
-                <span className="truncate font-medium group-hover:text-white" dir="ltr">{u.name}</span>
+                <span className="truncate font-medium group-hover:text-primary2 transition-colors" dir="ltr">{u.name}</span>
                 <span className="ms-auto num text-ink2 text-[12.5px]">{bytes(u.bytes, lang)}</span>
               </a>
               <Meter value={u.bytes} max={top[0].bytes} className="ms-[54px] mt-1.5" plain height={4} />
@@ -228,26 +274,28 @@ function TopUsers({ top, className }: { top: Overview["top"]; className?: string
   );
 }
 
-function Speed({ icon, color, label, value }: { icon: React.ReactNode; color: string; label: string; value: string }) {
+function Speed({ icon, color, label, value }: { icon: React.ReactNode; color: string; label: string; value: number }) {
   return (
     <div className="flex items-center gap-3">
       <span className="grid place-items-center size-10 rounded-xl" style={{ color, background: `color-mix(in oklab, ${color} 15%, transparent)`, boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${color} 30%, transparent)` }}>{icon}</span>
       <div>
         <div className="text-[11.5px] text-ink3">{label}</div>
-        <div className="text-[20px] font-bold num leading-tight">{value}</div>
+        <div className="text-[21px] font-bold leading-tight"><Bytes value={value} rate /></div>
       </div>
     </div>
   );
 }
 
-function Gauge({ label, value, text, sub }: { label: string; value: number; text: string; sub: string }) {
+function Res({ label, value, sub }: { label: string; value: number; sub: string }) {
+  const { pc } = useI18n();
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/[.025] border border-white/[.06] py-3">
-      <Ring value={value} size={70} stroke={7} color={ringColor(value)}>
-        <span className="text-[14px] font-bold num">{text}</span>
-      </Ring>
-      <div className="text-[12px] font-medium">{label}</div>
-      <div className="text-[11px] text-ink3 num -mt-1">{sub}</div>
+    <div className="rounded-2xl bg-fg/[.03] border border-hair px-3.5 py-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[12px] text-ink2 font-medium">{label}</span>
+        <span className="text-[15px] font-bold num" style={{ color: ringColor(value) }}>{pc(value, 0)}</span>
+      </div>
+      <Meter value={value} max={100} className="mt-2" />
+      <div className="mt-1.5 text-[11px] text-ink3 num truncate">{sub}</div>
     </div>
   );
 }
@@ -267,48 +315,53 @@ function OverviewSkeleton() {
       <Skeleton className="h-10 w-64 xl:col-span-12" />
       <Skeleton className="h-72 xl:col-span-8" />
       <Skeleton className="h-72 xl:col-span-4" />
-      {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-36 xl:col-span-3" />)}
+      {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-32 xl:col-span-2" />)}
       <Skeleton className="h-80 xl:col-span-12" />
     </div>
   );
 }
 
-// ---------------------------------------------------------------- reseller
+// ================================================================= reseller
 
-function ResellerOverview({ d }: { d: Overview }) {
-  const { t, lang, n } = useI18n();
+function ResellerOverview({ d, days, setDays }: { d: Overview; days: number; setDays: (v: number) => void }) {
+  const { t, lang } = useI18n();
   const { me } = useSession();
   const q = d.quota!;
   const usersPct = q.maxUsers > 0 ? (q.users / q.maxUsers) * 100 : 0;
   const dataPct = q.maxData > 0 ? (q.allocated / q.maxData) * 100 : 0;
   const statusParts = (["active", "pending", "paused", "limited", "expired", "disabled"] as const).map((s) => ({ value: d.statuses[s] ?? 0, color: statusMeta[s].color, label: t(statusMeta[s].key) }));
+  const stats = useMemo(() => statusParts, [d.statuses]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div>
-      <PageHead eyebrow={<span>{t("welcome")}{lang === "fa" ? "، " : ", "}<bdi dir="ltr">{me.admin.username}</bdi></span>} title={t("overview")} action={<NewUserButton />} />
-      <div className="stagger grid gap-4 xl:grid-cols-12">
+      <PageHead eyebrow={<span>{t("welcome")}{lang === "fa" ? "، " : ", "}<bdi dir="ltr">{me.admin.username}</bdi></span>} title={t("resellerDash")} action={<NewUserButton />} />
+      <div className="stagger grid gap-[var(--gap)] xl:grid-cols-12">
         <Panel className="xl:col-span-5" icon={<Sparkles className="size-4" />} title={t("quota")}>
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col items-center gap-2 rounded-2xl bg-white/[.03] border border-white/[.06] py-4">
-              <Ring value={usersPct} size={96} stroke={9} color={ringColor(usersPct)}>
-                <div><div className="text-[18px] font-bold num">{n(q.users)}</div><div className="text-[11px] text-ink3 num">/ {q.maxUsers ? n(q.maxUsers) : "∞"}</div></div>
+            <div className="flex flex-col items-center gap-2 rounded-2xl bg-fg/[.02] border border-hair py-4">
+              <Ring value={usersPct} size={100} stroke={9} color={ringColor(usersPct)}>
+                <div><div className="text-[18px] font-bold"><Num value={q.users} /></div><div className="text-[11px] text-ink3">/ {q.maxUsers ? <Num value={q.maxUsers} /> : "∞"}</div></div>
               </Ring>
               <div className="text-[12.5px] font-medium">{t("users")}</div>
             </div>
-            <div className="flex flex-col items-center gap-2 rounded-2xl bg-white/[.03] border border-white/[.06] py-4">
-              <Ring value={dataPct} size={96} stroke={9} color={ringColor(dataPct)}>
+            <div className="flex flex-col items-center gap-2 rounded-2xl bg-fg/[.02] border border-hair py-4">
+              <Ring value={dataPct} size={100} stroke={9} color={ringColor(dataPct)}>
                 <div><div className="text-[15px] font-bold num">{bytes(q.allocated, lang, 0)}</div><div className="text-[11px] text-ink3 num">/ {q.maxData ? bytes(q.maxData, lang, 0) : "∞"}</div></div>
               </Ring>
               <div className="text-[12.5px] font-medium">{t("allocated")}</div>
             </div>
           </div>
+          <p className="text-[12px] text-ink3 mt-3">{t("quotaLeft")}: <span className="num">{q.maxData ? bytes(Math.max(0, q.maxData - q.allocated), lang) : "∞"}</span></p>
         </Panel>
-        <div className="xl:col-span-7 grid gap-4 grid-cols-2">
-          <StatCard icon={<Wifi className="size-[18px]" />} accent="#3ddc97" label={t("onlineNow")} value={<span className="text-online">{n(d.online)}</span>} sub={<span>{n(d.devices ?? 0)} {t("devicesNow")}</span>} />
-          <StatCard icon={<UsersIcon className="size-[18px]" />} accent="#4c8dff" label={t("yourUsers")} value={n(d.users)}><StackBar parts={statusParts} /></StatCard>
-          <StatCard icon={<Zap className="size-[18px]" />} accent="#f2a93b" label={t("today")} value={bytes(d.today.down + d.today.up, lang)} />
-          <StatCard icon={<MemoryStick className="size-[18px]" />} accent="#9b7bff" label={t("thisMonth")} value={bytes(d.month.down + d.month.up, lang)} sub={<span>{t("lifetime")}: {bytes(d.lifetime, lang)}</span>} />
+        <div className="xl:col-span-7 grid gap-[var(--gap)] grid-cols-2">
+          <StatCard icon={<Wifi className="size-[18px]" />} accent="var(--ok)" label={t("onlineNow")} value={<span className="text-online"><Num value={d.online} /></span>} sub={<span><Num value={d.devices ?? 0} /> {t("devicesNow")}</span>} />
+          <StatCard icon={<UsersIcon className="size-[18px]" />} label={t("yourUsers")} value={<Num value={d.users} />}><StackBar parts={stats} /></StatCard>
+          <StatCard icon={<Zap className="size-[18px]" />} accent="var(--warn)" label={t("today")} value={<Bytes value={d.today.down + d.today.up} />} />
+          <StatCard icon={<CalendarDays className="size-[18px]" />} accent="var(--color-violet)" label={t("thisMonth")} value={<Bytes value={d.month.down + d.month.up} />} sub={<span>{t("lifetime")}: {bytes(d.lifetime, lang)}</span>} />
         </div>
-        <Panel className="xl:col-span-8" icon={<Database className="size-4" />} title={t("usage30")}><UsageChart series={d.series} /></Panel>
+        <Panel className="xl:col-span-8" icon={<Database className="size-4" />} title={t("usageHistory")}
+          action={<Segmented value={days} onChange={setDays} options={[{ value: 1, label: t("r24h") }, { value: 7, label: t("r7d") }, { value: 30, label: t("r30d") }, { value: 90, label: t("r90d") }]} />}>
+          <UsageChart series={d.series} days={days} exportName={`dunvex-usage-${days}d`} />
+        </Panel>
         <TopUsers top={d.top} className="xl:col-span-4" />
       </div>
     </div>

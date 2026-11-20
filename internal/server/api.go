@@ -38,7 +38,9 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /account/2fa/disable", R, s.totpDisable)
 
 	h("GET /overview", R, s.overview)
-	h("GET /events", A, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, s.St.Events(100)) })
+	h("GET /status", R, s.status)
+	h("GET /events", A, s.events)
+	h("GET /network/geo", A, s.geo)
 
 	h("GET /users", R, s.listUsers)
 	h("POST /users", R, s.createUsers)
@@ -98,6 +100,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	a, err := s.St.AdminByName(strings.TrimSpace(in.Username))
 	if err != nil || !a.Enabled || bcrypt.CompareHashAndPassword([]byte(a.PasswordHash), []byte(in.Password)) != nil {
 		s.recordFailure(ip)
+		s.logFailure(ip, strings.TrimSpace(in.Username), "wrong password")
 		time.Sleep(600 * time.Millisecond)
 		fail(w, http.StatusUnauthorized, "wrong username or password")
 		return
@@ -109,6 +112,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.totpOK(a, a.TOTPSecret, in.Code) {
 			s.recordFailure(ip)
+			s.logFailure(ip, a.Username, "wrong two-step code")
 			time.Sleep(600 * time.Millisecond)
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "the code is not right", "need2fa": true})
 			return
@@ -188,7 +192,7 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
 	tu, td := s.St.TotalSince(dayStart)
 	mu, md := s.St.TotalSince(monthStart)
-	series, _ := s.St.UsageSeries(0, now.Add(-30*24*time.Hour).Unix())
+	series, _ := s.St.UsageSeries(0, now.Add(-time.Duration(rangeDays(r))*24*time.Hour).Unix())
 	top, _ := s.St.TopUsers(now.Add(-30*24*time.Hour).Unix(), 8)
 	var lifetime int64
 	for _, u := range users {
@@ -832,7 +836,7 @@ func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
 
 var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
 	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
-	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes",
+	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes", "sub_accent",
 	"tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_backup", "tg_user_bot", "tg_api"}
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -885,6 +889,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		case "tg_token":
 			if strings.Contains(v, "•") {
 				continue // the masked value came back unchanged
+			}
+		case "sub_accent":
+			if v != "" && !accentRe.MatchString(v) {
+				fail(w, 400, "accent colour must look like #397bff")
+				return
 			}
 		case "ip_pause_minutes", "tg_daily_hour":
 			n, err := strconv.Atoi(v)

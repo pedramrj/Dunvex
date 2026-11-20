@@ -366,7 +366,7 @@ func (s *Server) resellerOverview(w http.ResponseWriter, r *http.Request, a *sto
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
 	tu, td := s.St.OwnerTotal(a.ID, dayStart)
 	mu, md := s.St.OwnerTotal(a.ID, monthStart)
-	series, _ := s.St.OwnerUsage(a.ID, now.Add(-30*24*time.Hour).Unix())
+	series, _ := s.St.OwnerUsage(a.ID, now.Add(-time.Duration(rangeDays(r))*24*time.Hour).Unix())
 	top, _ := s.St.OwnerTop(a.ID, now.Add(-30*24*time.Hour).Unix(), 8)
 	writeJSON(w, 200, map[string]any{
 		"role": a.Role, "users": len(users), "online": on, "devices": devices, "statuses": counts,

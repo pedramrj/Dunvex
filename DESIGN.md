@@ -1,65 +1,102 @@
 ---
-name: Dunvex night interchange
+name: Dunvex Obsidian Navy
 mode: operate
+themes: [navy, oled, light, system]
 colors:
-  ground: "#060a15"
-  panel: "#0e162c"
-  panel2: "#141f3b"
-  ink: "#f1f4fa"
-  ink2: "#a9b5cf"
-  ink3: "#7d8bab"
-  brand-azure: "#2f8cff (gradient #1f6bff → #35b8ff)"
-  line-reality: "#f0474f"
-  line-cdn: "#4c8dff"
-  line-udp: "#f2a93b"
-  line-classic: "#34b37a"
-  state-online: "#3ddc97"
-  state-warn: "#f2a93b"
-  state-bad: "#ff5d73"
-  state-paused: "#9b7bff"
+  bg: "#080c13"
+  bg-secondary: "#0d1420"
+  surface: "#111c30"
+  surface-elevated: "#172238"
+  primary: "#397bff"
+  electric: "#4f8cff"
+  cyan: "#24cfd2"
+  text: "#f4f7ff"
+  text-secondary: "#9aaac2"
+  border: "#26344a"
+  success: "#25c99a"
+  warning: "#f0b85b"
+  danger: "#f06b78"
+  line-reality: "#f0656f"
+  line-cdn: "#4f8cff"
+  line-udp: "#f0b85b"
+  line-classic: "#25c99a"
+  paused: "#a48bff"
 type:
-  sans: "Dunvex Sans = Vazirmatn (Persian, variable) + Fira Sans (Latin 400–700), SIL OFL"
-  mono: "Dunvex Mono = Fira Code, for ports, addresses, keys and versions"
+  persian: "Estedad (default) or Vazirmatn, variable, SIL OFL"
+  latin: "Geist, variable, SIL OFL"
+  mono: "JetBrains Mono, for ports, addresses, keys, versions and logs"
   base: 14px
   persian-line-height: 1.8
-  figures: tabular
+  figures: tabular, Persian digits in the Persian interface
 radius: { control: 12px, card: 20px, sheet-edge: 0, pill: 999px }
+motion: { micro: 100-160ms, popover: 150-250ms, sheet: 300-350ms, ease: "cubic-bezier(.23,1,.32,1)" }
 ---
 
-# Dunvex design
+# Dunvex design: Obsidian Navy
 
-The identity comes from the owner's logo: a brushed-platinum **DV** with an electric-azure glow,
-"DUNVEX — Powered by Pedram" (`assets/branding/dunvex-logo.png`). The panel is the night around it:
-a deep midnight ground lit by soft azure light, with the four protocol lines as the only other colour.
+The identity comes from the owner's logo: a brushed-platinum **DV** with an electric-blue glow and
+"DUNVEX · Powered by Pedram" (`assets/branding/dunvex-logo.png`). The panel is a quiet, deep navy
+control room around it. One thing is allowed to be loud: the network map. Everything else stays calm,
+precise and readable for hours.
 
-## World
-- **Ground**: `#060a15` with a fixed "aurora" (radial azure glows plus a faint map grid that fades out).
-- **Surfaces**: glass cards (two-stop navy gradient at ~80% opacity, 1px cool border, inner top highlight,
-  blur 16px) with a thin light along the top edge. Sheets use a stronger glass.
-- **Brand**: azure gradient on the primary button, the active nav marker and rings; platinum comes from
-  the logo artwork itself. The logo is shown through CSS viewports over the approved square PNG
-  (emblem, wordmark, credit, full), never cropped, redrawn or recoloured.
-- **Line inks** stay data colours: Reality scarlet, CDN cobalt, UDP/QUIC amber, classic green.
-- **States** always pair a colour with a text label (badge with dot): online mint, warn amber, bad rose, paused violet.
+## Themes
+- **Navy** (default): the palette above.
+- **OLED**: pure black ground for OLED screens and night shifts.
+- **Light**: `#f3f6fb` ground; text, status and line colours are deepened so every label passes WCAG AA.
+- **System** follows the operating system. The choice is per browser and also sets the browser's theme colour.
+
+All colours are CSS variables per `html[data-theme]`, mapped to Tailwind tokens (`text-ink`, `bg-fg/[.04]`,
+`border-hair`…), so no component carries a raw hex.
+
+## Type
+- Persian uses **Estedad** by default; **Vazirmatn** is one click away in Settings › Appearance.
+- Latin and numbers use **Geist**; technical values use **JetBrains Mono** and stay left to right.
+- Numbers are tabular; the Persian interface shows Persian digits and the Persian percent sign.
+- Animated numbers roll digit by digit and work with both digit sets (`Num`, `Bytes`).
+- Headings use balanced wrapping; no all-caps labels.
+
+## Shell
+- **Sidebar**: logo, page search, favourites, groups (Main, Monitor, Admin) with live counters,
+  a health line and the account card. It collapses to icons (`Ctrl+B`).
+- **Top bar**: breadcrumb, command palette (`Ctrl/Cmd+K`), quick add, notifications, presentation toggle,
+  language, theme and the account menu.
+- **Phone**: a compact top bar, a five-item bottom bar and a "More" sheet with every page.
+- **Overlays** (menus, dialogs, sheets) stack; `Escape` closes only the one on top. Destructive
+  confirmations open with Cancel focused.
+- A skip link leads to the main content.
+
+## Pages
+Overview (customisable widgets, KPIs with trends, time range), Users (sortable list, context menu,
+drawer with overview, configs, devices, usage and activity), Protocols, Network centre (topology,
+world map with the server's real location, inspector, recent events), Servers, Analytics (zoomable
+charts with legend toggles and CSV export), Logs (Xray, sing-box and panel events, live tail,
+filters, export), Alerts (categories, severity, read state, quiet mode), Security (sign-in history,
+protections, admins without 2FA), Settings (appearance, brand studio, server, subscription, panel,
+security, admins, Telegram, cores, backup) and Mission control (a full-screen wall).
 
 ## Signature
-The **network map** on Overview: the server is the interchange, each family a line, each inbound a station;
-a dash flows faster with more traffic. On phones it becomes vertical strips.
+The **network map**: the server is the interchange, each protocol family a coloured line and each
+inbound a station. Packets travel faster with more traffic. The topology view is the neon version:
+glowing icon nodes (shield for Reality, cloud for CDN, bolt for UDP/QUIC, cable for classic), curved
+links with flowing packets, light pillars under live stations, labelled hubs and a pulsing server core.
+Every label is placed where it touches no other label or node, and the view zooms to what is drawn.
+On phones both become lists.
 
-## Layout
-- Desktop: floating glass rail (256px) with the logo, nav and the admin card (role, 2FA shield).
-  Content max 1480px; Overview is a 12-column bento (live traffic, server health rings, KPI cards,
-  map, 30-day area chart, top users, cores, recent events).
-- Phone: glass top bar with emblem + wordmark, bottom tab bar (only the tabs the role can use).
-- Sheets slide from the inline end, rendered in a portal. Forms are grouped in labelled sections.
-- Settings: vertical tab list on desktop, pill tabs on phones; tabs depend on the role.
+## Data components
+- **KPI card**: glowing icon tile, value, a sub-line in the card's colour, a thin light along the top edge
+  and, where real history exists, a full-width sparkline along the bottom. On phones the cards swipe.
+- **Arc gauge**: half circle with ticks; the arc runs cyan → blue → amber → rose as load rises.
+- **Timeline**: events as glowing nodes joined by a fading line, with a category tag.
 
-## Data display
-- Charts: smooth area charts with gradient fills, download solid / upload dashed (never colour alone),
-  hover read-out with date and both values.
-- Rings for CPU / RAM / disk and user data; they turn amber at 75% and rose at 90%.
-- Persian digits via `Intl.NumberFormat('fa-IR')`; inputs, API and technical values stay Latin (`.mono`).
+## Data honesty
+Every number comes from the server. Features the backend does not have yet (billing, more than one
+server, session list, API keys) are shown as such, never with sample data.
 
 ## Motion
-Card entrance (`rise`, 10px, staggered), sheet slide, map flow, online pulse, skeleton shimmer.
-All of it stops under `prefers-reduced-motion`.
+An intro plays once per session (GSAP): particles, the emblem rising, a light sweep, the wordmark and the
+credit. Any key or click skips it; it can be turned off. In the panel motion only answers the user or
+shows live state: sheet slides, menu pops, the rolling digits, the map packets and the online pulse.
+`prefers-reduced-motion` and the in-app "reduce motion" switch stop all of it.
+
+## Presentation mode
+Blurs every secret on screen (subscription links, UUIDs, QR codes, the server address) for screen sharing.

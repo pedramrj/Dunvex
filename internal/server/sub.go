@@ -119,6 +119,19 @@ func blockedReason(u *store.User, now int64) string {
 	return ""
 }
 
+// pageReason is blockedReason for the Persian user page.
+func pageReason(u *store.User, now int64) string {
+	switch u.Status(now) {
+	case store.StatusLimited:
+		return "حجم اشتراک تمام شده"
+	case store.StatusExpired:
+		return "مدت اشتراک تمام شده"
+	case store.StatusDisabled:
+		return "حساب غیرفعال است"
+	}
+	return ""
+}
+
 func dummyLink(name string) string {
 	return "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:1?type=tcp&security=none#" + url.PathEscape(name)
 }
@@ -313,11 +326,12 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	data := map[string]any{
 		"Title": title, "User": u, "View": v, "Sub": sub, "SubQR": template.HTML(QRSVG(sub)),
 		"Used": util.HumanBytes(u.Used()), "Limit": limitText(u.DataLimit), "Pct": fmt.Sprintf("%.1f", pct),
-		"Expire": expire, "Reason": blockedReason(u, now), "Configs": cfgs, "Apps": appLinks(sub, title),
+		"Expire": expire, "Reason": pageReason(u, now), "Configs": cfgs, "Apps": appLinks(sub, title),
 		"Support": s.St.GetSetting("support_url", ""), "Announce": s.St.GetSetting("announce", ""),
 		"Days": daysText(v.DaysLeft), "Pending": v.Status == store.StatusPending,
 		"FontBase": s.SubPath() + "_font/", "RingColor": template.CSS(ringColor(pct)), "PctCSS": template.CSS(fmt.Sprintf("%.1f", pct)),
 		"Brand": s.SubPath() + "_brand/", "Paused": "", "DevLimit": "", "Bot": "",
+		"Accent": template.CSS(accentOr(s.St.GetSetting("sub_accent", ""))),
 	}
 	if u.PausedUntil > now {
 		data["Paused"] = time.Unix(u.PausedUntil, 0).Format("15:04")
@@ -337,6 +351,14 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	}
 }
 
+// accentOr returns a safe CSS colour for the portal accent.
+func accentOr(v string) string {
+	if accentRe.MatchString(v) {
+		return v
+	}
+	return "#397bff"
+}
+
 func ringColor(pct float64) string {
 	switch {
 	case pct >= 90:
@@ -344,7 +366,7 @@ func ringColor(pct float64) string {
 	case pct >= 75:
 		return "var(--udp)"
 	}
-	return "var(--azure)"
+	return "var(--accent)"
 }
 
 func limitText(b int64) string {

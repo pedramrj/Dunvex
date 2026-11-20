@@ -1,21 +1,46 @@
 Dunvex
-Copyright 2026 Pedram
+Copyright (C) 2026 Pedram. All rights reserved where not granted below.
 
-Licensed under the Apache License, Version 2.0 (see LICENSE).
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version (SPDX: AGPL-3.0-or-later). See LICENSE.
 
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+In short: anyone who changes Dunvex, or runs a changed version as a service for
+other people, must publish the complete source of that version under this same
+license and keep this notice and the author's name.
+
+Additional permission (AGPL-3.0 section 7): you may combine Dunvex with the GSAP
+animation library (GreenSock, https://gsap.com/standard-license) under its own
+Standard License and convey the combined work; the GSAP code itself stays under
+that license.
+
+Brand
+The Dunvex name and logo (assets/branding, web/public/brand) belong to Pedram.
+They are not licensed under the AGPL; a modified version must not use them in a
+way that suggests it comes from Pedram.
+
+Third-party software
 Dunvex runs these programs as separate processes; they are downloaded at install
 time and keep their own licenses:
   - Xray-core     (MPL-2.0)  https://github.com/XTLS/Xray-core
   - sing-box      (GPL-3.0-or-later)  https://github.com/SagerNet/sing-box
     Dunvex release assets include a sing-box binary built without changes from
     the upstream tag with the `with_v2ray_api` build tag (per-user statistics).
-    Source: https://github.com/SagerNet/sing-box/tree/<tag> — build script in
+    Source: https://github.com/SagerNet/sing-box/tree/<tag>; build script in
     .github/workflows/release.yml.
 
-Bundled fonts (SIL Open Font License 1.1): Vazirmatn (Saber Rastikerdar),
-Fira Sans (Mozilla / Carrois), Fira Code (The Fira Code Project Authors).
-Licence texts in web/src/fonts/.
+Bundled fonts (SIL Open Font License 1.1, licence texts in web/src/fonts/):
+  - Estedad (The Estedad Project Authors)
+  - Vazirmatn (The Vazirmatn Project Authors)
+  - Geist (Vercel, with basement.studio)
+  - JetBrains Mono (The JetBrains Mono Project Authors)
 
-The Dunvex logo (assets/branding, web/public/brand) belongs to Pedram and is
-not covered by the Apache License.
-UI icons: Lucide (ISC). Go and npm dependencies keep their own licenses.
+Panel libraries: React (MIT), Motion (MIT), Magic UI components (MIT),
+Lucide icons (ISC), clsx (MIT), tailwind-merge (MIT), GSAP (Standard License,
+see above). World map land shapes: Natural Earth (public domain) via world-atlas.
+Go modules keep their own licenses.

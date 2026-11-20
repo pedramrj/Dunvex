@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Bot, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
+  Bot, Palette, Sparkles, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
   UserCog, Users as UsersIcon,
 } from "lucide-react";
 import { api, BASE, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
@@ -10,14 +10,18 @@ import {
   Avatar, Badge, Button, ConfirmButton, Dot, Empty, IconButton, Input, Label, Panel, Segmented, Select, Sheet, Skeleton, Tabs, Toggle, useToast,
 } from "../components/ui";
 import { PageHead, can, roleColor, roleKey, useSession } from "../App";
+import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
+import { Logo } from "../components/Logo";
 
 type S = Record<string, string>;
 type Info = { publicIp: string; effectiveHost: string; selfSigned: boolean; certExpiry?: number; telegram?: { running: boolean; configured: boolean; username: string; error: string; admins: number } };
-type TabId = "server" | "sub" | "panel" | "security" | "admins" | "telegram" | "cores" | "backup";
+type TabId = "appearance" | "server" | "sub" | "brand" | "panel" | "security" | "admins" | "telegram" | "cores" | "backup";
 
 const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
+  { id: "appearance", key: "appearance", icon: Palette, need: "reseller" },
   { id: "server", key: "serverAddress", icon: Globe, need: "owner" },
   { id: "sub", key: "subscription", icon: Link2, need: "owner" },
+  { id: "brand", key: "brandStudio", icon: Sparkles, need: "owner" },
   { id: "panel", key: "panel", icon: LayoutPanelLeft, need: "owner" },
   { id: "security", key: "security", icon: ShieldCheck, need: "reseller" },
   { id: "admins", key: "admins", icon: UsersIcon, need: "owner" },
@@ -26,12 +30,15 @@ const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
   { id: "backup", key: "backup", icon: HardDriveDownload, need: "owner" },
 ];
 
-export function SettingsPage() {
+/** The translation key of a settings tab, for the breadcrumb. */
+export const settingsTabKey = (id?: string): Key | undefined => tabs.find((x) => x.id === id)?.key;
+
+export function SettingsPage({ arg }: { arg?: string }) {
   const { t } = useI18n();
   const { me } = useSession();
   const role = me.admin.role;
   const mine = tabs.filter((x) => can(role, x.need));
-  const [tab, setTab] = useState<TabId>(mine[0].id);
+  const [tab, setTab] = useState<TabId>(mine.some((x) => x.id === arg) ? (arg as TabId) : mine[0].id);
   const owner = role === "owner";
 
   return (
@@ -41,8 +48,8 @@ export function SettingsPage() {
         <nav className="hidden lg:flex flex-col gap-1 glass rounded-[20px] p-2 sticky top-6">
           {mine.map(({ id, key, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
-              className={cx("flex items-center gap-3 h-11 px-3.5 rounded-xl text-[13.5px] text-start transition-all", tab === id ? "bg-white/[.08] text-white font-semibold" : "text-ink2 hover:text-ink hover:bg-white/[.04]")}>
-              <Icon className={cx("size-[18px]", tab === id ? "text-[#7cc0ff]" : "text-ink3")} />
+              className={cx("flex items-center gap-3 h-11 px-3.5 rounded-xl text-[13.5px] text-start transition-[background-color,color]", tab === id ? "bg-fg/[.08] text-ink font-semibold" : "text-ink2 hover:text-ink hover:bg-fg/[.04]")}>
+              <Icon className={cx("size-[18px]", tab === id ? "text-primary2" : "text-ink3")} />
               {t(key)}
             </button>
           ))}
@@ -50,6 +57,8 @@ export function SettingsPage() {
         <Tabs className="lg:hidden mb-5" value={tab} onChange={setTab} items={mine.map((x) => ({ id: x.id, label: t(x.key) }))} />
         <div className="min-w-0 max-w-4xl flex flex-col gap-4 rise" key={tab}>
           {owner && ["server", "sub", "panel", "telegram"].includes(tab) ? <OwnerSettings tab={tab} /> : null}
+          {tab === "appearance" && <AppearanceTab />}
+          {tab === "brand" && <BrandTab />}
           {tab === "security" && <SecurityTab />}
           {tab === "admins" && <AdminsTab />}
           {tab === "cores" && <CoresPanel />}
@@ -233,7 +242,7 @@ function SecurityTab() {
         )}
         {!on && setup && (
           <div className="grid sm:grid-cols-[auto_1fr] gap-5 items-start">
-            <img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(setup.qr)} alt="QR" className="rounded-2xl bg-white p-2.5" width={176} height={176} />
+            <img src={"data:image/svg+xml;charset=utf-8," + encodeURIComponent(setup.qr)} alt="QR" className="rounded-2xl bg-white p-2.5 sensitive" width={176} height={176} />
             <div className="flex flex-col gap-3 min-w-0">
               <p className="text-[13.5px] text-ink2">{t("scanQr")}</p>
               <bdi dir="ltr" className="mono text-[12px] text-ink3 break-all select-all">{setup.secret}</bdi>
@@ -272,7 +281,7 @@ function AdminsTab() {
       {!list ? <Skeleton className="h-24" /> : list.length === 0 ? <Empty icon={<UsersIcon className="size-7" />} title="—" /> : (
         <ul className="flex flex-col gap-2">
           {list.map((a) => (
-            <li key={a.id} className={cx("flex flex-wrap items-center gap-3 rounded-2xl bg-white/[.03] border border-white/[.06] p-3", !a.enabled && "opacity-60")}>
+            <li key={a.id} className={cx("flex flex-wrap items-center gap-3 rounded-2xl bg-fg/[.03] border border-hair p-3", !a.enabled && "opacity-60")}>
               <Avatar name={a.username} size={40} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 font-semibold">
@@ -337,7 +346,7 @@ function AdminSheet({ admin, onClose, onDone }: { admin?: Admin; onClose: () => 
           <div className="grid gap-2">
             {roles.map((r) => (
               <button key={r.value} type="button" onClick={() => setF({ ...f, role: r.value })}
-                className={cx("flex items-center gap-3 text-start rounded-2xl border px-4 py-3 transition-all", f.role === r.value ? "border-cdn/60 bg-cdn/[.1] shadow-[0_0_0_3px_rgba(47,140,255,.12)]" : "border-white/10 bg-white/[.02] hover:border-white/20")}>
+                className={cx("flex items-center gap-3 text-start rounded-2xl border px-4 py-3 transition-[background-color,border-color,box-shadow]", f.role === r.value ? "border-primary/60 bg-primary/[.1] shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_14%,transparent)]" : "border-hair bg-fg/[.02] hover:border-hair2")}>
                 <span className="size-3 rounded-full" style={{ background: roleColor[r.value] }} />
                 <span className="flex-1">
                   <span className="block font-semibold text-[14px]">{r.label}</span>
@@ -385,7 +394,7 @@ function CoresPanel() {
       <Panel icon={<Cpu className="size-4" />} title={t("cores")} action={<Button size="sm" icon={<RefreshCw className="size-4" />} loading={busy === "apply"} onClick={() => { setBusy("apply"); api("cores/apply", { method: "POST", body: {} }).then(() => { toast(t("saved")); load(); }).catch((e) => toast(e.message, "error")).finally(() => setBusy("")); }}>{t("restart")}</Button>}>
         <ul className="flex flex-col gap-2">
           {d.cores.map((c) => (
-            <li key={c.name} className="rounded-2xl bg-white/[.03] border border-white/[.06] p-3.5 flex flex-wrap items-center gap-3">
+            <li key={c.name} className="rounded-2xl bg-fg/[.03] border border-hair p-3.5 flex flex-wrap items-center gap-3">
               <Dot color={c.running ? "var(--color-online)" : c.installed ? "var(--color-ink3)" : "var(--color-bad)"} pulse={c.running} size={9} />
               <div className="min-w-0">
                 <div className="font-semibold" dir="ltr">{c.name} <span className="text-ink3 font-normal mono text-[12px]">{c.version}</span></div>
@@ -393,7 +402,7 @@ function CoresPanel() {
                   {c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.installed ? t("stopped") : t("notInstalled")}
                   {c.name === "sing-box" && c.installed && <> · {t("perUserStats")}: {d.stats["sing-box"] ? "✓" : "✕"}</>}
                 </div>
-                {(d.errors[c.name] || c.error) && <div className="text-[12px] text-[#ffc2cc] mt-1 break-all mono" dir="ltr">{d.errors[c.name] || c.error}</div>}
+                {(d.errors[c.name] || c.error) && <div className="text-[12px] text-bad mt-1 break-all mono" dir="ltr">{d.errors[c.name] || c.error}</div>}
               </div>
               <div className="ms-auto flex gap-2">
                 <Button size="sm" variant="quiet" icon={<ScrollText className="size-4" />} onClick={() => api<string[]>(`cores/${c.name}/logs`).then((lines) => setLogs({ name: c.name, lines }))}>{t("logs")}</Button>
@@ -406,7 +415,7 @@ function CoresPanel() {
       {owner && (
         <Panel icon={<KeyRound className="size-4" />} title={t("version")} action={<Button size="sm" onClick={() => api<NonNullable<typeof upd>>("update").then(setUpd).catch((e) => toast(e.message, "error"))}>{t("checkUpdate")}</Button>}>
           <div className="text-[13.5px] grid grid-cols-2 gap-y-2 num" dir="ltr">
-            <span className="text-ink2">Dunvex</span><span className="mono">{VERSION}{upd && upd.latest && upd.latest !== VERSION ? ` → ${upd.latest}` : ""}</span>
+            <span className="text-ink2" translate="no">Dunvex</span><bdi dir="ltr" className="mono">{VERSION}{upd && upd.latest && upd.latest !== VERSION ? ` → ${upd.latest}` : ""}</bdi>
             {upd && <><span className="text-ink2">Xray (latest)</span><span className="mono">{upd.xray}</span><span className="text-ink2">sing-box (latest)</span><span className="mono">{upd.singbox}</span></>}
           </div>
           {upd && upd.latest && upd.latest !== VERSION && (
@@ -444,4 +453,127 @@ function BackupPanel() {
   );
 }
 
-export const _segmented = Segmented;
+
+
+// ---------------------------------------------------------------- appearance (this browser)
+
+function AppearanceTab() {
+  const { t, n, lang, setLang } = useI18n();
+  const { prefs, set } = usePrefs();
+  const presets: { id: string; key: Key; widgets: Widget[]; favorites: string[] }[] = [
+    { id: "super", key: "presetSuper", widgets: allWidgets, favorites: ["overview", "users", "security"] },
+    { id: "noc", key: "presetNoc", widgets: ["live", "health", "network", "cores", "events", "kpis"], favorites: ["network", "logs", "analytics"] },
+    { id: "support", key: "presetSupport", widgets: ["kpis", "top", "events", "usage"], favorites: ["users", "alerts"] },
+    { id: "reseller", key: "presetReseller", widgets: ["kpis", "usage", "top"], favorites: ["users"] },
+  ];
+  const themes = [
+    { id: "navy", key: "themeNavy", bg: "#080c13", acc: "#397bff" },
+    { id: "oled", key: "themeOled", bg: "#000000", acc: "#24cfd2" },
+    { id: "light", key: "themeLight", bg: "#f3f6fb", acc: "#2f6bf0" },
+    { id: "system", key: "themeSystem", bg: "linear-gradient(135deg,#080c13 50%,#f3f6fb 50%)", acc: "#397bff" },
+  ] as const;
+  const fonts = [
+    { id: "estedad", name: "Estedad", fam: "DVX Estedad" },
+    { id: "vazirmatn", name: "Vazirmatn", fam: "DVX Vazirmatn" },
+  ] as const;
+  return (
+    <>
+      <Panel icon={<Palette className="size-4" />} title={t("theme")} sub={t("appearanceSub")}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {themes.map((x) => (
+            <button key={x.id} onClick={() => set("theme", x.id)} aria-pressed={prefs.theme === x.id}
+              className={cx("rounded-2xl border p-2 text-start transition-[border-color,box-shadow] duration-150", prefs.theme === x.id ? "border-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_18%,transparent)]" : "border-hair hover:border-hair2")}>
+              <div className="h-16 rounded-xl mb-2 relative overflow-hidden border border-hair" style={{ background: x.bg }}>
+                <span className="absolute bottom-2 [inset-inline-start:8px] h-1.5 w-10 rounded-full" style={{ background: x.acc }} />
+              </div>
+              <span className="text-[13px] font-medium px-1">{t(x.key)}</span>
+            </button>
+          ))}
+        </div>
+      </Panel>
+      <Panel title={t("density")}>
+        <Segmented value={prefs.density} onChange={(v) => set("density", v)} options={[{ value: "compact", label: t("compact") }, { value: "comfortable", label: t("comfortable") }, { value: "spacious", label: t("spacious") }]} />
+      </Panel>
+      <Panel title={t("persianFont")} sub={t("persianFontSub")}>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {fonts.map((f) => (
+            <button key={f.id} onClick={() => set("font", f.id)} aria-pressed={prefs.font === f.id}
+              className={cx("rounded-2xl border p-4 text-start transition-[border-color,box-shadow] duration-150", prefs.font === f.id ? "border-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_18%,transparent)]" : "border-hair hover:border-hair2")}>
+              <div className="text-[22px] font-bold" style={{ fontFamily: `"${f.fam}"` }} dir="rtl">نمای کلی سرور ۱۲۸۴</div>
+              <div className="text-[12px] text-ink3 mt-1" dir="ltr">{f.name}</div>
+            </button>
+          ))}
+        </div>
+      </Panel>
+      <Panel title={t("motionAndIntro")}>
+        <div className="flex flex-col gap-4">
+          <Toggle checked={prefs.motion === "reduced"} onChange={(v) => set("motion", v ? "reduced" : "full")} label={t("reduceMotion")} hint={t("reduceMotionHint")} />
+          <div>
+            <Label>{t("introMode")}</Label>
+            <Segmented value={prefs.intro} onChange={(v) => set("intro", v)} options={[{ value: "session", label: t("introSession") }, { value: "always", label: t("introAlways") }, { value: "off", label: t("introOff") }]} />
+          </div>
+          <Toggle checked={prefs.present} onChange={(v) => set("present", v)} label={t("presentOn")} hint={t("presentHint")} />
+          <div>
+            <Label>{t("language")}</Label>
+            <Segmented value={lang} onChange={setLang} options={[{ value: "fa", label: "فارسی" }, { value: "en", label: "English" }]} />
+          </div>
+        </div>
+      </Panel>
+      <Panel title={t("workspacePresets")} sub={t("workspacePresetsSub")}>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {presets.map((p) => (
+            <button key={p.id} onClick={() => { set("widgets", p.widgets); set("favorites", p.favorites); }}
+              className="rounded-2xl border border-hair hover:border-hair2 bg-fg/[.02] p-4 text-start transition-colors">
+              <div className="font-semibold text-[14px]">{t(p.key)}</div>
+              <div className="text-[12px] text-ink3 mt-1">{n(p.widgets.length)} {t("widgets")}</div>
+            </button>
+          ))}
+        </div>
+      </Panel>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- brand studio (subscription portal)
+
+function BrandTab() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [s, setS] = useState<S | null>(null);
+  useEffect(() => { api<{ settings: S }>("settings").then((r) => setS(r.settings)).catch(() => {}); }, []);
+  if (!s) return <Skeleton className="h-64" />;
+  const accent = s.sub_accent || "#397bff";
+  const save = () => api("settings", { method: "PUT", body: { sub_title: s.sub_title ?? "", sub_accent: s.sub_accent ?? "", support_url: s.support_url ?? "", announce: s.announce ?? "" } })
+    .then(() => toast(t("saved"))).catch((e) => toast(e.message, "error"));
+  return (
+    <div className="grid lg:grid-cols-2 gap-[var(--gap)] items-start">
+      <Panel icon={<Sparkles className="size-4" />} title={t("brandStudio")} sub={t("brandSub")}>
+        <div className="flex flex-col gap-4">
+          <label><Label>{t("subTitle")}</Label><Input value={s.sub_title ?? ""} onChange={(e) => setS({ ...s, sub_title: e.target.value })} /></label>
+          <label><Label>{t("accentColor")}</Label>
+            <div className="flex gap-2">
+              <input type="color" value={accent} onChange={(e) => setS({ ...s, sub_accent: e.target.value })} className="h-11 w-14 rounded-xl border border-hair bg-rail p-1" aria-label={t("accentColor")} />
+              <Input dir="ltr" className="mono" value={s.sub_accent ?? ""} placeholder="#397bff" onChange={(e) => setS({ ...s, sub_accent: e.target.value })} spellCheck={false} />
+            </div>
+          </label>
+          <label><Label>{t("supportUrl")}</Label><Input dir="ltr" value={s.support_url ?? ""} placeholder="https://t.me/yourchannel" onChange={(e) => setS({ ...s, support_url: e.target.value })} /></label>
+          <label><Label>{t("announce")}</Label><Input value={s.announce ?? ""} onChange={(e) => setS({ ...s, announce: e.target.value })} /></label>
+          <p className="text-[12px] text-ink3">{t("logoNote")}</p>
+          <div className="flex justify-end"><Button variant="primary" onClick={save}>{t("save")}</Button></div>
+        </div>
+      </Panel>
+      <Panel title={t("preview")}>
+        <div className="rounded-[22px] p-5 bg-[#080c13] text-[#f4f7ff] border border-[#26344a] max-w-sm mx-auto">
+          <div className="flex flex-col items-center gap-1 mb-4"><Logo part="emblem" height={40} tone={false} /><Logo part="wordmark" width={110} tone={false} /></div>
+          <div className="rounded-2xl p-4 border border-[#26344a] bg-[#111c30]">
+            <div className="flex items-center gap-3">
+              <div className="size-16 rounded-full grid place-items-center text-[13px] font-bold" style={{ background: `conic-gradient(${accent} 62%, #ffffff14 0)` }}><div className="size-12 rounded-full bg-[#111c30] grid place-items-center">62%</div></div>
+              <div><div className="font-bold" dir="ltr">ali-phone</div><div className="text-[12px] text-[#9aaac2]">{s.sub_title || "Dunvex"}</div></div>
+            </div>
+            <div className="mt-4 h-10 rounded-xl grid place-items-center text-[13px] font-semibold text-white" style={{ background: accent }}>{t("copy")}</div>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+}

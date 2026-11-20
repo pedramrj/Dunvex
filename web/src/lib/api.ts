@@ -111,6 +111,25 @@ export interface Me {
   quota?: Quota;
 }
 
+export interface StatusInfo {
+  online: number;
+  devices: number;
+  users: number;
+  cores: { name: string; installed: boolean; running: boolean; version: string }[];
+  problems: number;
+  version: string;
+}
+
+export interface Geo {
+  ip: string;
+  country: string;
+  countryCode: string;
+  city: string;
+  lat: number;
+  lon: number;
+  isp: string;
+}
+
 export interface Event {
   id: number;
   at: number;

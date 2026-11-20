@@ -43,6 +43,7 @@ type Server struct {
 	fails       map[string][]time.Time
 	totpPending map[int64]string // admin id → secret waiting for its first code
 	totpUsed    map[int64]int64  // admin id → last accepted time step
+	failLog     map[string]time.Time
 }
 
 // Bot is the Telegram side, as seen by the HTTP layer.
@@ -182,7 +183,7 @@ func (s *Server) serveBrand(w http.ResponseWriter, name string) {
 }
 
 func (s *Server) serveFont(w http.ResponseWriter, name string) {
-	prefix := map[string]string{"fa.woff2": "Vazirmatn-Variable", "en.woff2": "FiraSans-400", "en-bold.woff2": "FiraSans-600"}[name]
+	prefix := map[string]string{"fa.woff2": "Estedad-Variable", "en.woff2": "Geist-Variable", "en-bold.woff2": "Geist-Variable"}[name]
 	if prefix == "" || s.UI == nil {
 		decoy(w)
 		return

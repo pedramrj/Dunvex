@@ -39,9 +39,17 @@ Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: 
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
-- **Dashboard**: live network map, CPU/RAM/disk/network, 30-day usage, top users, core health (Persian & English).
+- **Control-room panel (v1.2)**: KPI cards with live sparklines, a neon network topology and world map, CPU gauge,
+  zoomable analytics with CSV export, live logs, an alert centre, a security page and a full-screen mission wall.
+  Ctrl/Cmd+K command palette, Navy / OLED / Light themes, density and Persian-font choice, presentation mode that
+  blurs every secret, and a short intro. Persian (RTL) and English, phones included, WCAG AA contrast.
 - **Self-healing**: a busy port only pauses that one protocol; a crashed core restarts itself.
 - Reality keys and SNI tester, Let's Encrypt or self-signed (pinned) certificates, backup & restore, self-update.
+
+### License
+Dunvex is licensed under the **GNU AGPL-3.0-or-later**, © 2026 Pedram. Anyone who changes Dunvex, or runs a changed
+version for other people, must publish its full source under the same license and keep the author's name.
+The Dunvex name and logo are not covered by the AGPL. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ### Build from source
 ```bash
@@ -73,11 +81,18 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
-- **داشبورد** با نقشهٔ زندهٔ شبکه، منابع سرور و نمودار مصرف (فارسی و انگلیسی).
+- **پنل اتاق کنترل (نسخهٔ ۱.۲)**: کارت‌های آماری با نمودار زنده، توپولوژی نئونی شبکه و نقشهٔ جهان، گیج پردازنده،
+  تحلیل ترافیک با زوم و خروجی CSV، لاگ زنده، مرکز اعلان‌ها، صفحهٔ امنیت و حالت دیوار نمایش.
+  پالت فرمان با Ctrl+K، پوستهٔ سرمه‌ای، OLED و روشن، انتخاب فونت فارسی، حالت ارائه که اطلاعات حساس را محو می‌کند و اینترو.
 - **خودترمیم**: اگر پورتی اشغال باشد فقط همان پروتکل متوقف می‌شود.
 
 نقشهٔ راه: [docs/ROADMAP.md](docs/ROADMAP.md)
 
+### لایسنس
+Dunvex تحت لایسنس **GNU AGPL-3.0** و متعلق به Pedram است. هر کس آن را تغییر دهد یا نسخهٔ تغییریافته را
+به‌صورت سرویس در اختیار دیگران بگذارد، باید کد کامل همان نسخه را با همین لایسنس منتشر کند و نام سازنده را حفظ کند.
+نام و لوگوی Dunvex شامل این لایسنس نیستند.
+
 ---
 
-Dunvex © 2026 Pedram · Apache-2.0. Cores (Xray-core, sing-box) are downloaded at install time and keep their own licenses; see [NOTICE](NOTICE).
+Dunvex © 2026 Pedram · AGPL-3.0-or-later. Cores (Xray-core, sing-box) are downloaded at install time and keep their own licenses; see [NOTICE](NOTICE).

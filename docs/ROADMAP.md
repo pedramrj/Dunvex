@@ -31,7 +31,16 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Two-step login (TOTP) with replay protection; `dunvex admin` from SSH turns it off for recovery
 - [x] New panel design (logo, glass surfaces, live charts, rings, device lists) and user page
 
-## Phase 3: More protocols (v1.2)
+## Panel redesign (v1.2) ✅
+- [x] "Obsidian Navy" design system: Navy, OLED and Light themes, density, Estedad / Vazirmatn + Geist + JetBrains Mono
+- [x] Shell: grouped sidebar with favourites and counters, command palette (Ctrl/Cmd+K), notifications, quick actions
+- [x] Overview: KPI cards with live sparklines, CPU gauge, live traffic, network map, timeline of events, customisable widgets
+- [x] Network centre (neon topology + world map with the server's real location), Servers, Analytics, Logs, Alerts,
+      Security and a full-screen Mission control
+- [x] Presentation mode, intro, Persian event texts, WCAG AA contrast in every theme, phone layouts
+- [x] License changed to GNU AGPL-3.0-or-later (© Pedram)
+
+## Phase 3: More protocols (v1.3)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
