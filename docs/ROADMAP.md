@@ -93,7 +93,8 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] AmneziaWG 3.1 and 2.0 with a .conf and QR per user, live user changes, usage and devices (v1.10)
 - [x] Mieru over TCP or UDP, with per-user usage and live user changes (v1.11)
 - [x] TrustTunnel (AdGuard) over HTTP/2 and HTTP/3, with per-user usage and devices (v1.12)
-- [ ] TrustTunnel on port 443 next to the panel (SNI routing for TCP, QUIC on UDP 443)
+- [x] TrustTunnel on port 443 next to the panel: TCP by its hostname through the router, QUIC passed on from UDP 443
+      while no UDP protocol holds it (v1.20)
 - [ ] dnstt / Slipstream (XDNS covers DNS tunnels for Xray apps), xICMP
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 

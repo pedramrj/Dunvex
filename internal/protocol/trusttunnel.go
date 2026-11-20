@@ -108,7 +108,10 @@ func tomlStr(s string) string { b, _ := json.Marshal(s); return string(b) } // a
 // anyone in, so it must not run.
 // forward, when set, is a local SOCKS5 address all traffic leaves through
 // (Xray's routing inbound), so the server's routing rules apply to it too.
-func TrustTunnelServer(in *store.Inbound, users []*store.User, env Env, dir string, metricsPort int, forward string) *TTServer {
+//
+// bind, when set, is where the endpoint listens instead of the inbound's own
+// port: a loopback port behind the router that shares the panel's port.
+func TrustTunnelServer(in *store.Inbound, users []*store.User, env Env, dir string, metricsPort int, forward, bind string) *TTServer {
 	var creds strings.Builder
 	n := 0
 	for _, u := range users {
@@ -141,6 +144,9 @@ func TrustTunnelServer(in *store.Inbound, users []*store.User, env Env, dir stri
 		h.Write([]byte(fileDigest(env.CertFile)))
 	}
 	listen := net.JoinHostPort(or(env.Listen, "0.0.0.0"), strconv.Itoa(in.Port))
+	if bind != "" {
+		listen = bind
+	}
 	fwd := "[forward_protocol]\ndirect = {}"
 	if forward != "" {
 		fwd = "[forward_protocol.socks5]\naddress = " + tomlStr(forward) + "\nextended_auth = false"

@@ -18,9 +18,33 @@ func CanSharePanelPort(p *Preset) bool {
 }
 
 // SNIRouted reports whether the edge router can tell this protocol apart by
-// the server name in its TLS hello: Reality, and the Telegram proxy's fake TLS.
+// the server name in its TLS hello: Reality, the Telegram proxy's fake TLS,
+// and TrustTunnel (its hostname).
 func SNIRouted(p *Preset) bool {
-	return p != nil && p.Network == "tcp" && (p.Security == "reality" || p.Security == "faketls")
+	return p != nil && p.Network == "tcp" && (p.Security == "reality" || p.Security == "faketls" || p.Engine == "trusttunnel")
+}
+
+// IsTrustTunnel reports whether p is TrustTunnel.
+func IsTrustTunnel(p *Preset) bool { return p != nil && p.Engine == "trusttunnel" }
+
+// leavesUDP: on the panel's port TrustTunnel's TCP side is behind the router,
+// so a UDP protocol may hold the port's UDP side (TrustTunnel then has no QUIC).
+func leavesUDP(p, q *Preset) bool {
+	return IsTrustTunnel(p) && q.Network == "udp" || IsTrustTunnel(q) && p.Network == "udp"
+}
+
+// UDPHolder names the UDP protocol that holds the UDP side of port on server
+// nodeID, or "". except skips the inbound being edited.
+func UDPHolder(list []*store.Inbound, nodeID int64, port int, except int64) string {
+	for _, in := range list {
+		if in.ID == except || in.NodeID != nodeID || in.Port != port || !in.Enabled {
+			continue
+		}
+		if q := Get(in.Preset); q != nil && q.Network == "udp" {
+			return q.Name
+		}
+	}
+	return ""
 }
 
 // SharedSNI is the server name that routes a shared Reality inbound.
@@ -39,7 +63,7 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 	}
 	onPanel := port == panelPort
 	if onPanel && !CanSharePanelPort(p) {
-		return fmt.Sprintf("port %d is the panel's port: only Reality, the Telegram proxy and UDP protocols can share it", port)
+		return fmt.Sprintf("port %d is the panel's port: only Reality, TrustTunnel, the Telegram proxy and UDP protocols can share it", port)
 	}
 	sni = strings.ToLower(strings.TrimSpace(sni))
 	if onPanel && p.Network == "tcp" && sni == "" {
@@ -55,6 +79,9 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 		}
 		if p != nil && !sameNetwork(p, q) {
 			continue // TCP and UDP on one port number do not clash
+		}
+		if onPanel && p != nil && leavesUDP(p, q) {
+			continue // TrustTunnel's TCP is behind the router; the UDP protocol keeps UDP
 		}
 		if onPanel && SNIRouted(p) && SNIRouted(q) {
 			if SharedSNI(in) == sni {

@@ -1012,14 +1012,33 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, p.Name+" needs a domain. Set your domain in Settings first.")
 		return
 	}
+	// read before the defaults fill it in: did the owner choose the hostname?
+	given := in.Params["sni"] != nil && strings.TrimSpace(fmt.Sprint(in.Params["sni"])) != ""
 	ib := &store.Inbound{Preset: p.ID, Remark: strings.TrimSpace(in.Remark), Enabled: true, NodeID: in.NodeID,
 		Params: protocol.Defaults(p, in.Params, s.domainOf(in.NodeID))}
-	sni := protocol.SharedSNI(ib)
 	port := in.Port
+	if protocol.IsTrustTunnel(p) {
+		if port == 0 && in.NodeID == 0 && s.panelPort() == 443 {
+			// it looks most like a site on 443, next to the panel (by its hostname)
+			ib.Port = 443
+			s.ttHostFor(ib, given)
+			if s.portTaken(0, 443, 0, p, protocol.SharedSNI(ib)) == "" && s.sharedPortCheck(ib, p) == "" {
+				port = 443
+			}
+		}
+		ib.Port = port
+		s.ttHostFor(ib, given)
+	}
+	sni := protocol.SharedSNI(ib)
 	if port == 0 {
 		port = s.pickPort(in.NodeID, p, sni)
 	}
 	if msg := s.portTaken(in.NodeID, port, 0, p, sni); msg != "" {
+		fail(w, 400, msg)
+		return
+	}
+	ib.Port = port
+	if msg := s.sharedPortCheck(ib, p); msg != "" {
 		fail(w, 400, msg)
 		return
 	}
@@ -1095,6 +1114,10 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", ib.Port))
 			return
 		}
+	}
+	if msg := s.sharedPortCheck(ib, protocol.Get(ib.Preset)); msg != "" {
+		fail(w, 400, msg)
+		return
 	}
 	if err := s.St.UpdateInbound(ib); err != nil {
 		fail(w, 500, err.Error())

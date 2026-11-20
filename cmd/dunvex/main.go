@@ -314,6 +314,23 @@ func serve(home string) error {
 	router.PanelTLS = useTLS
 	mgr.SharedPort = func() int { return panelPort }
 	mgr.OnRoutes = router.SetRoutes
+	// TrustTunnel's QUIC when it shares the panel's port: the public UDP port
+	// is passed on to its loopback port
+	quic := relay.New(nil)
+	defer quic.Close()
+	mgr.OnUDP = func(m map[int]string) {
+		var list []relay.Forward
+		for port, addr := range m {
+			list = append(list, relay.Forward{Name: "TrustTunnel (HTTP/3)", Listen: port, Network: "udp", Target: addr})
+		}
+		for _, s := range quic.Stats() {
+			if !s.Listening { // a port that could not be opened is tried again
+				quic.Apply(nil)
+				break
+			}
+		}
+		quic.Apply(list)
+	}
 	mgr.ClientOf = router.ClientOf
 	mgr.OnApplied = srv.KickNodes // other servers follow every change
 	go router.Serve()

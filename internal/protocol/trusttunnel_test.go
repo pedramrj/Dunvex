@@ -78,13 +78,13 @@ func TestTrustTunnel(t *testing.T) {
 	env := Env{Host: "203.0.113.10"}
 
 	// without users the endpoint would let anyone in: it must not run
-	if s := TrustTunnelServer(in, nil, env, "/run/dvx", 62792, ""); s != nil {
+	if s := TrustTunnelServer(in, nil, env, "/run/dvx", 62792, "", ""); s != nil {
 		t.Fatal("a server config with no users")
 	}
-	if s := TrustTunnelServer(in, []*store.User{{Name: "x"}}, env, "/run/dvx", 62792, ""); s != nil {
+	if s := TrustTunnelServer(in, []*store.User{{Name: "x"}}, env, "/run/dvx", 62792, "", ""); s != nil {
 		t.Fatal("a server config with only password-less users")
 	}
-	s := TrustTunnelServer(in, []*store.User{sara, reza}, env, "/run/dvx", 62792, "")
+	s := TrustTunnelServer(in, []*store.User{sara, reza}, env, "/run/dvx", 62792, "", "")
 	creds := string(s.Files["tt-credentials.toml"])
 	if !strings.Contains(creds, `username = "sara"`) || !strings.Contains(creds, `password = "p\"ss\\word"`) || !strings.Contains(creds, `username = "reza"`) {
 		t.Errorf("credentials:\n%s", creds)
@@ -100,7 +100,7 @@ func TestTrustTunnel(t *testing.T) {
 		}
 	}
 	// a change of users changes the main settings, so the endpoint restarts
-	if s2 := TrustTunnelServer(in, []*store.User{sara}, env, "/run/dvx", 62792, ""); bytes.Equal(s2.Main, s.Main) {
+	if s2 := TrustTunnelServer(in, []*store.User{sara}, env, "/run/dvx", 62792, "", ""); bytes.Equal(s2.Main, s.Main) {
 		t.Error("removing a user does not restart the endpoint")
 	}
 
@@ -132,7 +132,7 @@ func TestTrustTunnel(t *testing.T) {
 	in.Params["sni"] = "vpn.example.com"
 	Defaults(p, in.Params, "vpn.example.com")
 	real := Env{Host: "vpn.example.com", Domain: "vpn.example.com", CertFile: "/etc/dvx/live.crt", KeyFile: "/etc/dvx/live.key"}
-	s = TrustTunnelServer(in, []*store.User{sara}, real, "/run/dvx", 62792, "")
+	s = TrustTunnelServer(in, []*store.User{sara}, real, "/run/dvx", 62792, "", "")
 	if !strings.Contains(string(s.Files[TTHostsFile]), `"/etc/dvx/live.crt"`) || s.Files["tt-cert.pem"] != nil {
 		t.Errorf("real certificate:\n%s", s.Files[TTHostsFile])
 	}

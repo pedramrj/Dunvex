@@ -47,7 +47,12 @@ type Manager struct {
 	// Reality inbounds on it listen on loopback and get their clients by SNI.
 	SharedPort func() int
 	// OnRoutes receives the router's SNI table after every apply.
-	OnRoutes func(map[string]edge.Target)
+	OnRoutes  func(map[string]edge.Target)
+	internals map[int64]int // inbound → its loopback port behind the router (guarded by mu)
+
+	// OnUDP receives the UDP ports to pass on to a loopback address after
+	// every apply: TrustTunnel's QUIC when it shares the panel's port.
+	OnUDP func(map[int]string)
 	// ClientOf maps a loopback address the router dialed from to the real client IP.
 	ClientOf func(string) string
 	// OnApplied runs after every apply, so other servers can be brought in line.
@@ -236,21 +241,37 @@ type built struct {
 	ttIn          int64              // its inbound
 	awg           *awgPlan           // AmneziaWG (one per server)
 	usque         []byte             // WARP over MASQUE (nil: not running)
+	udp           map[int]string     // public UDP port → loopback address (TrustTunnel's QUIC behind the router)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
 }
 
-// internalPort is the loopback port a shared Reality inbound listens on.
-func internalPort(id int64, used map[int]bool) int {
+// internalPort is the loopback port an inbound behind the router listens on.
+// It keeps the port it got (so its address never changes under it); a new one
+// skips ports another program on the server already holds (TCP and UDP:
+// TrustTunnel listens on both).
+func (m *Manager) internalPort(id int64, used map[int]bool) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.internals == nil {
+		m.internals = map[int64]int{}
+	}
+	if p, ok := m.internals[id]; ok && !used[p] {
+		used[p] = true
+		return p
+	}
 	p := 40000 + int(id%20000)
-	for used[p] {
-		p++
-		if p > 65000 {
+	for tries := 0; tries < 25000; tries++ {
+		if !used[p] && util.FreePort(p) {
+			break
+		}
+		if p++; p > 65000 {
 			p = 40000
 		}
 	}
 	used[p] = true
+	m.internals[id] = p
 	return p
 }
 
@@ -303,18 +324,18 @@ func (m *Manager) build() (b built, err error) {
 		listen, sni := 0, ""
 		if shared > 0 && in.Port == shared && p.Network == "tcp" {
 			if !protocol.SNIRouted(p) {
-				b.errs[in.ID] = fmt.Sprintf("port %d is the panel's port: only Reality and the Telegram proxy can share it; choose another port", in.Port)
+				b.errs[in.ID] = fmt.Sprintf("port %d is the panel's port: only Reality, TrustTunnel and the Telegram proxy can share it; choose another port", in.Port)
 				continue
 			}
 			if sni = protocol.SharedSNI(in); sni == "" {
-				b.errs[in.ID] = fmt.Sprintf("a Reality inbound on the panel's port %d needs an SNI", in.Port)
+				b.errs[in.ID] = fmt.Sprintf("a protocol on the panel's port %d needs an SNI (server name)", in.Port)
 				continue
 			}
 			if _, dup := b.routes[sni]; dup {
-				b.errs[in.ID] = fmt.Sprintf("another Reality inbound on port %d already uses the SNI %s", in.Port, sni)
+				b.errs[in.ID] = fmt.Sprintf("another protocol on port %d already uses the SNI %s", in.Port, sni)
 				continue
 			}
-			listen = internalPort(in.ID, used)
+			listen = m.internalPort(in.ID, used)
 		} else {
 			m.mu.Lock()
 			bad, isBad := m.badPorts[in.Port]
@@ -338,7 +359,23 @@ func (m *Manager) build() (b built, err error) {
 				continue
 			}
 			// nil while nobody may use it: without users the endpoint lets anyone in
-			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort, router), in.ID
+			bind := ""
+			if listen > 0 {
+				// on the panel's port: TCP comes through the router by its
+				// hostname; QUIC is passed on from the public UDP port unless
+				// a UDP protocol holds it
+				bind = "127.0.0.1:" + strconv.Itoa(listen)
+			}
+			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort, router, bind), in.ID
+			if bind != "" && b.tt != nil {
+				b.routes[sni] = edge.Target{Addr: bind}
+				if protocol.UDPHolder(inbounds, in.NodeID, in.Port, in.ID) == "" {
+					if b.udp == nil {
+						b.udp = map[int]string{}
+					}
+					b.udp[in.Port] = bind
+				}
+			}
 		case "mita":
 			if b.mitaIn != 0 {
 				b.errs[in.ID] = "only one Mieru (TCP or UDP) can run on a server: it serves every user on its port"
@@ -497,6 +534,9 @@ func (m *Manager) Apply() error {
 	xcfg, scfg, tcfg := b.xray, b.singbox, b.mtg
 	ierrs, active := b.errs, b.active
 	m.collect() // save counters before a restart wipes them
+	if m.OnUDP != nil {
+		m.OnUDP(b.udp) // first: a UDP port given back to a core must be free when it starts
+	}
 	cerrs := map[string]string{}
 	for attempt := 0; attempt < 6; attempt++ {
 		cerrs = map[string]string{}
@@ -566,6 +606,9 @@ func (m *Manager) Apply() error {
 	if err := m.awgApply(b.awg); err != nil {
 		cerrs["amneziawg"] = err.Error()
 		ierrs[b.awg.inbound] = err.Error()
+	}
+	if m.OnUDP != nil {
+		m.OnUDP(b.udp) // again: a port a core just gave up can be taken now
 	}
 	if m.OnRoutes != nil {
 		m.OnRoutes(b.routes)

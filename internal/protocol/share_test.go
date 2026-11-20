@@ -22,7 +22,7 @@ func TestPortConflict(t *testing.T) {
 	}{
 		{"second Reality, other SNI, on the panel port", 443, xhttp, "dl.google.com", ""},
 		{"second Reality, same SNI", 443, xhttp, "WWW.Microsoft.com", "already uses the SNI"},
-		{"TLS protocol on the panel port", 443, ws, "", "only Reality, the Telegram proxy and UDP"},
+		{"TLS protocol on the panel port", 443, ws, "", "only Reality, TrustTunnel, the Telegram proxy and UDP"},
 		{"UDP on the panel port", 443, hy, "", ""},
 		{"Reality without SNI on the panel port", 443, xhttp, "", "needs an SNI"},
 		{"UDP next to UDP", 4444, Get("tuic"), "", "already used by Hysteria2"},
@@ -38,6 +38,40 @@ func TestPortConflict(t *testing.T) {
 	// editing the inbound itself is not a clash
 	if got := PortConflict(list, 443, 443, 1, reality, "www.microsoft.com"); got != "" {
 		t.Errorf("self: %q", got)
+	}
+}
+
+// TrustTunnel shares the panel's port by its hostname (TCP) and leaves the
+// port's UDP to a UDP protocol there; elsewhere it needs its port's UDP too.
+func TestTrustTunnelOnThePanelPort(t *testing.T) {
+	tt, hy, reality := Get("trusttunnel"), Get("hysteria2"), Get("vless-reality-universal")
+	list := []*store.Inbound{
+		{ID: 1, Preset: reality.ID, Port: 443, Enabled: true, Params: map[string]any{"sni": "www.speedtest.net"}},
+		{ID: 2, Preset: hy.ID, Port: 443, Enabled: true},
+		{ID: 3, Preset: hy.ID, Port: 8443, Enabled: true},
+		{ID: 4, Preset: hy.ID, Port: 443, Enabled: true, NodeID: 7},
+	}
+	for _, c := range []struct {
+		name, sni, want string
+		port            int
+	}{
+		{"next to Reality and Hysteria2", "www.apple.com", "", 443},
+		{"the Reality hostname", "WWW.SPEEDTEST.NET", "already uses the SNI", 443},
+		{"another port held by UDP", "www.apple.com", "already used by Hysteria2", 8443},
+	} {
+		if got := PortConflict(list, 443, c.port, 0, tt, c.sni); c.want == "" && got != "" || c.want != "" && !strings.Contains(got, c.want) {
+			t.Errorf("%s: %q", c.name, got)
+		}
+	}
+	withTT := append(list, &store.Inbound{ID: 5, Preset: tt.ID, Port: 443, Enabled: true, Params: map[string]any{"sni": "www.apple.com"}})
+	if got := PortConflict([]*store.Inbound{withTT[0], withTT[4]}, 443, 443, 0, Get("tuic"), ""); got != "" {
+		t.Errorf("UDP next to TrustTunnel on the panel's port: %q", got)
+	}
+	if got := PanelPortConflict(withTT, 443); got != "" {
+		t.Errorf("panel port with TrustTunnel: %q", got)
+	}
+	if UDPHolder(list, 0, 443, 0) != hy.Name || UDPHolder(list, 0, 443, 2) != "" || UDPHolder(list, 7, 443, 0) != hy.Name || UDPHolder(list, 0, 2096, 0) != "" {
+		t.Error("UDPHolder")
 	}
 }
 

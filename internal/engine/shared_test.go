@@ -147,3 +147,57 @@ func jsonNum(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }
+
+// TestTrustTunnelOnSharedPort: TrustTunnel on the panel's port listens on a
+// loopback port reached by its hostname, and gets the port's UDP (QUIC) only
+// while no UDP protocol holds it.
+func TestTrustTunnelOnSharedPort(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	st.CreateUser(&store.User{Name: "alice", UUID: util.UUID(), Password: util.RandomString(16), SubToken: util.RandomString(20), Enabled: true})
+	add := func(preset string, port int, params map[string]any) *store.Inbound {
+		p := protocol.Get(preset)
+		in := &store.Inbound{Preset: p.ID, Port: port, Enabled: true, Params: protocol.Defaults(p, params, "")}
+		if err := st.CreateInbound(in); err != nil {
+			t.Fatal(err)
+		}
+		return in
+	}
+	add("vless-reality-universal", 443, map[string]any{"sni": "www.speedtest.net"})
+	tt := add("trusttunnel", 443, map[string]any{"sni": "www.apple.com"})
+	env := protocol.Env{Host: "203.0.113.10"}
+	m := NewManager(st, filepath.Join(dir, "bin"), filepath.Join(dir, "run"), func() protocol.Env { return env })
+	m.SharedPort = func() int { return 443 }
+	b, err := m.build()
+	if err != nil || b.errs[tt.ID] != "" || b.tt == nil {
+		t.Fatalf("build: %v %v", err, b.errs)
+	}
+	r, ok := b.routes["www.apple.com"]
+	if !ok || r.ProxyHeader || !strings.HasPrefix(r.Addr, "127.0.0.1:") || r.Addr == "127.0.0.1:443" {
+		t.Fatalf("route: %+v %v", r, b.routes)
+	}
+	if !strings.Contains(string(b.tt.Main), "listen_address = \""+r.Addr+"\"") {
+		t.Fatalf("the endpoint does not listen behind the router: %s", b.tt.Main)
+	}
+	if b.udp[443] != r.Addr {
+		t.Fatalf("QUIC is not passed on: %v", b.udp)
+	}
+	if b.routes[edge.Fallback].Addr == r.Addr {
+		t.Fatal("unknown names must go to Reality, not TrustTunnel")
+	}
+	// Hysteria2 takes UDP 443: TrustTunnel keeps TCP (HTTP/2) only
+	add("hysteria2", 443, nil)
+	if b, _ = m.build(); len(b.udp) != 0 || b.routes["www.apple.com"].Addr != r.Addr {
+		t.Fatalf("with Hysteria2 on UDP 443: %v %v", b.udp, b.routes)
+	}
+	// on its own port it listens there, as before
+	tt.Port = 8443
+	st.UpdateInbound(tt)
+	if b, _ = m.build(); !strings.Contains(string(b.tt.Main), ":8443") || len(b.udp) != 0 {
+		t.Fatalf("own port: %s %v", b.tt.Main, b.udp)
+	}
+}
