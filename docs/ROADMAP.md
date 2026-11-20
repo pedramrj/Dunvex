@@ -63,7 +63,15 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] API keys for scripts and bots (`Authorization: Bearer dvx_…`): read-only or full, with expiry, shown once,
       stored as a hash; keys cannot manage accounts, sessions, keys, admins or restores. See [API.md](API.md)
 
-## Phase 3: More protocols (v1.7)
+## Offline map arcs (v1.7) ✅
+- [x] The world map draws an arc from every country users connect from to the server, with a moving packet,
+      a marker sized by devices and a side list by country (names in Persian or English)
+- [x] Offline lookup only: DB-IP country data (CC BY 4.0) is built into a 2 MB file with every release and
+      downloaded with a checksum; client addresses never leave the server and the API returns counts only
+- [x] Falls back to Xray's geoip.dat (Iran, Russia, China) when the full data is missing; the server's own
+      location falls back to the offline data when the online lookup fails; `dunvex geoip [update]`
+
+## Phase 3: More protocols (v1.8)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)

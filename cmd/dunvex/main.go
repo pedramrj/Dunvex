@@ -25,6 +25,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/engine"
+	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/server"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -81,6 +82,8 @@ func main() {
 		err = set(home, args)
 	case "core":
 		err = core(home, args)
+	case "geoip":
+		err = geoipCmd(home, args)
 	case "menu":
 		err = menu(home)
 	case "qr":
@@ -119,7 +122,8 @@ Usage: dunvex [--home DIR] <command>
   info                  show panel address and admin user
   admin <user> <pass>   reset the admin username and password
   set <key> <value>     change a setting (panel_port, panel_path, sub_path, domain, host)
-  core install          download/update Xray and sing-box
+  core install          download/update Xray, sing-box and the GeoIP data
+  geoip [update]        show (or download) the offline country data for the map
   menu                  interactive control centre for SSH (status, users, logs, restart, update…)
   qr <text>             print a QR code in the terminal
   update                update Dunvex itself
@@ -285,6 +289,7 @@ func serve(home string) error {
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
+	go keepGeoIP(home, stopMgr)
 
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
@@ -364,6 +369,12 @@ func setup(home string, args []string) error {
 			fmt.Println("  ! sing-box:", err)
 		} else {
 			fmt.Println("  ✓ sing-box", v)
+		}
+		fmt.Println("• Downloading GeoIP country data ...")
+		if src, err := coremgr.InstallGeoIP(home); err != nil {
+			fmt.Println("  ! GeoIP:", err)
+		} else {
+			fmt.Println("  ✓", src)
 		}
 	}
 	if fresh && *starter {
@@ -505,5 +516,53 @@ func core(home string, args []string) error {
 		return fmt.Errorf("sing-box: %w", err)
 	}
 	fmt.Println("✓ sing-box", v)
+	if src, err := coremgr.InstallGeoIP(home); err != nil {
+		fmt.Println("! GeoIP:", err)
+	} else {
+		fmt.Println("✓ GeoIP", src)
+	}
 	return nil
+}
+
+// geoipCmd shows the offline country data, or downloads it with "update".
+func geoipCmd(home string, args []string) error {
+	if len(args) > 0 && args[0] == "update" {
+		src, err := coremgr.InstallGeoIP(home)
+		if err != nil {
+			return err
+		}
+		fmt.Println("✓", src)
+		return nil
+	} else if len(args) > 0 {
+		return errors.New("usage: dunvex geoip [update]")
+	}
+	l := &geoip.Loader{Paths: []string{filepath.Join(home, coremgr.GeoIPFile), filepath.Join(home, "bin", "geoip.dat")}}
+	db, err := l.Get()
+	if err != nil {
+		return fmt.Errorf("%v; run: dunvex geoip update", err)
+	}
+	v4, v6 := db.Ranges()
+	fmt.Println(db.Source)
+	fmt.Printf("%d countries · %d IPv4 + %d IPv6 ranges\n", db.Countries(), v4, v6)
+	return nil
+}
+
+// keepGeoIP fetches the country data when it is missing or older than 40
+// days (each release publishes a fresh copy), and checks again every day.
+func keepGeoIP(home string, stop <-chan struct{}) {
+	for {
+		st, err := os.Stat(filepath.Join(home, coremgr.GeoIPFile))
+		if err != nil || time.Since(st.ModTime()) > 40*24*time.Hour {
+			if src, err := coremgr.InstallGeoIP(home); err != nil {
+				log.Printf("GeoIP data: %v", err)
+			} else {
+				log.Printf("GeoIP data updated: %s", src)
+			}
+		}
+		select {
+		case <-stop:
+			return
+		case <-time.After(24 * time.Hour):
+		}
+	}
 }

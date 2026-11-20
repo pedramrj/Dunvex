@@ -56,6 +56,8 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
+- **Where users connect from (v1.7)**: the world map draws arcs from each country to the server, looked up offline
+  on the server itself (DB-IP country data, CC BY 4.0); addresses are never sent anywhere.
 - **Control-room panel (v1.2)**: KPI cards with live sparklines, a neon network topology and world map, CPU gauge,
   zoomable analytics with CSV export, live logs, an alert centre, a security page and a full-screen mission wall.
   Ctrl/Cmd+K command palette, Navy / OLED / Light themes, density and Persian-font choice, presentation mode that
@@ -113,6 +115,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
+- **کاربران از کجا وصل‌اند (نسخهٔ ۱.۷)**: نقشهٔ جهان از هر کشور تا سرور کمان می‌کشد؛ جستجوی کشور روی خود سرور و آفلاین
+  انجام می‌شود (دادهٔ کشورهای DB-IP) و هیچ آدرسی به جایی فرستاده نمی‌شود.
 - **پنل اتاق کنترل (نسخهٔ ۱.۲)**: کارت‌های آماری با نمودار زنده، توپولوژی نئونی شبکه و نقشهٔ جهان، گیج پردازنده،
   تحلیل ترافیک با زوم و خروجی CSV، لاگ زنده، مرکز اعلان‌ها، صفحهٔ امنیت و حالت دیوار نمایش.
   پالت فرمان با Ctrl+K، پوستهٔ سرمه‌ای، OLED و روشن، انتخاب فونت فارسی، حالت ارائه که اطلاعات حساس را محو می‌کند و اینترو.

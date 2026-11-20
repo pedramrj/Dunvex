@@ -33,6 +33,10 @@ for arch in amd64 arm64; do
 done
 rm -rf "$src"
 
-(cd "$OUT" && for f in *.tar.gz; do sha256sum "$f" > "$f.sha256"; done)
+# 4. offline country data for the network map (DB-IP Country Lite, CC BY 4.0).
+#    A failed download only skips the file: servers keep the copy they have.
+(cd "$ROOT" && go run ./scripts/geoipgen -out "$OUT/geoip-country.bin.gz") || echo "GeoIP data skipped"
+
+(cd "$OUT" && for f in *.gz; do sha256sum "$f" > "$f.sha256"; done)
 echo "sing-box: $SINGBOX_TAG"
 ls -la "$OUT"

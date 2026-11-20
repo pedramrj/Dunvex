@@ -84,7 +84,10 @@ inbound a station. Packets travel faster with more traffic. The topology view is
 glowing icon nodes (shield for Reality, cloud for CDN, bolt for UDP/QUIC, cable for classic), curved
 links with flowing packets, light pillars under live stations, labelled hubs and a pulsing server core.
 Every label is placed where it touches no other label or node, and the view zooms to what is drawn.
-On phones both become lists.
+The world map draws flight-path arcs from each country users connect from to the server pin, violet at the
+origin fading into the brand blue, one packet travelling home along each; markers grow with devices, labels
+keep their screen size while zooming and step aside rather than overlap. Hovering a country in the side list
+dims every other arc. On phones both become lists.
 
 ## Data components
 - **KPI card**: glowing icon tile, value, a sub-line in the card's colour, a thin light along the top edge

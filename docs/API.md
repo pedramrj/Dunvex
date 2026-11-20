@@ -38,6 +38,8 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/overview` | R | Dashboard numbers: users, traffic, devices, cores |
 | GET | `/status` | R | Server load, live speed, core state |
 | GET | `/events?limit=200` | A | Event log |
+| GET | `/network/geo` | A | The server's own location |
+| GET | `/network/clients` | A | Devices of the last 5 minutes by country (counts only, looked up offline) |
 | GET | `/users` | R | All users with usage and status |
 | POST | `/users` | R | Create users: `{"name":"sara","dataLimit":32212254720,"durationDays":30,"ipLimit":2}` |
 | POST | `/users/bulk` | R | Act on many users at once |

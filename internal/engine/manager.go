@@ -663,6 +663,11 @@ func (m *Manager) Devices(name string) []Device {
 	return m.dev.list(name, time.Now().Unix()-300)
 }
 
+// AllDevices returns every address any user connected from in the last 5 minutes.
+func (m *Manager) AllDevices() []Seen {
+	return m.dev.all(time.Now().Unix() - 300)
+}
+
 // DeviceCounts returns, per user name, addresses seen in the last 5 minutes.
 func (m *Manager) DeviceCounts() map[string]int {
 	return m.dev.counts(time.Now().Unix() - 300)

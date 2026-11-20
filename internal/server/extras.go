@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/store"
 )
 
@@ -79,6 +81,21 @@ type Geo struct {
 	Lat         float64 `json:"lat"`
 	Lon         float64 `json:"lon"`
 	ISP         string  `json:"isp"`
+	Offline     bool    `json:"offline,omitempty"` // placed by the offline country data (no city)
+}
+
+// offlineGeo places the server by its country, without asking anyone.
+func (s *Server) offlineGeo(ip string) (Geo, bool) {
+	db, err := s.geoData().Get()
+	if err != nil {
+		return Geo{}, false
+	}
+	cc := db.Lookup(net.ParseIP(ip))
+	lat, lon, ok := geoip.Point(cc)
+	if !ok {
+		return Geo{}, false
+	}
+	return Geo{IP: ip, Country: cc, CountryCode: cc, Lat: lat, Lon: lon, Offline: true}, true
 }
 
 // geo returns the server location for the network map. Only the server's own
@@ -97,6 +114,10 @@ func (s *Server) geo(w http.ResponseWriter, r *http.Request) {
 	c := &http.Client{Timeout: 8 * time.Second}
 	res, err := c.Get("https://ipwho.is/" + ip)
 	if err != nil {
+		if g, ok := s.offlineGeo(ip); ok {
+			writeJSON(w, 200, g)
+			return
+		}
 		fail(w, 502, "location lookup failed: "+err.Error())
 		return
 	}
@@ -114,6 +135,10 @@ func (s *Server) geo(w http.ResponseWriter, r *http.Request) {
 		} `json:"connection"`
 	}
 	if err := json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&raw); err != nil || !raw.Success {
+		if g, ok := s.offlineGeo(ip); ok {
+			writeJSON(w, 200, g)
+			return
+		}
 		fail(w, 502, fmt.Sprintf("location lookup failed %s", raw.Message))
 		return
 	}

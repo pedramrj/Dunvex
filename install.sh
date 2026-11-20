@@ -451,7 +451,7 @@ do_install() {
   [ -n "${DUNVEX_USER:-}" ] && args+=(--user "$DUNVEX_USER")
   [ -n "${DUNVEX_PASS:-}" ] && args+=(--pass "$DUNVEX_PASS")
   export DUNVEX_HOME="$HOME_DIR"
-  TASK_NOTE="xray + sing-box + starter protocols" task CORES "cores and admin" bash -c "umask 077; '$BIN' setup ${args[*]:-} > '$HOME_DIR/install-info.txt'"
+  TASK_NOTE="xray + sing-box + geoip + starter protocols" task CORES "cores and admin" bash -c "umask 077; '$BIN' setup ${args[*]:-} > '$HOME_DIR/install-info.txt'"
   chmod 600 "$HOME_DIR/install-info.txt"
   TASK_NOTE="bbr · fq · fast open" task TUNE "network tuning" tune_network
   # open the panel's port and the starter protocols' ports (usually all 443: TCP for

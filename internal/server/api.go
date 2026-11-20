@@ -49,6 +49,7 @@ func (s *Server) apiMux() http.Handler {
 	h("GET /status", R, s.status)
 	h("GET /events", A, s.events)
 	h("GET /network/geo", A, s.geo)
+	h("GET /network/clients", A, s.clients)
 
 	h("GET /users", R, s.listUsers)
 	h("POST /users", R, s.createUsers)

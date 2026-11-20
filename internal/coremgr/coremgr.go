@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/pedramrj/dunvex/internal/geoip"
 )
 
 // Repo of Dunvex itself (its releases also carry a sing-box build with per-user stats).
@@ -328,4 +330,38 @@ func UpdateSelf() (string, error) {
 		return r.Tag, nil
 	}
 	return "", fmt.Errorf("asset %s not found in %s", want, r.Tag)
+}
+
+// GeoIPFile is the offline country data, kept in the Dunvex home folder.
+const GeoIPFile = "geoip-country.bin.gz"
+
+// InstallGeoIP downloads the country data published with the latest Dunvex
+// release (built from DB-IP's free database) into dir, checking it first.
+func InstallGeoIP(dir string) (string, error) {
+	r, err := latest(Repo)
+	if err != nil {
+		return "", err
+	}
+	for _, a := range r.Assets {
+		if a.Name != GeoIPFile {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		db, err := geoip.Read(bytes.NewReader(data))
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", a.Name, err)
+		}
+		tmp := filepath.Join(dir, GeoIPFile+".new")
+		if err := os.WriteFile(tmp, data, 0o644); err != nil {
+			return "", err
+		}
+		if err := os.Rename(tmp, filepath.Join(dir, GeoIPFile)); err != nil {
+			return "", err
+		}
+		return db.Source, nil
+	}
+	return "", fmt.Errorf("%s is not published with %s yet", GeoIPFile, r.Tag)
 }

@@ -134,3 +134,25 @@ func (d *devices) singboxLine(line string) bool {
 	}
 	return true
 }
+
+// Seen is one address a user connected from.
+type Seen struct {
+	User     string
+	IP       string
+	LastSeen int64
+}
+
+// all returns every user's addresses seen since `since`.
+func (d *devices) all(since int64) []Seen {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var out []Seen
+	for u, m := range d.seen {
+		for ip, t := range m {
+			if t >= since {
+				out = append(out, Seen{u, ip, t})
+			}
+		}
+	}
+	return out
+}

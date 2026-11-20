@@ -155,6 +155,29 @@ export interface Geo {
   lat: number;
   lon: number;
   isp: string;
+  /** placed by the offline country data: no city */
+  offline?: boolean;
+}
+
+/** One country users connect from, for the map's arcs. */
+export interface ClientCountry {
+  cc: string;
+  lat: number;
+  lon: number;
+  devices: number;
+  users: number;
+}
+
+/** Connected clients by country (counts only; addresses never leave the server). */
+export interface ClientMap {
+  countries: ClientCountry[];
+  unplaced: number;
+  devices: number;
+  users: number;
+  window: number;
+  source: string;
+  built: number;
+  missing?: string;
 }
 
 export interface Event {

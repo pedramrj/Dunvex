@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/pedramrj/dunvex/internal/engine"
+	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
@@ -44,6 +45,9 @@ type Server struct {
 	totpPending map[int64]string // admin id → secret waiting for its first code
 	totpUsed    map[int64]int64  // admin id → last accepted time step
 	failLog     map[string]time.Time
+
+	geoOnce sync.Once
+	geo2    *geoip.Loader // offline country data (see geoData)
 }
 
 // Bot is the Telegram side, as seen by the HTTP layer.

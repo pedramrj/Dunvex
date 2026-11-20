@@ -85,4 +85,13 @@ export function copyText(text: string): Promise<void> {
   return Promise.resolve();
 }
 
+/** A country's name from its ISO code, in the panel's language. */
+export function regionName(cc: string, lang: Lang): string {
+  try {
+    return new Intl.DisplayNames([lang === "fa" ? "fa" : "en"], { type: "region" }).of(cc.toUpperCase()) ?? cc;
+  } catch {
+    return cc;
+  }
+}
+
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");

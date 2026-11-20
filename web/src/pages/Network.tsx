@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Cable, Cloud, Globe2, Maximize2, Minimize2, Minus, Network as NetworkIcon, Plus, RotateCcw, Server, ShieldCheck, Zap } from "lucide-react";
-import { api, type Geo, type Group, type Line, type Overview } from "../lib/api";
-import { ago, bytes, cx, duration, groupColor, groups, speed } from "../lib/format";
+import { api, type ClientMap, type Geo, type Group, type Line, type Overview } from "../lib/api";
+import { ago, bytes, cx, duration, groupColor, groups, regionName, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { usePrefs } from "../lib/prefs";
 import { LAND, landCells, project } from "../lib/worldmap";
-import { Badge, Dot, ErrorState, EventMsg, IconButton, KV, Panel, Skeleton, Tabs, Timeline } from "../components/ui";
+import { Badge, Dot, ErrorState, EventMsg, IconButton, KV, Meter, Panel, Skeleton, Tabs, Timeline } from "../components/ui";
 import { Logo } from "../components/Logo";
 import { NetworkMap, shortName } from "../components/NetworkMap";
 import { PageHead, eventMeta, navigate, useSession } from "../App";
@@ -22,6 +22,8 @@ export function NetworkPage() {
   const [view, setView] = useState<View>("topology");
   const [full, setFull] = useState(false);
   const [inspect, setInspect] = useState<Line | "server" | null>("server");
+  const [clients, setClients] = useState<ClientMap | null>(null);
+  const [hl, setHl] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,6 +34,15 @@ export function NetworkPage() {
     api<Geo>("network/geo").then(setGeo).catch((e) => setGeoErr(e.message));
     return () => { alive = false; clearInterval(id); };
   }, []);
+  // where users connect from: only while the map is on screen
+  useEffect(() => {
+    if (view !== "map") return;
+    let alive = true;
+    const load = () => api<ClientMap>("network/clients").then((r) => alive && setClients(r)).catch(() => {});
+    load();
+    const id = setInterval(load, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, [view]);
   useEffect(() => {
     const on = () => setFull(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", on);
@@ -51,7 +62,7 @@ export function NetworkPage() {
 
       <div ref={box} className={cx("glass rounded-[20px] overflow-hidden grid lg:grid-cols-[minmax(0,1fr)_340px]", full && "rounded-none bg-ground h-dvh")}>
         <div className={cx("relative min-w-0", view === "topology" && "hidden md:block")} style={{ height: full ? "100%" : "min(68vh, 640px)" }}>
-          {view === "topology" ? <Topology d={d} server={server} onPick={setInspect} /> : <WorldMap geo={geo} err={geoErr} server={server} online={d.online} />}
+          {view === "topology" ? <Topology d={d} server={server} onPick={setInspect} /> : <WorldMap geo={geo} err={geoErr} server={server} online={d.online} clients={clients} hl={hl} setHl={setHl} />}
 
           <div className="absolute top-3 [inset-inline-end:12px]">
             <IconButton label={full ? t("exitFullscreen") : t("fullscreen")} onClick={toggleFull} className="glass-strong">{full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}</IconButton>
@@ -68,6 +79,7 @@ export function NetworkPage() {
             <Badge color="var(--primary2)" className="h-8 px-3 num">↓ {speed(live.down, lang)} · ↑ {speed(live.up, lang)}</Badge>
             <Badge color="var(--text2)" className="h-8 px-3">{n(d.inboundsOn)} / {n(d.inbounds)} {t("stations")}</Badge>
           </div>
+          {view === "map" && <ClientsList clients={clients} hl={hl} setHl={setHl} />}
           {inspect && (
             <div className="rounded-2xl bg-fg/[.03] border border-hair p-4">
               {inspect === "server" ? (
@@ -85,7 +97,7 @@ export function NetworkPage() {
                     <KV label={t("ram")}><span className="num">{pc(d.system.memTotal ? (d.system.memUsed / d.system.memTotal) * 100 : 0, 0)}</span></KV>
                     <KV label={t("uptime")}>{duration(d.system.uptime, lang)}</KV>
                     <KV label={t("today")}>{bytes(d.today.down + d.today.up, lang)}</KV>
-                    <KV label={t("location")}>{geo ? `${geo.city || geo.country}` : "—"}</KV>
+                    <KV label={t("location")}>{geo ? (geo.offline ? regionName(geo.countryCode, lang) : geo.city || geo.country) : "—"}</KV>
                     <KV label="TCP / UDP"><span className="num">{n(d.system.tcp)} / {n(d.system.udp)}</span></KV>
                   </div>
                 </>
@@ -303,10 +315,27 @@ function Topology({ d, server, onPick }: { d: Overview; server: string; onPick: 
 
 const famIcon: Record<string, typeof Cloud> = { reality: ShieldCheck, cdn: Cloud, udp: Zap, classic: Cable };
 
-// ================================================================= world map (dotted land, real server position)
+// ================================================================= world map (dotted land, real server position, client arcs)
 
-function WorldMap({ geo, err, server, online }: { geo: Geo | null; err: string; server: string; online: number }) {
-  const { t, n } = useI18n();
+type Pt = [number, number];
+const at = (lon: number, lat: number): Pt => { const [x, y] = project(lon, lat); return [x + 0.5, y + 0.5]; };
+
+/** A flight-path curve from a client country to the server, bowing north. */
+function arcPath(a: Pt, b: Pt): { d: string; len: number } {
+  const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+  let nx = -dy / len, ny = dx / len;
+  if (ny > 0) { nx = -nx; ny = -ny; }
+  const lift = Math.min(len * 0.32, 16);
+  const cx = (a[0] + b[0]) / 2 + nx * lift, cy = (a[1] + b[1]) / 2 + ny * lift;
+  return { d: `M${a[0].toFixed(2)},${a[1].toFixed(2)} Q${cx.toFixed(2)},${cy.toFixed(2)} ${b[0].toFixed(2)},${b[1].toFixed(2)}`, len };
+}
+
+function WorldMap({ geo, err, server, online, clients, hl, setHl }: {
+  geo: Geo | null; err: string; server: string; online: number; clients: ClientMap | null; hl: string | null; setHl: (cc: string | null) => void;
+}) {
+  const { t, n, lang } = useI18n();
+  const { prefs } = usePrefs();
+  const reduced = prefs.motion === "reduced" || (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   const cells = useMemo(() => landCells(), []);
   const [vb, setVb] = useState({ x: 0, y: 0, w: LAND.W, h: LAND.H });
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
@@ -315,10 +344,45 @@ function WorldMap({ geo, err, server, online }: { geo: Geo | null; err: string; 
     const w = Math.max(18, Math.min(LAND.W, v.w * f)), h = w * (LAND.H / LAND.W);
     return { x: Math.max(0, Math.min(LAND.W - w, v.x + (v.w - w) / 2)), y: Math.max(0, Math.min(LAND.H - h, v.y + (v.h - h) / 2)), w, h };
   });
-  const pin = geo ? project(geo.lon, geo.lat) : null;
-  useEffect(() => {
-    if (pin) setVb((v) => ({ ...v }));
-  }, [geo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pin = geo ? at(geo.lon, geo.lat) : null;
+  // marks and labels keep their size on screen while the map zooms
+  const k = vb.w / LAND.W;
+
+  // arcs, heaviest last so they draw on top; clients in the server's own country ring the pin
+  const { arcs, local } = useMemo(() => {
+    const out: { cc: string; a: Pt; d: string; len: number; devices: number; users: number }[] = [];
+    let local = 0;
+    if (!pin || !clients) return { arcs: out, local };
+    for (const c of clients.countries) {
+      const a = at(c.lon, c.lat);
+      const { d, len } = arcPath(a, pin);
+      if (len < 1.5) { local += c.devices; continue; }
+      out.push({ cc: c.cc, a, d, len, devices: c.devices, users: c.users });
+    }
+    return { arcs: out.reverse(), local };
+  }, [clients, pin?.[0], pin?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // labels: biggest countries first; one that would cover another label is left out (its marker stays)
+  const labels = useMemo(() => {
+    const placed: { cc: string; x: number; y: number; text: string }[] = [];
+    const boxes: [number, number, number, number][] = [];
+    const fs = 2.05 * k;
+    for (const c of [...arcs].reverse()) {
+      const text = `${c.cc} ${n(c.devices)}`;
+      const w = text.length * fs * 0.62 + fs * 0.6, h = fs * 1.25;
+      const spots: Pt[] = [[c.a[0], c.a[1] - fs * 1.15], [c.a[0], c.a[1] + fs * 1.9], [c.a[0] + w / 2 + fs * 0.9, c.a[1] + fs * 0.4], [c.a[0] - w / 2 - fs * 0.9, c.a[1] + fs * 0.4]];
+      for (const [x, y] of spots) {
+        const box: [number, number, number, number] = [x - w / 2, y - h + fs * 0.25, x + w / 2, y + fs * 0.25];
+        if (boxes.some((o) => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue;
+        boxes.push(box);
+        placed.push({ cc: c.cc, x, y, text });
+        break;
+      }
+    }
+    return placed;
+  }, [arcs, k, n]);
+
+  const maxDev = Math.max(1, ...arcs.map((a) => a.devices));
   return (
     <div className="absolute inset-0">
       <svg ref={svg} viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="w-full h-full touch-none" preserveAspectRatio="xMidYMid meet"
@@ -327,18 +391,54 @@ function WorldMap({ geo, err, server, online }: { geo: Geo | null; err: string; 
         onPointerMove={(e) => {
           if (!drag.current || !svg.current) return;
           const r = svg.current.getBoundingClientRect();
-          const k = vb.w / r.width;
-          const nx = drag.current.vx - (e.clientX - drag.current.x) * k, ny = drag.current.vy - (e.clientY - drag.current.y) * k;
+          const kk = vb.w / r.width;
+          const nx = drag.current.vx - (e.clientX - drag.current.x) * kk, ny = drag.current.vy - (e.clientY - drag.current.y) * kk;
           setVb((v) => ({ ...v, x: Math.max(0, Math.min(LAND.W - v.w, nx)), y: Math.max(0, Math.min(LAND.H - v.h, ny)) }));
         }}
         onPointerUp={() => (drag.current = null)} role="img" aria-label={t("mapView")}>
+        <defs>
+          {arcs.map((c) => (
+            <linearGradient key={c.cc} id={`arc-${c.cc}`} gradientUnits="userSpaceOnUse" x1={c.a[0]} y1={c.a[1]} x2={pin![0]} y2={pin![1]}>
+              <stop offset="0%" style={{ stopColor: "var(--color-violet)", stopOpacity: 0.35 }} />
+              <stop offset="100%" style={{ stopColor: "var(--primary2)", stopOpacity: 0.95 }} />
+            </linearGradient>
+          ))}
+        </defs>
         {cells.map(([c, r]) => <circle key={c + "-" + r} cx={c + 0.5} cy={r + 0.5} r={0.3} fill="var(--text3)" opacity={0.45} />)}
+
+        {arcs.map((c) => {
+          const dim = hl !== null && hl !== c.cc;
+          const w = (0.16 + 0.2 * Math.log2(1 + c.devices)) * k;
+          return (
+            <g key={c.cc} opacity={dim ? 0.18 : 1} style={{ transition: "opacity 160ms ease" }}
+              onPointerEnter={() => setHl(c.cc)} onPointerLeave={() => setHl(null)}>
+              <title>{`${regionName(c.cc, lang)} · ${n(c.devices)} ${t("devices")} · ${n(c.users)} ${t("users")}`}</title>
+              <path d={c.d} fill="none" stroke={`url(#arc-${c.cc})`} strokeWidth={Math.min(w, 1.2 * k)} strokeLinecap="round" />
+              {/* a wide invisible stroke makes the thin arc easy to point at */}
+              <path d={c.d} fill="none" stroke="transparent" strokeWidth={2.4 * k} />
+              {!reduced && (
+                <circle r={0.34 * k} fill="#fff" opacity={0.9}>
+                  <animateMotion dur={`${Math.max(1.8, c.len / 12).toFixed(1)}s`} repeatCount="indefinite" path={c.d} />
+                </circle>
+              )}
+              <circle cx={c.a[0]} cy={c.a[1]} r={(0.9 + 1.4 * (c.devices / maxDev)) * k} fill="var(--color-violet)" opacity={0.16} />
+              <circle cx={c.a[0]} cy={c.a[1]} r={0.6 * k} fill="var(--color-violet)" stroke="#fff" strokeWidth={0.16 * k} />
+            </g>
+          );
+        })}
+        {labels.map((l) => (
+          <text key={l.cc} x={l.x} y={l.y} textAnchor="middle" fontSize={2.05 * k} fontWeight={600} fill="var(--text)"
+            opacity={hl !== null && hl !== l.cc ? 0.25 : 0.92} paintOrder="stroke" stroke="var(--bg)" strokeWidth={0.6 * k} strokeLinejoin="round"
+            className="num pointer-events-none" direction="ltr" style={{ transition: "opacity 160ms ease" }}>{l.text}</text>
+        ))}
+
         {pin && (
           <g>
-            <circle cx={pin[0] + 0.5} cy={pin[1] + 0.5} r={2.6} fill="var(--primary)" opacity={0.18}>
-              <animate attributeName="r" values="1.2;3.4;1.2" dur="2.6s" repeatCount="indefinite" />
+            {local > 0 && <circle cx={pin[0]} cy={pin[1]} r={2.1 * k} fill="none" stroke="var(--color-violet)" strokeWidth={0.22 * k} strokeDasharray={`${0.5 * k} ${0.35 * k}`}><title>{`${n(local)} ${t("devices")} · ${t("localClients")}`}</title></circle>}
+            <circle cx={pin[0]} cy={pin[1]} r={2.6 * k} fill="var(--primary)" opacity={0.18}>
+              {!reduced && <animate attributeName="r" values={`${1.2 * k};${3.4 * k};${1.2 * k}`} dur="2.6s" repeatCount="indefinite" />}
             </circle>
-            <circle cx={pin[0] + 0.5} cy={pin[1] + 0.5} r={0.85} fill="var(--primary2)" stroke="#fff" strokeWidth={0.25} />
+            <circle cx={pin[0]} cy={pin[1]} r={0.85 * k} fill="var(--primary2)" stroke="#fff" strokeWidth={0.25 * k} />
           </g>
         )}
       </svg>
@@ -351,12 +451,64 @@ function WorldMap({ geo, err, server, online }: { geo: Geo | null; err: string; 
         <div className="absolute top-14 [inset-inline-start:12px] glass-strong rounded-xl px-3 py-2 text-[12.5px] flex items-center gap-2.5">
           <Server className="size-4 text-primary2" />
           <span className="font-semibold" dir="ltr">{server}</span>
-          <span className="text-ink3">{geo.city ? `${geo.city}, ` : ""}{geo.country}</span>
+          <span className="text-ink3">{geo.city ? `${geo.city}, ` : ""}{geo.offline ? regionName(geo.countryCode, lang) : geo.country}</span>
           <span className="text-online num">● {n(online)}</span>
         </div>
       ) : (
         <div className="absolute top-14 [inset-inline-start:12px] max-w-sm glass-strong rounded-xl px-3 py-2 text-[12px] text-ink3">{err ? `${t("geoUnavailable")} (${err})` : t("locating")}</div>
       )}
+      {clients && (
+        <div className="absolute bottom-3 [inset-inline-start:12px] text-[11px] text-ink3">
+          {clients.missing ? t("geoMissing") : clients.source.startsWith("DB-IP")
+            ? <a href="https://db-ip.com" target="_blank" rel="noreferrer noopener" className="hover:text-ink2 underline-offset-2 hover:underline">{t("geoAttribution")}</a>
+            : t("geoPartial")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The side list next to the map: countries by connected devices. */
+function ClientsList({ clients, hl, setHl }: { clients: ClientMap | null; hl: string | null; setHl: (cc: string | null) => void }) {
+  const { t, n, lang } = useI18n();
+  if (!clients) return <Skeleton className="h-28" />;
+  const max = Math.max(1, ...clients.countries.map((c) => c.devices));
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <Globe2 className="size-4 text-primary2" />
+        <span className="text-[12.5px] font-semibold">{t("whereFrom")}</span>
+        <span className="ms-auto text-[12px] text-ink3 num">{n(clients.devices)} {t("devices")}</span>
+      </div>
+      <p className="text-[11.5px] text-ink3 mb-3">{t("whereFromSub")}</p>
+      {clients.countries.length === 0 && clients.unplaced === 0 ? (
+        <p className="text-ink3 text-[12.5px] py-3">{t("noClientsNow")}</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {clients.countries.map((c) => (
+            <li key={c.cc}>
+              <button type="button" onPointerEnter={() => setHl(c.cc)} onPointerLeave={() => setHl(null)} onFocus={() => setHl(c.cc)} onBlur={() => setHl(null)}
+                className={cx("w-full text-start rounded-lg px-2 py-1.5 transition-colors", hl === c.cc ? "bg-fg/[.06]" : "hover:bg-fg/[.04]")}>
+                <div className="flex items-center gap-2 text-[12.5px]">
+                  <span className="mono text-[11px] text-violet w-6 shrink-0" dir="ltr">{c.cc}</span>
+                  <span className="truncate flex-1">{regionName(c.cc, lang)}</span>
+                  <span className="num text-ink2">{n(c.devices)}</span>
+                  <span className="text-ink3 text-[11px] num w-14 text-end">{n(c.users)} {t("users")}</span>
+                </div>
+                <Meter value={c.devices} max={max} color="var(--color-violet)" height={3} className="mt-1.5" plain />
+              </button>
+            </li>
+          ))}
+          {clients.unplaced > 0 && (
+            <li className="flex items-center gap-2 text-[12px] text-ink3 px-2 py-1.5">
+              <span className="w-6 shrink-0 text-center">·</span>
+              <span className="flex-1">{t("unplaced")}</span>
+              <span className="num">{n(clients.unplaced)}</span>
+            </li>
+          )}
+        </ul>
+      )}
+      <p className="text-[11px] text-ink3 mt-3 leading-relaxed">{t("geoPrivacy")}</p>
     </div>
   );
 }
