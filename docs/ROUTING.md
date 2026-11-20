@@ -49,6 +49,9 @@ Cloudflare. WARP runs inside the cores in user space: it creates no network inte
 Each node registers its own WARP device the first time the panel's rules need it (one device cannot be used from
 two servers at once).
 
+From SSH: `dunvex warp` shows the device, `dunvex warp on` registers it, `dunvex warp check` shows the address seen
+through WARP, `dunvex warp license <key>` adds a WARP+ key and `dunvex warp off` removes it.
+
 ## Where the lists come from
 
 The site and country lists are Xray's own `geosite.dat` and `geoip.dat`, installed and updated with Xray. sing-box

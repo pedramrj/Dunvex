@@ -42,10 +42,10 @@ func (m *Manager) routePlan() *routePlan {
 	if fileExists(filepath.Join(m.Xray.BinDir, "geosite.dat")) && fileExists(filepath.Join(m.Xray.BinDir, "geoip.dat")) {
 		rp.dat = m.Xray.BinDir
 	}
-	if rp.set.UsesWarp() {
-		if rp.acct = routing.Account(m.Store); rp.acct == nil {
-			m.registerWarpLater()
-		}
+	// a registered device is always reachable through the check port, even
+	// before any traffic is sent to it
+	if rp.acct = routing.Account(m.Store); rp.acct == nil && rp.set.UsesWarp() {
+		m.registerWarpLater()
 	}
 	return rp
 }
@@ -91,9 +91,9 @@ func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj,
 	direct := obj{"protocol": "freedom", "tag": "direct"}
 	block := obj{"protocol": "blackhole", "tag": "block"}
 	outbounds = []obj{direct, block}
-	if rp.warp() {
+	if rp.acct != nil {
 		w := rp.acct.XrayOutbound(warpTag)
-		if rp.set.Warp == routing.WarpAll {
+		if rp.warp() && rp.set.Warp == routing.WarpAll {
 			outbounds = []obj{w, direct, block} // the first outbound takes what no rule matched
 		} else {
 			outbounds = append(outbounds, w)

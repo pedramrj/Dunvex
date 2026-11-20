@@ -1,18 +1,13 @@
 package server
 
 import (
-	"bufio"
 	"context"
-	"errors"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/net/proxy"
 
 	"github.com/pedramrj/dunvex/internal/routing"
 	"github.com/pedramrj/dunvex/internal/warp"
@@ -166,64 +161,11 @@ func (s *Server) checkWarp(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
-	via, err := traceVia(ctx, "127.0.0.1:"+strconv.Itoa(s.Mgr.WarpTestPort))
+	via, err := warp.Trace(ctx, "127.0.0.1:"+strconv.Itoa(s.Mgr.WarpTestPort))
 	if err != nil {
 		fail(w, 502, "WARP did not answer: "+err.Error())
 		return
 	}
-	direct, _ := traceVia(ctx, "")
+	direct, _ := warp.Trace(ctx, "")
 	writeJSON(w, 200, map[string]any{"warp": via, "direct": direct})
-}
-
-// trace is what https://www.cloudflare.com/cdn-cgi/trace reports.
-type trace struct {
-	IP   string `json:"ip"`
-	Loc  string `json:"loc"`
-	Colo string `json:"colo"`
-	Warp string `json:"warp"` // off, on or plus
-}
-
-// traceVia loads Cloudflare's trace page, through a local SOCKS5 proxy when given.
-func traceVia(ctx context.Context, socks string) (*trace, error) {
-	tr := &http.Transport{TLSHandshakeTimeout: 10 * time.Second}
-	if socks != "" {
-		d, err := proxy.SOCKS5("tcp", socks, nil, &net.Dialer{Timeout: 5 * time.Second})
-		if err != nil {
-			return nil, err
-		}
-		cd, ok := d.(proxy.ContextDialer)
-		if !ok {
-			return nil, errors.New("no SOCKS dialer")
-		}
-		tr.DialContext = cd.DialContext
-	}
-	defer tr.CloseIdleConnections()
-	req, _ := http.NewRequestWithContext(ctx, "GET", "https://www.cloudflare.com/cdn-cgi/trace", nil)
-	res, err := (&http.Client{Transport: tr}).Do(req)
-	if err != nil {
-		if strings.Contains(err.Error(), "connection refused") {
-			return nil, errors.New("Xray is not running")
-		}
-		return nil, err
-	}
-	defer res.Body.Close()
-	t := &trace{}
-	sc := bufio.NewScanner(res.Body)
-	for sc.Scan() {
-		k, v, _ := strings.Cut(sc.Text(), "=")
-		switch k {
-		case "ip":
-			t.IP = v
-		case "loc":
-			t.Loc = v
-		case "colo":
-			t.Colo = v
-		case "warp":
-			t.Warp = v
-		}
-	}
-	if t.IP == "" {
-		return nil, errors.New("unexpected answer from Cloudflare")
-	}
-	return t, nil
 }

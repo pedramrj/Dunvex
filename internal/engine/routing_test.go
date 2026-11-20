@@ -159,6 +159,23 @@ func TestRoutingEverythingThroughWarp(t *testing.T) {
 	}
 }
 
+func TestWarpDeviceWithoutRules(t *testing.T) {
+	m, st := routingSetup(t)
+	routing.SaveAccount(st, fakeAccount())
+	rp := m.routePlan()
+	rules, outs, ins, strategy := rp.xrayRouting(true, true)
+	// just turned on: nothing is routed to WARP, but the panel can check it
+	if len(outs) != 3 || outs[0]["tag"] != "direct" || outs[2]["tag"] != "warp" || len(ins) != 1 || ins[0]["tag"] != "warp-test" || strategy != "AsIs" {
+		t.Errorf("outbounds %s inbounds %s", js(outs), js(ins))
+	}
+	if r := js(rules); strings.Count(r, `"warp"`) != 1 || !strings.Contains(r, `{"inboundTag":["warp-test"],"outboundTag":"warp"}`) {
+		t.Errorf("rules %s", r)
+	}
+	if rp.useRouter() {
+		t.Error("Mieru and TrustTunnel go through Xray although no rule is on")
+	}
+}
+
 func TestRoutingWithoutWarpDevice(t *testing.T) {
 	m, st := routingSetup(t)
 	routing.Save(st, routing.Settings{Iran: routing.IranWarp, Warp: routing.WarpAll})

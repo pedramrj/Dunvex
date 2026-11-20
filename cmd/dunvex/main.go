@@ -85,6 +85,8 @@ func main() {
 		err = core(home, args)
 	case "geoip":
 		err = geoipCmd(home, args)
+	case "warp":
+		err = warpCmd(home, args)
 	case "node":
 		err = nodeCmd(home, args)
 	case "menu":
@@ -127,6 +129,7 @@ Usage: dunvex [--home DIR] <command>
   set <key> <value>     change a setting (panel_port, panel_path, sub_path, domain, host)
   core install          download/update Xray, sing-box and the GeoIP data
   geoip [update]        show (or download) the offline country data for the map
+  warp [on|check|off]   Cloudflare WARP for this server (choose what uses it in the panel: Routing)
   node <init|serve|token|reset>   run protocols for a panel on this server (see: dunvex node)
   menu                  interactive control centre for SSH (status, users, logs, restart, update…)
   qr <text>             print a QR code in the terminal
