@@ -482,6 +482,40 @@ func InstallTrustTunnel(binDir string) (string, error) {
 	return "", fmt.Errorf("%s is not in the TrustTunnel release %s", want, r.Tag)
 }
 
+// SlipstreamVersion is the Slipstream server Dunvex runs. Its builds are
+// pinned by SHA-256 (from the release's GitHub digests), so a changed file is
+// refused even if the release were altered.
+const SlipstreamVersion = "v0.1.1"
+
+var slipstreamSHA256 = map[string]string{
+	"x86_64": "505f1809bc9feb682d2eb5716232c5aed0fcd34344ea1194b684629f1b7cbab8",
+	"arm64":  "03a7e2b1fba5428f3bfee4b7a0c6ef58b044ea89b221cc8d13d72482a2bb586e",
+}
+
+// InstallSlipstream downloads the Slipstream server (by EndPositive,
+// Apache-2.0, github.com/EndPositive/slipstream) into binDir. Its Linux
+// builds need glibc and OpenSSL 3 (Ubuntu 22.04+, Debian 12+).
+func InstallSlipstream(binDir string) (string, error) {
+	if runtime.GOOS != "linux" {
+		return "", fmt.Errorf("the Slipstream server runs on Linux servers only")
+	}
+	arch := map[string]string{"amd64": "x86_64", "arm64": "arm64"}[goarch()]
+	if arch == "" {
+		return "", fmt.Errorf("no Slipstream build for linux/%s", goarch())
+	}
+	name := fmt.Sprintf("slipstream-server-%s-linux-%s", SlipstreamVersion, arch)
+	data, err := download(asset{Name: name, URL: "https://github.com/EndPositive/slipstream/releases/download/" + SlipstreamVersion + "/" + name,
+		Digest: "sha256:" + slipstreamSHA256[arch]})
+	if err != nil {
+		return "", err
+	}
+	os.MkdirAll(binDir, 0o755)
+	if err := writeAtomic(filepath.Join(binDir, "slipstream-server"), data, 0o755); err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(SlipstreamVersion, "v"), nil
+}
+
 // InstallUsque downloads usque (MIT, github.com/Diniboy1123/usque), the
 // open-source WARP client that runs Cloudflare's MASQUE (HTTP/3) tunnel as a
 // local SOCKS proxy, into binDir. The download is checked against the

@@ -115,6 +115,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		return mieruLink(p, in, u, env, remark)
 	case "trusttunnel":
 		return ttLink(in, u, env, remark)
+	case "dnstt", "slipstream":
+		// a SlipNet profile; DNSTT.XYZ takes the same details typed in (TunnelDetails)
+		return slipnetLink(p, in, u, env, remark)
 	case "mtproto":
 		// opens straight in Telegram; one secret for everyone
 		q.Set("server", host)

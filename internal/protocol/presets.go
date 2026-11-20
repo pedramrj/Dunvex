@@ -13,12 +13,15 @@ import (
 
 // Field is one editable inbound parameter shown in the panel.
 type Field struct {
-	Key      string   `json:"key"`
-	Label    string   `json:"label"`
-	LabelFa  string   `json:"labelFa"`
-	Type     string   `json:"type"` // text | number | select | bool | secret
-	Options  []string `json:"options,omitempty"`
-	Advanced bool     `json:"advanced,omitempty"`
+	Key     string   `json:"key"`
+	Label   string   `json:"label"`
+	LabelFa string   `json:"labelFa"`
+	Type    string   `json:"type"` // text | number | select | bool | secret
+	Options []string `json:"options,omitempty"`
+	// OptionLabels name the options in the panel (same order; empty: the values)
+	OptionLabels   []string `json:"optionLabels,omitempty"`
+	OptionLabelsFa []string `json:"optionLabelsFa,omitempty"`
+	Advanced       bool     `json:"advanced,omitempty"`
 }
 
 // Preset describes a ready-made protocol combination.
@@ -71,6 +74,10 @@ var (
 	fMasq      = Field{Key: "masquerade", Label: "Masquerade site", LabelFa: "سایت پوششی", Type: "text", Advanced: true}
 	fXDNS      = Field{Key: "xdnsDomain", Label: "Tunnel domain (its NS record points to this server)", LabelFa: "دامنهٔ تونل (رکورد NS آن به این سرور اشاره می‌کند)", Type: "text"}
 	fResolver  = Field{Key: "resolver", Label: "DNS resolver in links (direct = straight to this server)", LabelFa: "DNS در لینک‌ها (direct = مستقیم به همین سرور)", Type: "select", Options: []string{"8.8.8.8", "1.1.1.1", "9.9.9.9", "direct"}}
+	fSignIn    = Field{Key: "signIn", Label: "Sign-in", LabelFa: "ورود کاربران", Type: "select", Options: TunnelSignIns,
+		OptionLabels:   []string{"Each user's name and password (SlipNet; usage per user)", "Open, no password (any app, e.g. DNSTT.XYZ; usage not per user)"},
+		OptionLabelsFa: []string{"نام و رمز هر کاربر (SlipNet؛ مصرف هر کاربر جدا)", "باز، بدون رمز (هر برنامه‌ای، مثل DNSTT.XYZ؛ مصرف کاربران جدا نیست)"}}
+	fTunnelPub = Field{Key: "publicKey", Label: "Public key (the apps need it)", LabelFa: "کلید عمومی (برنامه‌ها لازمش دارند)", Type: "text"}
 	fFakeTLS   = Field{Key: "sni", Label: "Fake TLS domain (the proxy looks like this site)", LabelFa: "دامنهٔ پوششی TLS (پراکسی شبیه این سایت دیده می‌شود)", Type: "text"}
 	fAWGVer    = Field{Key: "version", Label: "Version (3.1: newest apps · 2.0: older apps)", LabelFa: "نسخه (۳٫۱: برنامه‌های جدید · ۲٫۰: برنامه‌های قدیمی‌تر)", Type: "select", Options: []string{"3.1", "2.0"}}
 	fAWGDNS    = Field{Key: "dns", Label: "DNS for clients", LabelFa: "DNS برای کاربران", Type: "text", Advanced: true}
@@ -193,6 +200,16 @@ var presets = []*Preset{
 		Desc:   "For internet shutdowns: traffic hidden in ordinary DNS queries that go through public resolvers. Slow, but often the last thing that still works. Needs a domain whose NS record points to this server; Xray-based apps.",
 		DescFa: "برای قطعی اینترنت: ترافیک داخل درخواست‌های DNS معمولی پنهان می‌شود و از DNSهای عمومی رد می‌شود. کند است، اما اغلب آخرین چیزی است که هنوز کار می‌کند. یک دامنه لازم دارد که رکورد NS آن به این سرور اشاره کند؛ برای برنامه‌های مبتنی بر Xray.",
 		Fields: []Field{fXDNS, fResolver}},
+	{ID: "dnstt", Name: "dnstt (DNS tunnel)", Engine: "dnstt", Group: "udp", Network: "udp", DefaultPort: 53,
+		Security: "none", Status: "beta", proto: "dnstt",
+		Desc:   "The best-known DNS tunnel, for internet shutdowns: traffic hidden in DNS queries through public resolvers, encrypted to this server's key. For SlipNet (Android) and DNSTT.XYZ (Android, desktop) and other dnstt apps. Needs its own tunnel domain whose NS record points to this server; it can share port 53 with XDNS and Slipstream.",
+		DescFa: "شناخته‌شده‌ترین تونل DNS، برای قطعی اینترنت: ترافیک داخل درخواست‌های DNS پنهان می‌شود و از DNSهای عمومی رد می‌شود، با رمزنگاری روی کلید همین سرور. برای SlipNet (اندروید)، DNSTT.XYZ (اندروید و دسکتاپ) و برنامه‌های دیگر dnstt. یک دامنهٔ تونل جدا لازم دارد که رکورد NS آن به این سرور اشاره کند؛ می‌تواند پورت ۵۳ را با XDNS و Slipstream شریک شود.",
+		Fields: []Field{fXDNS, fResolver, fSignIn, fTunnelPub, fPriv}},
+	{ID: "slipstream", Name: "Slipstream (DNS tunnel · QUIC)", Engine: "slipstream", Group: "udp", Network: "udp", DefaultPort: 53,
+		Security: "none", Status: "beta", proto: "slipstream",
+		Desc:   "A faster DNS tunnel for shutdowns: QUIC inside DNS queries, often several times faster than dnstt. For SlipNet and DNSTT.XYZ. Needs its own tunnel domain whose NS record points to this server; it can share port 53 with XDNS and dnstt. One per server; the apps do not verify the server's certificate.",
+		DescFa: "تونل DNS سریع‌تر برای قطعی: QUIC داخل درخواست‌های DNS، اغلب چند برابر سریع‌تر از dnstt. برای SlipNet و DNSTT.XYZ. یک دامنهٔ تونل جدا لازم دارد که رکورد NS آن به این سرور اشاره کند؛ می‌تواند پورت ۵۳ را با XDNS و dnstt شریک شود. هر سرور یکی؛ برنامه‌ها گواهی سرور را بررسی نمی‌کنند.",
+		Fields: []Field{fXDNS, fResolver, fSignIn}},
 	{ID: "mtproto", Name: "MTProto · Telegram proxy", Engine: "mtg", Group: "classic", Network: "tcp", DefaultPort: 443,
 		Security: "faketls", Status: "ready", proto: "mtproto",
 		Desc:   "A proxy inside Telegram itself: users add it with one tap, no VPN app needed. It looks like an HTTPS visit to the site you choose, and can share port 443. One per server; one link for everyone, so usage is not counted per user.",
@@ -311,6 +328,12 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		set("congestion", "bbr")
 	case "vless-xdns":
 		set("resolver", "8.8.8.8")
+	case "dnstt", "slipstream":
+		set("resolver", "8.8.8.8")
+		set("signIn", "user")
+		if p.ID == "dnstt" {
+			dnsttKeys(params)
+		}
 	case "amneziawg":
 		awgDefaults(params)
 	case "mieru", "mieru-udp":

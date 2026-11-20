@@ -267,6 +267,11 @@ func (a *Agent) Apply(s State) error {
 				log.Printf("node: trusttunnel: %v", err)
 			}
 		}
+		if p.Engine == "slipstream" && in.Enabled && !a.Mgr.Slip.Installed() {
+			if _, err := coremgr.InstallSlipstream(a.Mgr.Slip.BinDir); err != nil {
+				log.Printf("node: slipstream: %v", err)
+			}
+		}
 		if p.Engine == "mita" && in.Enabled && !a.Mgr.Mita.Installed() {
 			if _, err := coremgr.InstallMita(a.Mgr.Mita.BinDir); err != nil {
 				log.Printf("node: mita: %v", err)

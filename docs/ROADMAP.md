@@ -95,7 +95,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] TrustTunnel (AdGuard) over HTTP/2 and HTTP/3, with per-user usage and devices (v1.12)
 - [x] TrustTunnel on port 443 next to the panel: TCP by its hostname through the router, QUIC passed on from UDP 443
       while no UDP protocol holds it (v1.20)
-- [ ] dnstt / Slipstream (XDNS covers DNS tunnels for Xray apps), xICMP
+- [x] dnstt (inside Dunvex) and Slipstream DNS tunnels for SlipNet and DNSTT.XYZ, with per-user sign-in, sharing
+      port 53 with XDNS by tunnel domain (v1.21). See [DNS-TUNNELS.md](DNS-TUNNELS.md)
+- [ ] xICMP
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)

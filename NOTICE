@@ -35,6 +35,9 @@ time and keep their own licenses:
     (by AdGuard; downloaded unchanged from its release with the first TrustTunnel)
   - mita          (GPL-3.0)  https://github.com/enfein/mieru  (the Mieru server;
     downloaded unchanged from the Mieru release with the first Mieru)
+  - Slipstream server (Apache-2.0)  https://github.com/EndPositive/slipstream
+    (by EndPositive; downloaded unchanged from its v0.1.1 release, checked
+    against a pinned SHA-256, with the first Slipstream)
   - amneziawg-go  (MIT)  https://github.com/amnezia-vpn/amneziawg-go  (the
     AmneziaWG server; Dunvex release assets include it built without changes
     from the upstream v3 tag, see scripts/build-release.sh)
@@ -48,6 +51,10 @@ Bundled fonts (SIL Open Font License 1.1, licence texts in web/src/fonts/):
   - Vazirmatn (The Vazirmatn Project Authors)
   - Geist (Vercel, with basement.studio)
   - JetBrains Mono (The JetBrains Mono Project Authors)
+
+Built in: the dnstt server and client code by David Fifield (public domain,
+CC0 1.0, https://www.bamsoftware.com/software/dnstt/), in internal/dnstt, with
+kcp-go (MIT), smux (MIT) and flynn/noise (BSD-3-Clause).
 
 SSH menu: Bubble Tea, Lip Gloss and Bubbles by Charm (MIT).
 Panel libraries: React (MIT), Motion (MIT), Magic UI components (MIT),

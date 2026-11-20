@@ -148,8 +148,8 @@ func (s *Server) subLinks(u *store.User, now int64) []string {
 		out = append(out, dummyLink(statusLine(u, now)))
 	}
 	for _, c := range s.configsFor(u) {
-		if strings.HasPrefix(c.Link, "tg://") || c.File != "" {
-			continue // Telegram proxies and .conf files are not links for VPN apps (both are on the user page)
+		if strings.HasPrefix(c.Link, "tg://") || strings.HasPrefix(c.Link, "slipnet://") || c.File != "" {
+			continue // Telegram proxies, SlipNet profiles and .conf files are not for these VPN apps (all are on the user page)
 		}
 		out = append(out, c.Link)
 	}
@@ -387,6 +387,7 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 		QR         template.HTML
 		File       string // a .conf: shown as text with a download button
 		Download   string
+		Hint, Note string // how to add it, and what to type in by hand (DNS tunnels)
 	}
 	var cfgs []cfg
 	if blockedReason(u, now) == "" {
@@ -396,10 +397,17 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 				if c.RelayID != 0 {
 					dl += "&r=" + fmt.Sprint(c.RelayID)
 				}
-				cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(c.QR), c.File, dl})
+				cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(c.QR), c.File, dl, "", ""})
 				continue
 			}
-			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link)), "", ""})
+			hint := ""
+			if strings.HasPrefix(c.Link, "slipnet://") {
+				hint = "در برنامهٔ SlipNet لینک را وارد کنید (Import) یا کد QR را اسکن کنید."
+				if c.Note != "" {
+					hint += " در DNSTT.XYZ هم می‌توانید این مشخصات را دستی وارد کنید:"
+				}
+			}
+			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link)), "", "", hint, c.Note})
 		}
 	}
 	data := map[string]any{

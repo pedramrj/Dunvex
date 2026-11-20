@@ -80,6 +80,16 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 		if p != nil && !sameNetwork(p, q) {
 			continue // TCP and UDP on one port number do not clash
 		}
+		if DNSRouted(p) && DNSRouted(q) {
+			// DNS tunnels share a UDP port by their tunnel domains (sni here)
+			switch d := XDNSDomain(in); {
+			case sni == "" || d == "":
+				return fmt.Sprintf("DNS tunnels that share port %d each need their tunnel domain; set it first", port)
+			case d == strings.Trim(sni, "."):
+				return fmt.Sprintf("%s on port %d already uses the tunnel domain %s; each DNS tunnel needs its own", q.Name, port, d)
+			}
+			continue
+		}
 		if onPanel && p != nil && leavesUDP(p, q) {
 			continue // TrustTunnel's TCP is behind the router; the UDP protocol keeps UDP
 		}

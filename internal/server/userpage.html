@@ -107,7 +107,8 @@ footer{text-align:center;color:var(--dim);font-size:12px;margin-top:30px}
     {{if $c.File}}<textarea class="copy conf" id="c{{$i}}" readonly rows="8">{{$c.Link}}</textarea>
     <div class="row" style="margin-top:10px"><a class="btn" href="{{safeURL $c.Download}}" download="{{$c.File}}">دانلود فایل {{$c.File}}</a><button class="btn ghost" onclick="cp('c{{$i}}',this)">کپی</button></div>
     <p class="hint">در برنامهٔ AmneziaVPN یا AmneziaWG فایل را وارد کنید یا کد QR را اسکن کنید.</p>
-    {{else}}<div class="row" style="margin-top:10px"><input class="copy" id="c{{$i}}" readonly value="{{$c.Link}}"><button onclick="cp('c{{$i}}',this)">کپی</button></div>{{end}}
+    {{else}}<div class="row" style="margin-top:10px"><input class="copy" id="c{{$i}}" readonly value="{{$c.Link}}"><button onclick="cp('c{{$i}}',this)">کپی</button></div>
+    {{if $c.Hint}}<p class="hint">{{$c.Hint}}</p>{{end}}{{if $c.Note}}<textarea class="copy conf" readonly rows="4" dir="ltr" style="white-space:pre-wrap;word-break:break-all">{{$c.Note}}</textarea>{{end}}{{end}}
     <div class="qr{{if $c.File}} big{{end}}">{{$c.QR}}</div>
   </details>{{end}}
 </div>{{end}}

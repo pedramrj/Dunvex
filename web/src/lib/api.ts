@@ -196,6 +196,9 @@ export interface Field {
   labelFa: string;
   type: "text" | "number" | "select" | "bool" | "secret";
   options?: string[];
+  /** names of the options in the panel (same order) */
+  optionLabels?: string[];
+  optionLabelsFa?: string[];
   advanced?: boolean;
 }
 
@@ -339,6 +342,8 @@ export interface CoreStatus {
   error: string;
   /** nothing to serve, so stopped on purpose */
   idle?: boolean;
+  /** part of Dunvex itself: nothing to install or update */
+  builtIn?: boolean;
 }
 
 export interface SystemInfo {
@@ -397,6 +402,8 @@ export interface ConfigEntry {
   file?: string;
   /** its QR as SVG, sent inline so the private key never goes in a URL */
   qr?: string;
+  /** what an app without this link type needs typed in (an open DNS tunnel) */
+  note?: string;
 }
 
 /** saves text as a file in the browser */

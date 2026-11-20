@@ -38,8 +38,8 @@ Every protocol of the target, on the same port, TCP and UDP as the protocol need
 Hysteria2, TUIC, WireGuard, AmneziaWG, Mieru, TrustTunnel, the Telegram proxy and the rest). When the target's
 protocols change, the relay follows within seconds.
 
-Not forwarded: **NaiveProxy** (apps dial its domain, not an address), the **DNS tunnel** (XDNS works through DNS
-records) and **CDN configs** (they already go through the CDN's address).
+Not forwarded: **NaiveProxy** (apps dial its domain, not an address), the **DNS tunnels** (XDNS, dnstt and
+Slipstream work through DNS records) and **CDN configs** (they already go through the CDN's address).
 
 ## Options
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/awg"
+	"github.com/pedramrj/dunvex/internal/dnsmux"
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/routing"
@@ -41,6 +42,7 @@ type Manager struct {
 	Mita    *Core       // the Mieru server
 	TT      *Core       // the TrustTunnel endpoint
 	Usque   *Core       // Cloudflare WARP over MASQUE, a local SOCKS proxy (APIPort)
+	Slip    *Core       // the Slipstream server (a DNS tunnel)
 	Env     func() protocol.Env
 
 	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
@@ -96,6 +98,10 @@ type Manager struct {
 	ttNow  *mitaPlan                // what TrustTunnel serves now (its inbound)
 	ttPrev map[string]store.Traffic // last counters per TrustTunnel user
 	ttGen  time.Time                // start of the endpoint they came from
+
+	dns     dnsState            // shared DNS ports and dnstt servers (guarded by applyMu)
+	dnsNow  map[int]*dnsmux.Mux // a copy of dns.mux for status calls (guarded by mu)
+	dnsttOn int                 // dnstt servers running (guarded by mu)
 }
 
 // NewManager wires a manager for the given home directory.
@@ -110,6 +116,7 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		Mita:         &Core{Name: "mita", BinDir: binDir, ConfigPath: filepath.Join(runDir, "mita.json")},
 		TT:           &Core{Name: "trusttunnel", BinDir: binDir, ConfigPath: filepath.Join(runDir, "tt-vpn.toml"), APIPort: 62792},
 		Usque:        &Core{Name: "usque", BinDir: binDir, ConfigPath: filepath.Join(runDir, "usque.json"), APIPort: 62797},
+		Slip:         &Core{Name: "slipstream-server", BinDir: binDir, ConfigPath: filepath.Join(runDir, "slipstream.args")},
 		Env:          env,
 		RouterPort:   RouterPort,
 		WarpTestPort: WarpTestPort,
@@ -192,7 +199,9 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.Mita.Stop()
 			m.TT.Stop()
 			m.Usque.Stop()
+			m.Slip.Stop()
 			m.AWG.Stop()
+			m.stopDNS()
 			return
 		case <-m.applyCh:
 			time.Sleep(1500 * time.Millisecond) // coalesce bursts of edits
@@ -242,6 +251,10 @@ type built struct {
 	awg           *awgPlan           // AmneziaWG (one per server)
 	usque         []byte             // WARP over MASQUE (nil: not running)
 	udp           map[int]string     // public UDP port → loopback address (TrustTunnel's QUIC behind the router)
+	dns           map[int]*dnsPort   // shared DNS ports
+	dnstt         map[int64]dnsttPlan
+	slip          []byte // Slipstream's command line, one argument per line (one per server)
+	slipIn        int64  // its inbound
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -308,6 +321,15 @@ func (m *Manager) build() (b built, err error) {
 		used[p] = true
 	}
 	m.mu.Unlock()
+	// UDP ports with dnstt, Slipstream or several XDNS get the shared DNS port
+	dnsCount, dnsTunnel := map[int]int{}, map[int]bool{}
+	for _, in := range inbounds {
+		if p := protocol.Get(in.Preset); in.Enabled && in.NodeID == 0 && protocol.DNSRouted(p) {
+			dnsCount[in.Port]++
+			dnsTunnel[in.Port] = dnsTunnel[in.Port] || protocol.IsDNSTunnel(p)
+		}
+	}
+	muxed := dnsMuxed(dnsCount, dnsTunnel)
 	var xin, sin []obj
 	var sTags, sUsers []string
 	seenUser := map[string]bool{}
@@ -404,13 +426,57 @@ func (m *Manager) build() (b built, err error) {
 				b.routes[sni] = edge.Target{Addr: bind, ProxyHeader: true}
 			}
 			b.mtg = mtgConfig(protocol.MTProtoSecret(in.Str("mtKey"), in.Str("sni")), bind, pp, m.MTG.APIPort)
+		case "dnstt", "slipstream":
+			dom := protocol.XDNSDomain(in)
+			if dom == "" {
+				b.errs[in.ID] = fmt.Sprintf("%s needs its tunnel domain (an NS record that points to this server)", p.Name)
+				continue
+			}
+			if len(us) == 0 && !protocol.OpenSignIn(in) {
+				continue // nobody may use it: it stays off
+			}
+			if p.Engine == "slipstream" && b.slipIn != 0 {
+				b.errs[in.ID] = "only one Slipstream can run on a server; use dnstt for another tunnel domain"
+				continue
+			}
+			back := "127.0.0.1:" + strconv.Itoa(m.internalPort(in.ID+dnsBackendKey, used))
+			if e := b.addZone(in.Port, dnsListen(in.Port, env), dom, back, in.ID); e != "" {
+				b.errs[in.ID] = e
+				continue
+			}
+			socks := m.internalPort(in.ID, used)
+			if p.Engine == "dnstt" {
+				if b.dnstt == nil {
+					b.dnstt = map[int64]dnsttPlan{}
+				}
+				b.dnstt[in.ID] = dnsttPlan{key: in.Str("privateKey"), domain: dom, upstream: "127.0.0.1:" + strconv.Itoa(socks), listen: back}
+			} else {
+				cert, key, e := m.slipCert(dom)
+				if e != nil {
+					b.errs[in.ID] = "Slipstream's certificate: " + e.Error()
+					continue
+				}
+				host, port, _ := net.SplitHostPort(back)
+				n, _ := strconv.Atoi(port)
+				b.slip = []byte(strings.Join(protocol.SlipstreamArgs(in, host, n, "127.0.0.1:"+strconv.Itoa(socks), cert, key), "\n") + "\n")
+				b.slipIn = in.ID
+			}
+			xin = append(xin, protocol.TunnelSocks(in, us, socks))
 		case "xray":
 			ib, e := protocol.XrayInbound(p, in, us, env)
 			if e != nil {
 				b.errs[in.ID] = e.Error()
 				continue
 			}
-			if p.Network == "udp" && in.Port == 53 && env.Listen == "" {
+			if protocol.DNSRouted(p) && muxed[in.Port] {
+				// XDNS next to other DNS tunnels: behind the shared port, by its domain
+				back := m.internalPort(in.ID+dnsBackendKey, used)
+				if e := b.addZone(in.Port, dnsListen(in.Port, env), protocol.XDNSDomain(in), "127.0.0.1:"+strconv.Itoa(back), in.ID); e != "" {
+					b.errs[in.ID] = e
+					continue
+				}
+				ib["listen"], ib["port"] = "127.0.0.1", back
+			} else if p.Network == "udp" && in.Port == 53 && env.Listen == "" {
 				// systemd-resolved holds 127.0.0.53:53, so "every address" cannot
 				// be bound; the address facing the internet can
 				if ip := util.OutboundIP(); ip != "" {
@@ -537,6 +603,7 @@ func (m *Manager) Apply() error {
 	if m.OnUDP != nil {
 		m.OnUDP(b.udp) // first: a UDP port given back to a core must be free when it starts
 	}
+	m.dnsApply(b.dns, false) // likewise for a DNS port that XDNS takes back
 	cerrs := map[string]string{}
 	for attempt := 0; attempt < 6; attempt++ {
 		cerrs = map[string]string{}
@@ -552,7 +619,7 @@ func (m *Manager) Apply() error {
 		for _, c := range []struct {
 			core *Core
 			cfg  []byte
-		}{{m.Usque, b.usque}, {m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}, {m.TT, ttMain}} {
+		}{{m.Usque, b.usque}, {m.Xray, xcfg}, {m.SingBox, scfg}, {m.MTG, tcfg}, {m.Mita, b.mita}, {m.TT, ttMain}, {m.Slip, b.slip}} {
 			if c.core == m.TT && cerrs[m.TT.Name] != "" {
 				continue
 			}
@@ -610,6 +677,16 @@ func (m *Manager) Apply() error {
 	if m.OnUDP != nil {
 		m.OnUDP(b.udp) // again: a port a core just gave up can be taken now
 	}
+	for id, e := range m.dnsttApply(b.dnstt) {
+		ierrs[id] = e
+	}
+	for id, e := range m.dnsApply(b.dns, true) {
+		ierrs[id] = e
+	}
+	if b.slip != nil && cerrs[m.Slip.Name] != "" {
+		ierrs[b.slipIn] = "Slipstream: " + cerrs[m.Slip.Name]
+	}
+	m.dnsSnapshot()
 	if m.OnRoutes != nil {
 		m.OnRoutes(b.routes)
 	}

@@ -73,7 +73,7 @@ func (c *Core) Version() string {
 		return v
 	}
 	args := []string{"version"}
-	if c.Name == "mtg" || c.Name == "trusttunnel" {
+	if c.Name == "mtg" || c.Name == "trusttunnel" || c.Name == "slipstream-server" {
 		args = []string{"--version"}
 	}
 	if c.Name == "usque" {
@@ -171,7 +171,7 @@ func (c *Core) Test(cfg []byte) error {
 	switch c.Name {
 	case "xray":
 		cmd = exec.Command(c.Bin(), "run", "-test", "-c", tmp)
-	case "mtg", "mita", "trusttunnel", "usque":
+	case "mtg", "mita", "trusttunnel", "usque", "slipstream-server":
 		return nil // no check command; Dunvex writes these small configs itself
 	default:
 		cmd = exec.Command(c.Bin(), "check", "-c", tmp)
@@ -267,6 +267,9 @@ func (c *Core) start() error {
 		// --always-reconnect keeps the tunnel up: otherwise usque connects only
 		// on the first traffic, and that first connection fails
 		cmd = exec.Command(c.Bin(), "-c", c.ConfigPath, "socks", "-b", "127.0.0.1", "-p", strconv.Itoa(c.APIPort), "--always-reconnect")
+	case "slipstream-server":
+		// no config file: its flags, one per line, written by Apply
+		cmd = exec.Command(c.Bin(), slipArgs(c.ConfigPath)...)
 	case "mita":
 		// mita keeps per-user totals in one file and reloads them at start; a
 		// crash can bring back older totals, so each start counts from zero
@@ -374,7 +377,8 @@ type Status struct {
 	Uptime    int64  `json:"uptime"`
 	Restarts  int    `json:"restarts"`
 	Error     string `json:"error"`
-	Idle      bool   `json:"idle,omitempty"` // nothing to serve, so it is stopped on purpose
+	Idle      bool   `json:"idle,omitempty"`    // nothing to serve, so it is stopped on purpose
+	BuiltIn   bool   `json:"builtIn,omitempty"` // part of Dunvex itself (nothing to install)
 }
 
 // Status returns the current state.

@@ -409,7 +409,7 @@ function CoresPanel() {
               </div>
               <div className="ms-auto flex gap-2">
                 <Button size="sm" variant="quiet" icon={<ScrollText className="size-4" />} onClick={() => api<string[]>(`cores/${c.name}/logs`).then((lines) => setLogs({ name: c.name, lines }))}>{t("logs")}</Button>
-                {owner && <Button size="sm" loading={busy === c.name} onClick={() => install(c.name)}>{c.installed ? t("update") : t("install")}</Button>}
+                {owner && !c.builtIn && <Button size="sm" loading={busy === c.name} onClick={() => install(c.name)}>{c.installed ? t("update") : t("install")}</Button>}
               </div>
             </li>
           ))}

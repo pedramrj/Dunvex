@@ -8,7 +8,7 @@ import { PageHead, navigate } from "../App";
 import { shortName } from "../components/NetworkMap";
 
 /** the program that serves each engine, as shown on the cards */
-const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", trusttunnel: "TrustTunnel", xray: "Xray" };
+const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", trusttunnel: "TrustTunnel", dnstt: "dnstt", slipstream: "Slipstream", xray: "Xray" };
 
 export function ProtocolsPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
@@ -127,7 +127,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 /** Setup steps some protocols need before they work. */
 function PresetHelp({ id }: { id: string }) {
   const { t } = useI18n();
-  const key = id === "vless-xdns" ? "xdnsHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : null;
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "dnstt" || id === "slipstream" ? "dnsTunnelHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : null;
   if (!key) return null;
   return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
 }
@@ -280,14 +280,14 @@ function Params({ fields, values, onChange, group }: { fields: Field[]; values: 
       return (
         <label key={f.key}>
           <Label>{label}</Label>
-          <Select value={v ?? f.options?.[0] ?? ""} onChange={(x) => set(f.key, x)} options={(f.options ?? []).map((o) => ({ value: o, label: o }))} />
+          <Select value={v ?? f.options?.[0] ?? ""} onChange={(x) => set(f.key, x)} options={(f.options ?? []).map((o, i) => ({ value: o, label: (lang === "fa" ? f.optionLabelsFa : f.optionLabels)?.[i] ?? o }))} />
         </label>
       );
     return (
       <label key={f.key}>
         <Label>{label}</Label>
         <div className="flex gap-2">
-          <Input value={v ?? ""} type={f.type === "number" ? "number" : "text"} onChange={(e) => set(f.key, f.type === "number" ? +e.target.value : e.target.value)} dir="ltr" placeholder={f.type === "secret" ? "auto" : ""} className={f.type === "secret" ? "mono text-[12px]" : ""} />
+          <Input value={v ?? ""} type={f.type === "number" ? "number" : "text"} onChange={(e) => set(f.key, f.type === "number" ? +e.target.value : e.target.value)} dir="ltr" placeholder={f.type === "secret" || f.key === "publicKey" ? "auto" : ""} className={f.type === "secret" ? "mono text-[12px]" : ""} />
           {f.key === "sni" && group === "reality" && <SniTest onPick={(d) => onChange({ ...values, sni: d, target: d + ":443" })} />}
         </div>
       </label>

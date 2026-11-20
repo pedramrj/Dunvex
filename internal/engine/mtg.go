@@ -47,6 +47,9 @@ func (m *Manager) Cores() []*Core {
 	if m.Usque.Installed() || m.Usque.Running() || m.Usque.Status().Error != "" {
 		out = append(out, m.Usque)
 	}
+	if m.Slip.Installed() || m.Slip.Running() || m.Slip.Status().Error != "" {
+		out = append(out, m.Slip)
+	}
 	return out
 }
 
@@ -59,6 +62,9 @@ func (m *Manager) CoreStatuses() []Status {
 	}
 	if m.AWG.Installed() || m.AWG.Running() || m.AWG.LastError() != "" {
 		out = append(out, m.awgStatus())
+	}
+	if s, ok := m.dnsttStatus(); ok {
+		out = append(out, s)
 	}
 	return out
 }
@@ -76,6 +82,8 @@ func (m *Manager) CoreByName(name string) *Core {
 		return m.TT
 	case "usque":
 		return m.Usque
+	case "slipstream-server":
+		return m.Slip
 	}
 	return m.Xray
 }

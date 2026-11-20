@@ -14,13 +14,13 @@ import (
 
 // relayable reports whether users can reach an inbound through a relay: the
 // app must dial an address and port, which the relay then stands in for. A
-// CDN address, NaiveProxy (dialled by its domain) and the DNS tunnel cannot.
+// CDN address, NaiveProxy (dialled by its domain) and the DNS tunnels cannot.
 func relayable(p *protocol.Preset, in *store.Inbound) bool {
 	if p == nil || !in.Enabled {
 		return false
 	}
 	switch p.ID {
-	case "naive", "vless-xdns":
+	case "naive", "vless-xdns", "dnstt", "slipstream":
 		return false
 	}
 	return strings.TrimSpace(in.Str("address")) == ""

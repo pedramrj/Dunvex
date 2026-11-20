@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CalendarClock, CalendarPlus, Copy, Download, ExternalLink, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
+  CalendarClock, CalendarPlus, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
   Users as UsersIcon, Wifi,
 } from "lucide-react";
 import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type User, type WalletInfo } from "../lib/api";
@@ -619,6 +619,7 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
                     <span className="flex-1 min-w-0 truncate text-[13px]" dir="ltr">{c.name}</span>
                     <IconButton label="QR" onClick={() => setOpenQr(openQr === i ? null : i)}><QrCode className="size-4" /></IconButton>
                     {c.file && <IconButton label={`${t("download")} ${c.file}`} onClick={() => saveText(c.file!, c.link)}><Download className="size-4" /></IconButton>}
+                    {c.note && <IconButton label={t("copyTunnelDetails")} onClick={() => copyText(c.note!).then(() => toast(t("copied")))}><FileText className="size-4" /></IconButton>}
                     <IconButton label={t("copy")} onClick={() => copyText(c.link).then(() => toast(t("copied")))}><Copy className="size-4" /></IconButton>
                   </div>
                   {openQr === i && <div className="px-3 pb-3 flex justify-center"><div className="rounded-2xl bg-white p-2">

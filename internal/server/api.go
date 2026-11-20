@@ -723,6 +723,8 @@ type ConfigEntry struct {
 	RelayID int64 `json:"relayId,omitempty"`
 	// through the CDN: "cdn" (the proxied name) or the clean address
 	Via string `json:"via,omitempty"`
+	// what an app without this link type needs typed in (an open DNS tunnel)
+	Note string `json:"note,omitempty"`
 }
 
 // confName is a .conf file name that is also a valid interface name in the
@@ -773,7 +775,7 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		if !onlyViaRelay(relays) && cl.direct(in, p) {
 			name := remarkFor(in, p, u, title, nodes)
 			if l := protocol.Link(p, in, u, env, name); l != "" {
-				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l}
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, Note: protocol.TunnelDetails(p, in, env)}
 				if strings.HasPrefix(l, "[Interface]") {
 					c.File, c.QR = confName(title, in.ID), QRSVG(l)
 				}
@@ -870,12 +872,21 @@ func (s *Server) portTaken(nodeID int64, port int, except int64, p *protocol.Pre
 
 // portBusy reports a port held by another program on this server. Ports Dunvex
 // itself holds (the panel's, or one of its inbounds') are not busy for this purpose.
-func (s *Server) portBusy(nodeID int64, port int) bool {
+func (s *Server) portBusy(nodeID int64, port int, p *protocol.Preset) bool {
 	if nodeID != 0 || port == s.panelPort() {
 		return false // another server's ports are checked there, when it applies
 	}
 	if protocol.UsesPort(s.inboundsOn(0), port) {
 		return false
+	}
+	if protocol.DNSRouted(p) {
+		// a DNS tunnel takes only UDP, and port 53 only on the address facing the
+		// internet (systemd-resolved holds 127.0.0.53:53, which is no clash)
+		host := s.Env().Listen
+		if host == "" && port == 53 {
+			host = util.OutboundIP()
+		}
+		return !util.FreeUDPOn(host, port)
 	}
 	return !util.FreePort(port)
 }
@@ -885,7 +896,7 @@ func (s *Server) portBusy(nodeID int64, port int) bool {
 // ports Cloudflare proxies, otherwise a random free one.
 func (s *Server) pickPort(nodeID int64, p *protocol.Preset, sni string) int {
 	for _, port := range append([]int{p.DefaultPort}, cdnPorts(p)...) {
-		if s.portTaken(nodeID, port, 0, p, sni) == "" && !s.portBusy(nodeID, port) {
+		if s.portTaken(nodeID, port, 0, p, sni) == "" && !s.portBusy(nodeID, port, p) {
 			return port
 		}
 	}
@@ -978,6 +989,21 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if p.Engine == "slipstream" {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has a Slipstream; one per server. Add dnstt for another tunnel domain")
+				return
+			}
+		}
+		// the Slipstream server arrives with the first Slipstream inbound
+		if in.NodeID == 0 && !s.Mgr.Slip.Installed() {
+			if _, err := coremgr.InstallSlipstream(s.Mgr.Slip.BinDir); err != nil {
+				fail(w, 502, "could not download the Slipstream server: "+err.Error())
+				return
+			}
+		}
+	}
 	if p.Engine == "mita" {
 		for _, x := range s.inboundsOn(in.NodeID) {
 			if q := protocol.Get(x.Preset); protocol.IsMieru(q) {
@@ -1029,7 +1055,7 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		ib.Port = port
 		s.ttHostFor(ib, given)
 	}
-	sni := protocol.SharedSNI(ib)
+	sni := protocol.RouteName(ib) // its SNI, or a DNS tunnel's domain
 	if port == 0 {
 		port = s.pickPort(in.NodeID, p, sni)
 	}
@@ -1042,7 +1068,7 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, msg)
 		return
 	}
-	if in.Port != 0 && s.portBusy(in.NodeID, port) {
+	if in.Port != 0 && s.portBusy(in.NodeID, port, p) {
 		fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", port))
 		return
 	}
@@ -1077,7 +1103,7 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad request")
 		return
 	}
-	oldPort, oldSNI, oldNode := ib.Port, protocol.SharedSNI(ib), ib.NodeID
+	oldPort, oldSNI, oldNode := ib.Port, protocol.RouteName(ib), ib.NodeID
 	if in.Port != nil {
 		ib.Port = *in.Port
 	}
@@ -1105,12 +1131,12 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 			ib.Params = protocol.Defaults(p, ib.Params, s.domainOf(ib.NodeID))
 		}
 	}
-	if sni := protocol.SharedSNI(ib); ib.Port != oldPort || ib.NodeID != oldNode || (sni != oldSNI && ib.NodeID == 0 && ib.Port == s.panelPort()) {
+	if sni := protocol.RouteName(ib); ib.Port != oldPort || ib.NodeID != oldNode || (sni != oldSNI && (protocol.DNSRouted(protocol.Get(ib.Preset)) || ib.NodeID == 0 && ib.Port == s.panelPort())) {
 		if msg := s.portTaken(ib.NodeID, ib.Port, ib.ID, protocol.Get(ib.Preset), sni); msg != "" {
 			fail(w, 400, msg)
 			return
 		}
-		if (ib.Port != oldPort || ib.NodeID != oldNode) && s.portBusy(ib.NodeID, ib.Port) {
+		if (ib.Port != oldPort || ib.NodeID != oldNode) && s.portBusy(ib.NodeID, ib.Port, protocol.Get(ib.Preset)) {
 			fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", ib.Port))
 			return
 		}
@@ -1326,6 +1352,10 @@ func (s *Server) installCore(w http.ResponseWriter, r *http.Request) {
 		s.Mgr.TT.Stop()
 		ver, err = coremgr.InstallTrustTunnel(binDir)
 		s.Mgr.TT.ResetVersion()
+	case "slipstream-server":
+		s.Mgr.Slip.Stop()
+		ver, err = coremgr.InstallSlipstream(binDir)
+		s.Mgr.Slip.ResetVersion()
 	default:
 		fail(w, 404, "unknown core")
 		return
@@ -1352,8 +1382,11 @@ func (s *Server) applyCores(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) core(name string) interface{ Logs() []string } {
-	if name == "amneziawg" {
+	switch name {
+	case "amneziawg":
 		return s.Mgr.AWG
+	case "dnstt":
+		return engine.DnsttLogger
 	}
 	return s.Mgr.CoreByName(name)
 }
@@ -1383,6 +1416,9 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 	case "trusttunnel":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(s.Mgr.TTConfig())
+	case "slipstream-server":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(s.Mgr.SlipConfig())
 	default:
 		w.Write(orEmpty(x))
 	}

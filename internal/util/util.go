@@ -230,6 +230,16 @@ func FreePort(port int) bool {
 	return true
 }
 
+// FreeUDPOn reports whether a UDP port can be bound on host ("": every address).
+func FreeUDPOn(host string, port int) bool {
+	u, err := net.ListenPacket("udp", net.JoinHostPort(host, fmt.Sprint(port)))
+	if err != nil {
+		return false
+	}
+	u.Close()
+	return true
+}
+
 // FreeUDPPort reports whether a UDP port can be bound on all interfaces.
 func FreeUDPPort(port int) bool {
 	u, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
