@@ -47,16 +47,17 @@ var sections = []struct{ icon, name string }{
 	{"⟲", "Backups"}, {"⚙", "Service"}, {"⇅", "Network"}, {"⌂", "Login & QR"},
 }
 
-type serviceAction struct{ name, desc string }
+type serviceAction struct{ key, name, desc string }
 
+// Every action has a letter: pressing it in the Service section runs it, no arrows needed.
 var serviceActions = []serviceAction{
-	{"Restart service", "restart dunvex and its cores"},
-	{"Update Dunvex", "download the latest release"},
-	{"Update cores", "fresh Xray and sing-box"},
-	{"Change panel port", "move the panel to another port"},
-	{"Reset admin login", "new username and password (turns 2FA off)"},
-	{"Back up now", "copy the database to /root"},
-	{"Uninstall", "remove Dunvex (the database is backed up)"},
+	{"r", "Restart service", "restart dunvex and its cores"},
+	{"u", "Update Dunvex", "download the latest release"},
+	{"c", "Update cores", "fresh Xray and sing-box"},
+	{"p", "Change panel port", "move the panel to another port"},
+	{"a", "Reset admin login", "new username and password (turns 2FA off)"},
+	{"b", "Back up now", "copy the database to /root"},
+	{"x", "Uninstall", "remove Dunvex (the database is backed up)"},
 }
 
 // ---------------------------------------------------------------- data
@@ -395,6 +396,10 @@ func (m *model) runService(i int) tea.Cmd {
 					m.say("", fmt.Errorf("invalid port %q", v[0]))
 					return toastLater(m.toastAt)
 				}
+				if err := checkPanelPort(st, p); err != nil {
+					m.say("", err)
+					return toastLater(m.toastAt)
+				}
 				return m.busy("Moving the panel to port "+strconv.Itoa(p), func() (string, error) {
 					if err := st.SetSetting("panel_port", strconv.Itoa(p)); err != nil {
 						return "", err
@@ -466,6 +471,7 @@ func resetAdmin(st *store.Store, name, pass string) error {
 	if err != nil {
 		return err
 	}
+	st.SetSetting("setup_token", "") // SSH recovery also ends a pending first-run setup
 	if a, err := st.FirstAdmin(); err == nil {
 		a.Username, a.PasswordHash, a.TOTPSecret, a.Enabled = name, h, "", true
 		return st.SaveAdmin(a)
@@ -490,7 +496,7 @@ func (m *model) commands() []command {
 	}
 	for i, a := range serviceActions {
 		i := i
-		key := ""
+		key := "6 then " + a.key
 		switch i {
 		case 0:
 			key = "ctrl+r"
@@ -602,6 +608,9 @@ func (m *model) key(k tea.KeyMsg) tea.Cmd {
 	if md := m.modal; md != nil {
 		switch md.kind {
 		case "busy":
+			return nil
+		case "help":
+			m.modal = nil
 			return nil
 		case "confirm":
 			switch s {
@@ -716,6 +725,23 @@ func (m *model) key(k tea.KeyMsg) tea.Cmd {
 		if m.sec == secUsers {
 			m.filtering = true
 			return m.filter.Focus()
+		}
+	case "?":
+		m.modal = &modal{kind: "help", title: "Keys"}
+		return nil
+	}
+	// letters of the section on screen
+	switch m.sec {
+	case secService:
+		for i, a := range serviceActions {
+			if s == a.key {
+				m.itemSel, m.navFocus = i, false
+				return m.runService(i)
+			}
+		}
+	case secBackups:
+		if s == "n" {
+			return m.backupNow()
 		}
 	}
 	if m.navFocus {

@@ -22,8 +22,14 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 ```
 
 Ubuntu, Debian, CentOS/Alma/Rocky, Fedora, Arch · amd64 & arm64 · root.
-At the end you get the panel address, username and password (also saved in `/usr/local/dunvex/install-info.txt`).
+At the end you get the panel address and a **one-time setup link** (also as a QR code): open it and choose your own
+username and password. There is no random password to copy; `dunvex info` shows the link again until you use it.
 The first install already serves **VLESS Reality** and **Hysteria2**: add a user and share the link.
+
+**One port for everything: 443.** The panel, the subscription page and Reality share TCP 443: a connection that names
+a Reality SNI goes to Reality, everything else reaches the panel (and a stranger who opens the IP sees only a blank
+404). Hysteria2 uses UDP 443, so it looks like ordinary HTTP/3. Other Reality protocols can join 443 with their own
+SNI; protocols that need a TLS certificate keep their own port.
 
 Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: `uninstall`.
 
@@ -31,7 +37,9 @@ The installer shows the DV logo, a live step log with download progress and chec
 login details and a QR code of the panel address. `dunvex menu` is a full-screen control centre built with Bubble Tea:
 a gradient Dunvex header, navigation, a live dashboard (big CPU/RAM/disk numbers, download and upload charts,
 24-hour traffic, users, protocols, recent events), users, protocols, live logs, backups, service actions, network and
-a login card with QR code. Ctrl+P opens a command palette; risky actions ask first; mouse works too. Plain output: `DUNVEX_PLAIN=1`. GitHub blocked on the server? Copy the binary over
+a login card with QR code. No arrow keys needed: **1–8** open a section, the letter in **[ ]** runs an action
+(in Service: r restart, u update, c cores, p panel port, a admin login, b backup, x uninstall), **?** lists every key.
+Ctrl+P opens a command palette; risky actions ask first; mouse works too. Plain output: `DUNVEX_PLAIN=1`. GitHub blocked on the server? Copy the binary over
 and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 
 ### What you get
@@ -74,14 +82,22 @@ go build -o dunvex ./cmd/dunvex
 bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.sh)
 ```
 
-در پایان آدرس پنل، نام کاربری و رمز نمایش داده می‌شود (در `/usr/local/dunvex/install-info.txt` هم ذخیره می‌شود).
+در پایان آدرس پنل و یک **لینک راه‌اندازی یک‌بارمصرف** (همراه با QR) نمایش داده می‌شود: آن را باز کنید و نام کاربری
+و رمز دلخواه خودتان را بگذارید. رمز تصادفی‌ای در کار نیست؛ تا وقتی لینک استفاده نشده، `dunvex info` دوباره نشانش می‌دهد.
 بعد از نصب، **VLESS Reality** و **Hysteria2** آماده‌اند؛ فقط کاربر بسازید و لینک را بفرستید.
+
+**یک پورت برای همه: ۴۴۳.** پنل، صفحهٔ اشتراک و Reality روی TCP 443 شریک‌اند: اتصالی که SNI مربوط به Reality را دارد
+به Reality می‌رسد و بقیه به پنل (کسی که IP را باز کند فقط یک صفحهٔ خالی 404 می‌بیند). Hysteria2 روی UDP 443 است و
+شبیه HTTP/3 معمولی دیده می‌شود. پروتکل‌های Reality دیگر هم با SNI خودشان می‌توانند روی ۴۴۳ بیایند؛ پروتکل‌هایی که
+گواهی TLS لازم دارند پورت جدا می‌گیرند.
 
 مدیریت از SSH: ‏`dunvex menu` · به‌روزرسانی: همان دستور با `update` · حذف: `uninstall`.
 
 نصب‌کننده لوگوی DV، گزارش زندهٔ مراحل با نوار دانلود و بررسی checksum را نشان می‌دهد و در پایان اطلاعات ورود و QR آدرس پنل را می‌دهد.
-‏`dunvex menu` یک مرکز کنترل تمام‌صفحه با کلیدهای جهت است: وضعیت زندهٔ سرویس، هسته‌ها، CPU، RAM، دیسک، شبکه و کاربران،
+‏`dunvex menu` یک مرکز کنترل تمام‌صفحه است: وضعیت زندهٔ سرویس، هسته‌ها، CPU، RAM، دیسک، شبکه و کاربران،
 به‌علاوهٔ ری‌استارت، فهرست کاربران، لاگ زنده، بازنشانی مدیر، پورت پنل، پشتیبان، به‌روزرسانی و تنظیمات شبکه.
+بدون کلید جهت هم کار می‌کند: عدد **۱ تا ۸** هر بخش را باز می‌کند، حرف داخل **[ ]** همان کار را انجام می‌دهد
+(در بخش سرویس: r ری‌استارت، u به‌روزرسانی، c هسته‌ها، p پورت پنل، a ورود مدیر، b پشتیبان، x حذف) و **?** همهٔ کلیدها را نشان می‌دهد.
 اگر گیت‌هاب روی سرور بسته است، فایل باینری را منتقل کنید و با `DUNVEX_BINARY=/root/dunvex bash install.sh` نصب کنید.
 
 ### امکانات

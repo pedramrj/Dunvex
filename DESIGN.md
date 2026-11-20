@@ -74,6 +74,10 @@ filters, export), Alerts (categories, severity, read state, quiet mode), Securit
 protections, admins without 2FA), Settings (appearance, brand studio, server, subscription, panel,
 security, admins, Telegram, cores, backup) and Mission control (a full-screen wall).
 
+Before any of that, Login. On a fresh install it shows the first-run card instead: the one-time setup link
+opens a form where the owner chooses the username and password (show/hide, strength meter, confirm). There is
+never a random password to copy. Without the link the card says to run `dunvex info` on the server.
+
 ## Signature
 The **network map**: the server is the interchange, each protocol family a coloured line and each
 inbound a station. Packets travel faster with more traffic. The topology view is the neon version:

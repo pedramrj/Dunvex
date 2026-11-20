@@ -99,6 +99,7 @@ const fa = {
   infoEntry: "نمایش حجم و روز در لیست کانفیگ",
   panel: "پنل",
   panelPort: "پورت پنل",
+  panelPortShared: "پیشنهاد: ۴۴۳. پنل، صفحهٔ اشتراک و پروتکل‌های Reality این پورت را با هم شریک می‌شوند: هر اتصال با نام SNI خودش به Reality می‌رسد و بقیه به پنل. پروتکل‌های UDP مثل Hysteria2 هم می‌توانند روی همین شماره باشند.",
   panelPath: "مسیر پنل",
   subPath: "مسیر اشتراک",
   account: "حساب مدیر",
@@ -384,6 +385,15 @@ const fa = {
   last6min: "۶ دقیقهٔ اخیر",
   peak: "بیشینه",
   infoLevel: "اطلاعات",
+  setupTitle: "ساخت حساب مدیر",
+  setupSub: "نام کاربری و رمز خودتان را انتخاب کنید",
+  setupNeeded: "راه‌اندازی اول",
+  setupNoLink: "این پنل هنوز مدیر ندارد. لینک راه‌اندازی که در پایان نصب نشان داده شد را باز کنید. اگر آن را ندارید، روی سرور این دستور را بزنید:",
+  setupOnce: "این لینک فقط یک بار کار می‌کند. بعد از ساخت حساب، با همین نام کاربری و رمز وارد می‌شوید.",
+  confirmPassword: "تکرار رمز",
+  passwordShort: "رمز باید دست‌کم ۸ کاراکتر باشد.",
+  passwordsDiffer: "دو رمز یکی نیستند.",
+  createAccount: "ساخت حساب و ورود",
 };
 
 type Dict = typeof fa;
@@ -484,6 +494,7 @@ const en: Dict = {
   infoEntry: "Show data & days in config list",
   panel: "Panel",
   panelPort: "Panel port",
+  panelPortShared: "Recommended: 443. The panel, the subscription page and Reality protocols share this port: a connection that names a Reality SNI goes to Reality, everything else reaches the panel. UDP protocols such as Hysteria2 can use the same number too.",
   panelPath: "Panel path",
   subPath: "Subscription path",
   account: "Admin account",
@@ -769,6 +780,15 @@ const en: Dict = {
   last6min: "last 6 min",
   peak: "max",
   infoLevel: "Info",
+  setupTitle: "Create your admin account",
+  setupSub: "Choose your own username and password",
+  setupNeeded: "First-run setup",
+  setupNoLink: "This panel has no admin yet. Open the setup link shown at the end of the install. If you do not have it, run this on the server:",
+  setupOnce: "The link works once. After that you sign in with this username and password.",
+  confirmPassword: "Repeat password",
+  passwordShort: "The password needs at least 8 characters.",
+  passwordsDiffer: "The two passwords are not the same.",
+  createAccount: "Create account and sign in",
 };
 
 export type Key = keyof Dict;

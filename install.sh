@@ -33,11 +33,11 @@ if [ "$FANCY" = 1 ]; then
   R=$'\e[0m'; BD=$'\e[1m'
   C1=$'\e[38;5;51m'; C2=$'\e[38;5;45m'; C3=$'\e[38;5;39m'; C4=$'\e[38;5;33m'; C5=$'\e[38;5;27m'
   G=$'\e[38;5;48m'; G2=$'\e[38;5;35m'; G3=$'\e[38;5;22m'
-  M=$'\e[38;5;141m'; PK=$'\e[38;5;213m'; Y=$'\e[38;5;221m'; RED=$'\e[38;5;204m'
+  M=$'\e[38;5;141m'; RED=$'\e[38;5;204m'
   DIM=$'\e[38;5;60m'; W=$'\e[38;5;255m'; GR=$'\e[38;5;246m'
   SP='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'; OK='✔'; NO='✖'; AR='⟩'
 else
-  R=; BD=; C1=; C2=; C3=; C4=; C5=; G=; G2=; G3=; M=; PK=; Y=; RED=; DIM=; W=; GR=
+  R=; BD=; C1=; C2=; C3=; C4=; C5=; G=; G2=; G3=; M=; RED=; DIM=; W=; GR=
   SP='|/-\'; OK='ok'; NO='FAIL'; AR='>'
 fi
 
@@ -378,7 +378,7 @@ wait_active() { # the service is up and answering
 box() { # box <title colour> <title> then "KEY|value" lines on stdin
   local tc=$1 title=$2 lines=() k v w=58 l
   while IFS= read -r l; do lines+=("$l"); done
-  for l in "${lines[@]}"; do v=${l#*|}; [ $((${#v} + 16)) -gt $w ] && w=$((${#v} + 16)); done
+  for l in "${lines[@]}"; do v=${l#*|}; [ $((${#v} + 17)) -gt $w ] && w=$((${#v} + 17)); done
   local p bar
   p=$(pad_to $((w + 4)))
   bar=$(printf '%*s' "$w" '' | sed 's/ /═/g')
@@ -387,7 +387,7 @@ box() { # box <title colour> <title> then "KEY|value" lines on stdin
   printf '%s%s╠%s╣%s\n' "$p" "$C3" "$bar" "$R"
   for l in "${lines[@]}"; do
     k=${l%%|*}; v=${l#*|}
-    printf '%s%s║%s %s%-10s%s %s%s%s%*s%s║%s\n' "$p" "$C3" "$R" "$DIM" "$k" "$R" "$W$BD" "$v" "$R" $((w - 12 - ${#v})) '' "$C3" "$R"
+    printf '%s%s║%s %s%-11s%s %s%s%s%*s%s║%s\n' "$p" "$C3" "$R" "$DIM" "$k" "$R" "$W$BD" "$v" "$R" $((w - 13 - ${#v})) '' "$C3" "$R"
   done
   printf '%s%s╚%s╝%s\n' "$p" "$C3" "$bar" "$R"
 }
@@ -395,19 +395,29 @@ box() { # box <title colour> <title> then "KEY|value" lines on stdin
 info_value() { sed -n "s/.*$1: *//p" "$HOME_DIR/install-info.txt" | head -n1 | tr -d ' '; }
 
 finale_install() {
-  local url user pass ready
-  url=$(info_value Panel); user=$(info_value Username); pass=$(info_value Password)
+  local url user pass ready setup qr_target
+  url=$(info_value Panel); user=$(info_value Username); pass=$(info_value Password); setup=$(info_value Setup)
   ready=$(sed -n 's/.*starter inbounds: *//p' "$HOME_DIR/install-info.txt" | head -n1 | sed 's/ *( */ :/g; s/ *)//g; s/port //g')
+  qr_target=${setup:-$url}
   printf '\n'
-  if [ "$FANCY" = 1 ] && [ "$ROWS" -ge 26 ] && [ "$COLS" -ge 50 ] && "$BIN" qr "$url" >/dev/null 2>&1; then
-    printf '%s%sscan to open the panel on your phone%s\n' "$(pad_to 36)" "$DIM" "$R"
-    "$BIN" qr "$url" | sed "s/^/$(pad_to 33)/"
+  if [ "$FANCY" = 1 ] && [ "$ROWS" -ge 26 ] && [ "$COLS" -ge 50 ] && "$BIN" qr "$qr_target" >/dev/null 2>&1; then
+    if [ -n "$setup" ]; then
+      printf '%s%sscan to finish the setup on your phone%s\n' "$(pad_to 38)" "$DIM" "$R"
+    else
+      printf '%s%sscan to open the panel on your phone%s\n' "$(pad_to 36)" "$DIM" "$R"
+    fi
+    "$BIN" qr "$qr_target" | sed "s/^/$(pad_to 33)/"
     printf '\n'
   fi
   {
     echo "PANEL|$url"
-    echo "USERNAME|$user"
-    echo "PASSWORD|$pass"
+    if [ -n "$setup" ]; then
+      echo "SETUP LINK|$setup"
+      echo "ACCOUNT|open the setup link and choose your own username + password"
+    else
+      echo "USERNAME|$user"
+      echo "PASSWORD|$pass"
+    fi
     [ -n "$ready" ] && echo "READY|$ready"
     echo "VERSION|Dunvex $TAG"
   } | box "$G" "▓▓ ACCESS GRANTED ▓▓  Dunvex is online"
@@ -444,9 +454,14 @@ do_install() {
   TASK_NOTE="xray + sing-box + starter protocols" task CORES "cores and admin" bash -c "umask 077; '$BIN' setup ${args[*]:-} > '$HOME_DIR/install-info.txt'"
   chmod 600 "$HOME_DIR/install-info.txt"
   TASK_NOTE="bbr · fq · fast open" task TUNE "network tuning" tune_network
-  local panel_port
+  # open the panel's port and the starter protocols' ports (usually all 443: TCP for
+  # the panel + Reality, UDP for Hysteria2), each once
+  local panel_port fw_ports=() p
   panel_port=$(sed -n 's/.*Panel: *http[^:]*:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$HOME_DIR/install-info.txt" | head -n1)
-  TASK_NOTE="panel ${panel_port:-2096} · 443 · 4444" task SHIELD "firewall" open_firewall "${panel_port:-2096}" 443 4444
+  for p in "${panel_port:-2096}" $(grep 'starter inbounds' "$HOME_DIR/install-info.txt" | grep -o '(port [0-9]*' | grep -o '[0-9]*$'); do
+    [[ " ${fw_ports[*]} " == *" $p "* ]] || fw_ports+=("$p")
+  done
+  TASK_NOTE="$(IFS=' '; echo "${fw_ports[*]}") · tcp + udp" task SHIELD "firewall" open_firewall "${fw_ports[@]}"
   TASK_NOTE="systemd · dunvex.service" task SERVICE "start service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN'; write_unit && systemctl enable --now dunvex && wait_active"
   finale_install
 }

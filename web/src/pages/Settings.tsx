@@ -174,6 +174,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
           <label><Label>{t("panelPath")}</Label><Input dir="ltr" className="mono" value={s.panel_path ?? ""} onChange={(e) => set("panel_path", e.target.value)} /></label>
           <label><Label>{t("subPath")}</Label><Input dir="ltr" className="mono" value={s.sub_path ?? ""} onChange={(e) => set("sub_path", e.target.value)} /></label>
         </div>
+        <p className="mt-3 text-[12.5px] text-ink3 leading-relaxed">{t("panelPortShared")}</p>
         <div className="mt-5"><Toggle checked={s.panel_tls === "true"} onChange={(v) => set("panel_tls", String(v))} label={lang === "fa" ? "پنل روی HTTPS (با همان گواهی TLS)" : "Serve the panel over HTTPS (same TLS certificate)"} /></div>
         <SaveBar keys={["panel_port", "panel_path", "sub_path", "panel_tls"]} />
       </Panel>

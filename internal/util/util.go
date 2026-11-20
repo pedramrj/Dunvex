@@ -229,3 +229,13 @@ func FreePort(port int) bool {
 	}
 	return true
 }
+
+// FreeUDPPort reports whether a UDP port can be bound on all interfaces.
+func FreeUDPPort(port int) bool {
+	u, err := net.ListenPacket("udp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return false
+	}
+	u.Close()
+	return true
+}

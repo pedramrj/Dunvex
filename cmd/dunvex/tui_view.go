@@ -77,22 +77,30 @@ func (m *model) viewNav(w int) string {
 		counts[secLogs] = "live"
 	}
 	lines := []string{""}
+	badge := lipgloss.NewStyle().Background(colBar).Foreground(colCyan).Bold(true)
 	for i, s := range sections {
-		label := s.icon + "  " + s.name
+		key := strconv.Itoa(i + 1)
+		label := s.icon + " " + s.name
 		c := counts[section(i)]
-		gap := max(1, w-lipgloss.Width(label)-lipgloss.Width(c)-2)
-		row := " " + label + strings.Repeat(" ", gap) + c + " "
+		gap := max(1, w-lipgloss.Width(label)-lipgloss.Width(c)-5)
+		row := " " + key + "  " + label + strings.Repeat(" ", gap) + c + " "
 		switch {
 		case i == m.navSel && m.navFocus:
 			row = lipgloss.NewStyle().Background(colSel).Foreground(colText).Bold(true).Width(w).Render(row)
 		case i == m.navSel:
 			row = lipgloss.NewStyle().Background(colBar).Foreground(colCyan).Bold(true).Width(w).Render(row)
 		default:
-			row = " " + stCyan.Render(s.icon) + "  " + stText.Render(s.name) + strings.Repeat(" ", gap) + stDim.Render(c)
+			row = badge.Render(" "+key+" ") + " " + stCyan.Render(s.icon) + " " + stText.Render(s.name) + strings.Repeat(" ", gap) + stDim.Render(c)
 		}
 		lines = append(lines, row)
 	}
-	lines = append(lines, "", stDim.Render(" ───"), " "+stKey.Render("ctrl+p")+" "+stDim.Render("commands"), " "+stKey.Render("1-8")+"    "+stDim.Render("jump"), " "+stKey.Render("tab")+"    "+stDim.Render("switch pane"))
+	lines = append(lines, "",
+		stVio.Bold(true).Render(" KEYS"),
+		" "+stKey.Render("1-8")+stDim.Render("    open a section"),
+		" "+stKey.Render("↑↓")+stDim.Render("     move · ")+stKey.Render("enter")+stDim.Render(" open"),
+		" "+stKey.Render("tab")+stDim.Render("    switch pane"),
+		" "+stKey.Render("ctrl+p")+stDim.Render(" commands"),
+		" "+stKey.Render("?")+stDim.Render("      all keys · ")+stKey.Render("q")+stDim.Render(" quit"))
 	return strings.Join(lines, "\n")
 }
 
@@ -542,7 +550,7 @@ func row(w int, selected bool, cells ...cell) string {
 
 func (m *model) viewBackups(w int) string {
 	sel := func(i int) bool { return i == m.itemSel && !m.navFocus }
-	lines := []string{"", row(w, sel(0), cell{"＋", stCyan, 2}, cell{"Back up now", stBold, 22}, cell{"copies the database to /root  ·  ctrl+b", stDim, 0}), ""}
+	lines := []string{"", row(w, sel(0), cell{"[n]", stCyan.Bold(true), 3}, cell{"Back up now", stBold, 22}, cell{"copies the database to /root  ·  ctrl+b", stDim, 0}), ""}
 	if len(m.snap.backups) == 0 {
 		lines = append(lines, stDim.Render(" no backups in /root yet"))
 	}
@@ -560,9 +568,9 @@ func (m *model) viewService(w int) string {
 		if i == len(serviceActions)-1 {
 			ns = stBad.Bold(true)
 		}
-		lines = append(lines, row(w, i == m.itemSel && !m.navFocus, cell{"▸", stCyan, 1}, cell{a.name, ns, 20}, cell{a.desc, stDim, 0}))
+		lines = append(lines, row(w, i == m.itemSel && !m.navFocus, cell{"[" + a.key + "]", stCyan.Bold(true), 3}, cell{a.name, ns, 20}, cell{a.desc, stDim, 0}))
 	}
-	lines = append(lines, "", stDim.Render(" enter runs the action · risky ones ask first · ctrl+r restart · ctrl+b backup"))
+	lines = append(lines, "", stDim.Render(" press the letter in [ ] to run an action, or move with ↑↓ and press enter · risky ones ask first"))
 	return strings.Join(lines, "\n")
 }
 
@@ -592,14 +600,23 @@ func (m *model) viewNetwork(w int) string {
 }
 
 func (m *model) viewLogin(w int) string {
-	row := func(k, v string) string { return " " + stDim.Render(fmt.Sprintf("%-10s", k)) + stBold.Render(v) }
-	lines := []string{"",
-		row("PANEL", m.panel),
-		row("ADMINS", strings.Join(m.snap.admins, ", ")),
-		row("PASSWORD", "hidden · reset it in Service"),
-		row("SUB PATH", m.st.GetSetting("sub_path", "/sub/")),
-		"", stDim.Render(" scan to open the panel on your phone"), ""}
-	for _, l := range qrLines(m.panel) {
+	row := func(k, v string) string { return " " + stDim.Render(fmt.Sprintf("%-11s", k)) + stBold.Render(v) }
+	target := m.panel
+	lines := []string{"", row("PANEL", m.panel)}
+	if link := setupLink(m.st, m.panel); link != "" && m.panel != "…" {
+		target = link
+		lines = append(lines,
+			row("SETUP LINK", link),
+			row("ACCOUNT", "not created yet · open the setup link to choose the username and password"),
+			"", stDim.Render(" scan to finish the setup on your phone"), "")
+	} else {
+		lines = append(lines,
+			row("ADMINS", strings.Join(m.snap.admins, ", ")),
+			row("PASSWORD", "hidden · reset it in Service"),
+			row("SUB PATH", m.st.GetSetting("sub_path", "/sub/")),
+			"", stDim.Render(" scan to open the panel on your phone"), "")
+	}
+	for _, l := range qrLines(target) {
 		lines = append(lines, " "+l)
 	}
 	return strings.Join(lines, "\n")
@@ -658,7 +675,7 @@ func (m *model) statusBar() string {
 		seg(colBar, svcFg, false, svc) +
 		seg(colSurface, colCyan, false, "↓ "+human(uint64(m.down))+"/s  ↑ "+human(uint64(m.up))+"/s") +
 		seg(colSurface, colMuted, false, fmt.Sprintf("users %d · online %d", len(m.snap.users), m.snap.online))
-	right := seg(colSurface, colDim, false, keyHint("ctrl+p", "commands", "tab", "focus", "q", "quit")) +
+	right := seg(colSurface, colDim, false, keyHint("1-8", "sections", "?", "keys", "ctrl+p", "commands", "q", "quit")) +
 		seg(colSel, colText, true, time.Now().Format("15:04:05"))
 	gap := m.w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 0 {
@@ -717,6 +734,30 @@ func (m *model) viewModal() string {
 	title := lipgloss.NewStyle().Foreground(accent).Bold(true).Render(md.title)
 	lines := []string{title, ""}
 	switch md.kind {
+	case "help":
+		k := func(key, what string) string {
+			return " " + lipgloss.NewStyle().Foreground(colCyan).Bold(true).Width(12).Render(key) + stText.Render(what)
+		}
+		lines = append(lines,
+			stVio.Bold(true).Render("Anywhere"),
+			k("1 … 8", "open Dashboard, Users, Protocols, Logs, Backups, Service, Network, Login"),
+			k("↑ ↓  enter", "move in the list and open"),
+			k("tab", "switch between the menu and the content"),
+			k("ctrl+p  :", "command palette (type to search)"),
+			k("ctrl+r", "restart the service"),
+			k("ctrl+b", "back up the database"),
+			k("?", "this help"),
+			k("q", "quit"),
+			"",
+			stVio.Bold(true).Render("Service (6)"),
+			k("r u c p", "restart · update Dunvex · update cores · panel port"),
+			k("a b x", "admin login · back up · uninstall"),
+			"",
+			stVio.Bold(true).Render("Users (2) · Logs (4) · Backups (5)"),
+			k("/", "filter users"),
+			k("pgup pgdn", "scroll the log · end follows again"),
+			k("n", "new backup"),
+			"", stDim.Render("press any key to close"))
 	case "busy":
 		lines = append(lines, m.spin.View()+" "+stMuted.Render("working… please wait"))
 	case "confirm":

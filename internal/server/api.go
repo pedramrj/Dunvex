@@ -30,6 +30,8 @@ func (s *Server) apiMux() http.Handler {
 	h := func(pattern, role string, fn handler) { mux.Handle(pattern, s.need(role, fn)) }
 
 	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("GET /setup-state", s.setupState)
+	mux.HandleFunc("POST /setup", s.firstSetup)
 	h("POST /logout", R, s.logout)
 	h("GET /me", R, s.me)
 	h("PUT /account", R, s.updateAccount)
@@ -95,6 +97,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var in struct{ Username, Password, Code string }
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
+		return
+	}
+	if s.SetupPending() {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "finish the first-run setup: open the setup link from the install (dunvex info shows it)", "needSetup": true})
 		return
 	}
 	a, err := s.St.AdminByName(strings.TrimSpace(in.Username))
@@ -681,45 +687,44 @@ func (s *Server) listInbounds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-func (s *Server) portTaken(port int, except int64) string {
-	if port < 1 || port > 65535 {
-		return "port must be between 1 and 65535"
-	}
-	if strconv.Itoa(port) == s.St.GetSetting("panel_port", "") {
-		return "that port is used by the panel"
-	}
-	list, _ := s.St.Inbounds()
-	for _, in := range list {
-		if in.ID != except && in.Port == port {
-			pa, pb := protocol.Get(in.Preset), (*protocol.Preset)(nil)
-			_ = pb
-			if pa != nil {
-				return fmt.Sprintf("port %d is already used by %s", port, pa.Name)
-			}
-			return fmt.Sprintf("port %d is already used", port)
-		}
-	}
-	return ""
+func (s *Server) panelPort() int {
+	pp, _ := strconv.Atoi(s.St.GetSetting("panel_port", "0"))
+	return pp
 }
 
-func (s *Server) pickPort(def int) int {
-	used := map[int]bool{}
+// portTaken explains why an inbound of preset p (Reality server name sni) cannot
+// use port, or returns "". The panel's port is shared with Reality and UDP.
+func (s *Server) portTaken(port int, except int64, p *protocol.Preset, sni string) string {
 	list, _ := s.St.Inbounds()
-	for _, in := range list {
-		used[in.Port] = true
+	return protocol.PortConflict(list, s.panelPort(), port, except, p, sni)
+}
+
+// portBusy reports a port held by another program. Ports Dunvex itself holds
+// (the panel's, or one of its inbounds') are not busy for this purpose.
+func (s *Server) portBusy(port int) bool {
+	if port == s.panelPort() {
+		return false
 	}
-	pp, _ := strconv.Atoi(s.St.GetSetting("panel_port", "0"))
-	used[pp] = true
-	if !used[def] && util.FreePort(def) {
-		return def
+	list, _ := s.St.Inbounds()
+	if protocol.UsesPort(list, port) {
+		return false
+	}
+	return !util.FreePort(port)
+}
+
+// pickPort chooses a port for a new inbound: the preset's default when it is
+// free (or can share the panel's port), otherwise a random free one.
+func (s *Server) pickPort(p *protocol.Preset, sni string) int {
+	if s.portTaken(p.DefaultPort, 0, p, sni) == "" && !s.portBusy(p.DefaultPort) {
+		return p.DefaultPort
 	}
 	for i := 0; i < 200; i++ {
-		p := 20000 + int(util.RandomBytes(2)[0])*150 + int(util.RandomBytes(1)[0])
-		if !used[p] && util.FreePort(p) {
-			return p
+		port := 20000 + int(util.RandomBytes(2)[0])*150 + int(util.RandomBytes(1)[0])
+		if s.portTaken(port, 0, p, sni) == "" && util.FreePort(port) {
+			return port
 		}
 	}
-	return def
+	return p.DefaultPort
 }
 
 func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
@@ -742,20 +747,22 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, p.Name+" needs a domain. Set your domain in Settings first.")
 		return
 	}
+	ib := &store.Inbound{Preset: p.ID, Remark: strings.TrimSpace(in.Remark), Enabled: true,
+		Params: protocol.Defaults(p, in.Params, s.St.GetSetting("domain", ""))}
+	sni := protocol.SharedSNI(ib)
 	port := in.Port
 	if port == 0 {
-		port = s.pickPort(p.DefaultPort)
+		port = s.pickPort(p, sni)
 	}
-	if msg := s.portTaken(port, 0); msg != "" {
+	if msg := s.portTaken(port, 0, p, sni); msg != "" {
 		fail(w, 400, msg)
 		return
 	}
-	if in.Port != 0 && !util.FreePort(port) {
+	if in.Port != 0 && s.portBusy(port) {
 		fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", port))
 		return
 	}
-	ib := &store.Inbound{Preset: p.ID, Port: port, Remark: strings.TrimSpace(in.Remark), Enabled: true,
-		Params: protocol.Defaults(p, in.Params, s.St.GetSetting("domain", ""))}
+	ib.Port = port
 	if err := s.St.CreateInbound(ib); err != nil {
 		fail(w, 500, err.Error())
 		return
@@ -784,11 +791,8 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad request")
 		return
 	}
-	if in.Port != nil && *in.Port != ib.Port {
-		if msg := s.portTaken(*in.Port, ib.ID); msg != "" {
-			fail(w, 400, msg)
-			return
-		}
+	oldPort, oldSNI := ib.Port, protocol.SharedSNI(ib)
+	if in.Port != nil {
 		ib.Port = *in.Port
 	}
 	if in.Remark != nil {
@@ -806,6 +810,16 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 				delete(ib.Params, "privateKey") // empty = regenerate
 			}
 			ib.Params = protocol.Defaults(p, ib.Params, s.St.GetSetting("domain", ""))
+		}
+	}
+	if sni := protocol.SharedSNI(ib); ib.Port != oldPort || (sni != oldSNI && ib.Port == s.panelPort()) {
+		if msg := s.portTaken(ib.Port, ib.ID, protocol.Get(ib.Preset), sni); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		if ib.Port != oldPort && s.portBusy(ib.Port) {
+			fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", ib.Port))
+			return
 		}
 	}
 	if err := s.St.UpdateInbound(ib); err != nil {
@@ -907,9 +921,16 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 				fail(w, 400, "invalid panel port")
 				return
 			}
-			if msg := s.portTaken(p, 0); msg != "" && msg != "that port is used by the panel" {
-				fail(w, 400, msg)
-				return
+			if v != s.St.GetSetting("panel_port", "") {
+				list, _ := s.St.Inbounds()
+				if msg := protocol.PanelPortConflict(list, p); msg != "" {
+					fail(w, 400, msg)
+					return
+				}
+				if !protocol.UsesPort(list, p) && !util.FreePort(p) {
+					fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", p))
+					return
+				}
 			}
 			needRestart = needRestart || v != s.St.GetSetting("panel_port", "")
 		case "panel_tls":

@@ -49,7 +49,15 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Full-screen menu (Bubble Tea): gradient header, panes, live dashboard, users, protocols, logs, backups, service,
       network and login + QR; command palette, dialogs, toasts, mouse; works down to 80×24
 
-## Phase 3: More protocols (v1.5)
+## One port and first-run setup (v1.5) ✅
+- [x] Port 443 for everything: an SNI router shares TCP 443 between the panel, the subscription page and any number of
+      Reality inbounds (each with its own SNI); Hysteria2 and other UDP protocols use UDP 443
+- [x] Xray behind the router gets the client's address through the PROXY protocol; sing-box (which dropped it) gets
+      its connection log translated back, so device limits and lists keep the real IPs
+- [x] No random admin password: a one-time setup link (and QR) lets the owner choose the username and password
+- [x] SSH menu without arrow keys: 1–8 open sections, letters run actions, `?` shows every key
+
+## Phase 3: More protocols (v1.6)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)

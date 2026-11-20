@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
 )
@@ -31,6 +32,14 @@ type Manager struct {
 	Xray    *Core
 	SingBox *Core
 	Env     func() protocol.Env
+
+	// SharedPort is the panel's TCP port when the edge router owns it (0: none).
+	// Reality inbounds on it listen on loopback and get their clients by SNI.
+	SharedPort func() int
+	// OnRoutes receives the router's SNI table after every apply.
+	OnRoutes func(map[string]edge.Target)
+	// ClientOf maps a loopback address the router dialed from to the real client IP.
+	ClientOf func(string) string
 
 	applyCh chan struct{}
 	applyMu sync.Mutex
@@ -72,6 +81,12 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 	}
 	m.Xray.Live = m.xrayLive
 	m.SingBox.OnLine = m.dev.singboxLine
+	m.dev.resolve = func(addr string) string {
+		if m.ClientOf != nil {
+			return m.ClientOf(addr)
+		}
+		return ""
+	}
 	return m
 }
 
@@ -152,6 +167,41 @@ func (m *Manager) Run(stop <-chan struct{}) {
 // Configs builds both core configs from the database.
 // A nil config means the core has nothing to serve.
 func (m *Manager) Configs() (xray, singbox []byte, inboundErrs map[int64]string, active map[string]bool, err error) {
+	b, err := m.build()
+	if err != nil {
+		return
+	}
+	return b.xray, b.singbox, b.errs, b.active, nil
+}
+
+// SNIRoutes returns the edge router's table for the current database.
+func (m *Manager) SNIRoutes() (map[string]edge.Target, error) {
+	b, err := m.build()
+	return b.routes, err
+}
+
+// built is one generation of core configs plus the edge router's SNI table.
+type built struct {
+	xray, singbox []byte
+	errs          map[int64]string
+	active        map[string]bool
+	routes        map[string]edge.Target
+}
+
+// internalPort is the loopback port a shared Reality inbound listens on.
+func internalPort(id int64, used map[int]bool) int {
+	p := 40000 + int(id%20000)
+	for used[p] {
+		p++
+		if p > 65000 {
+			p = 40000
+		}
+	}
+	used[p] = true
+	return p
+}
+
+func (m *Manager) build() (b built, err error) {
 	users, err := m.Store.Users()
 	if err != nil {
 		return
@@ -162,8 +212,20 @@ func (m *Manager) Configs() (xray, singbox []byte, inboundErrs map[int64]string,
 	}
 	env := m.Env()
 	now := time.Now().Unix()
-	inboundErrs = map[int64]string{}
-	active = map[string]bool{}
+	shared := 0
+	if m.SharedPort != nil {
+		shared = m.SharedPort()
+	}
+	b.errs, b.active, b.routes = map[int64]string{}, map[string]bool{}, map[string]edge.Target{}
+	used := map[int]bool{m.Xray.APIPort: true, m.SingBox.APIPort: true, shared: true}
+	m.mu.Lock()
+	for _, in := range inbounds {
+		used[in.Port] = true
+	}
+	for p := range m.badPorts {
+		used[p] = true
+	}
+	m.mu.Unlock()
 	var xin, sin []obj
 	var sTags, sUsers []string
 	seenUser := map[string]bool{}
@@ -173,29 +235,54 @@ func (m *Manager) Configs() (xray, singbox []byte, inboundErrs map[int64]string,
 		}
 		p := protocol.Get(in.Preset)
 		if p == nil {
-			inboundErrs[in.ID] = "unknown preset " + in.Preset
+			b.errs[in.ID] = "unknown preset " + in.Preset
 			continue
 		}
-		m.mu.Lock()
-		bad, isBad := m.badPorts[in.Port]
-		m.mu.Unlock()
-		if isBad {
-			inboundErrs[in.ID] = bad
-			continue
+		// a TCP inbound on the panel's port is reached through the edge router
+		listen, sni := 0, ""
+		if shared > 0 && in.Port == shared && p.Network == "tcp" {
+			if p.Security != "reality" {
+				b.errs[in.ID] = fmt.Sprintf("port %d is the panel's port: only Reality protocols can share it; choose another port", in.Port)
+				continue
+			}
+			if sni = protocol.SharedSNI(in); sni == "" {
+				b.errs[in.ID] = fmt.Sprintf("a Reality inbound on the panel's port %d needs an SNI", in.Port)
+				continue
+			}
+			if _, dup := b.routes[sni]; dup {
+				b.errs[in.ID] = fmt.Sprintf("another Reality inbound on port %d already uses the SNI %s", in.Port, sni)
+				continue
+			}
+			listen = internalPort(in.ID, used)
+		} else {
+			m.mu.Lock()
+			bad, isBad := m.badPorts[in.Port]
+			m.mu.Unlock()
+			if isBad {
+				b.errs[in.ID] = bad
+				continue
+			}
 		}
 		var us []*store.User
 		for _, u := range users {
 			if u.CanConnect(now) && u.AllowsInbound(in.ID) {
 				us = append(us, u)
-				active[u.Name] = true
+				b.active[u.Name] = true
 			}
 		}
 		switch p.Engine {
 		case "xray":
 			ib, e := protocol.XrayInbound(p, in, us, env)
 			if e != nil {
-				inboundErrs[in.ID] = e.Error()
+				b.errs[in.ID] = e.Error()
 				continue
+			}
+			if listen > 0 {
+				ib["listen"], ib["port"] = "127.0.0.1", listen
+				if ss, ok := ib["streamSettings"].(obj); ok {
+					ss["sockopt"] = obj{"acceptProxyProtocol": true} // the router sends the client's address first
+				}
+				b.routes[sni] = edge.Target{Addr: "127.0.0.1:" + strconv.Itoa(listen), ProxyHeader: true}
 			}
 			xin = append(xin, ib)
 		case "singbox":
@@ -204,8 +291,13 @@ func (m *Manager) Configs() (xray, singbox []byte, inboundErrs map[int64]string,
 			}
 			ibs, e := protocol.SingboxInbounds(p, in, us, env)
 			if e != nil {
-				inboundErrs[in.ID] = e.Error()
+				b.errs[in.ID] = e.Error()
 				continue
+			}
+			if listen > 0 {
+				// sing-box dropped PROXY protocol: the router maps the loopback port back to the client
+				ibs[0]["listen"], ibs[0]["listen_port"] = "127.0.0.1", listen
+				b.routes[sni] = edge.Target{Addr: "127.0.0.1:" + strconv.Itoa(listen)}
 			}
 			sin = append(sin, ibs...)
 			sTags = append(sTags, in.Tag())
@@ -218,11 +310,21 @@ func (m *Manager) Configs() (xray, singbox []byte, inboundErrs map[int64]string,
 		}
 	}
 	if len(xin) > 0 {
-		xray, _ = json.MarshalIndent(m.xrayConfig(xin), "", "  ")
+		b.xray, _ = json.MarshalIndent(m.xrayConfig(xin), "", "  ")
+	}
+	// TLS for an unknown name goes to the first shared Reality inbound (lowest id),
+	// which forwards it to its real target: the port behaves like plain Reality
+	for _, in := range inbounds {
+		if sni := protocol.SharedSNI(in); in.Port == shared && sni != "" {
+			if t, ok := b.routes[sni]; ok {
+				b.routes[edge.Fallback] = t
+				break
+			}
+		}
 	}
 	if len(sin) > 0 {
 		sort.Strings(sUsers)
-		singbox, _ = json.MarshalIndent(m.singboxConfig(sin, sTags, sUsers), "", "  ")
+		b.singbox, _ = json.MarshalIndent(m.singboxConfig(sin, sTags, sUsers), "", "  ")
 	}
 	return
 }
@@ -276,10 +378,11 @@ func (m *Manager) singboxConfig(inbounds []obj, tags, users []string) obj {
 func (m *Manager) Apply() error {
 	m.applyMu.Lock()
 	defer m.applyMu.Unlock()
-	xcfg, scfg, ierrs, active, err := m.Configs()
+	b, err := m.build()
 	if err != nil {
 		return err
 	}
+	xcfg, scfg := b.xray, b.singbox
 	m.collect() // save counters before a restart wipes them
 	cerrs := map[string]string{}
 	for attempt := 0; attempt < 6; attempt++ {
@@ -306,11 +409,15 @@ func (m *Manager) Apply() error {
 		if !retry {
 			break
 		}
-		xcfg, scfg, ierrs, active, err = m.Configs()
-		if err != nil {
+		if b, err = m.build(); err != nil {
 			return err
 		}
+		xcfg, scfg = b.xray, b.singbox
 	}
+	if m.OnRoutes != nil {
+		m.OnRoutes(b.routes)
+	}
+	ierrs, active := b.errs, b.active
 	m.mu.Lock()
 	prev := m.activeNames
 	m.inboundErrs, m.coreErrs, m.activeNames = ierrs, cerrs, active

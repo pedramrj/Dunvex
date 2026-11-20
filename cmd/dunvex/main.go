@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/pedramrj/dunvex/internal/bot"
 	"github.com/pedramrj/dunvex/internal/coremgr"
+	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/server"
@@ -120,9 +120,8 @@ Usage: dunvex [--home DIR] <command>
   admin <user> <pass>   reset the admin username and password
   set <key> <value>     change a setting (panel_port, panel_path, sub_path, domain, host)
   core install          download/update Xray and sing-box
-  menu                  interactive control centre for SSH
+  menu                  interactive control centre for SSH (status, users, logs, restart, update…)
   qr <text>             print a QR code in the terminal
-  menu                  interactive menu (status, restart, reset admin, update…)
   update                update Dunvex itself
   version               print version
 `)
@@ -157,7 +156,14 @@ func openStore(home string) (*store.Store, error) {
 // ensureDefaults creates the first admin and random secrets when missing.
 func ensureDefaults(st *store.Store) (user, pass string, created bool) {
 	if st.GetSetting("panel_port", "") == "" {
-		st.SetSetting("panel_port", strconv.Itoa(randomPort()))
+		// 443 when free: the panel, the subscription page and Reality share it
+		// through the edge router, so a server needs one open port and looks
+		// like any other HTTPS site
+		port := 443
+		if !util.FreePort(port) {
+			port = randomPort()
+		}
+		st.SetSetting("panel_port", strconv.Itoa(port))
 	}
 	if st.GetSetting("panel_path", "") == "" {
 		st.SetSetting("panel_path", "/"+util.RandomLower(12)+"/")
@@ -165,13 +171,51 @@ func ensureDefaults(st *store.Store) (user, pass string, created bool) {
 	if st.GetSetting("sub_path", "") == "" {
 		st.SetSetting("sub_path", "/"+util.RandomLower(8)+"/")
 	}
-	if st.AdminCount() == 0 {
-		user, pass = "admin", util.RandomString(14)
-		h, _ := server.HashPassword(pass)
-		st.UpsertAdmin(user, h)
+	// no random password: the owner chooses one on the first visit, through a one-time link
+	if st.AdminCount() == 0 && st.GetSetting("setup_token", "") == "" {
+		st.SetSetting("setup_token", util.RandomString(32))
 		created = true
 	}
 	return
+}
+
+// setupLink is the one-time first-run link, or "" when the owner already exists.
+func setupLink(st *store.Store, panel string) string {
+	tok := st.GetSetting("setup_token", "")
+	if tok == "" || st.AdminCount() > 0 {
+		return ""
+	}
+	return panel + "#/setup/" + tok
+}
+
+// checkPanelPort says whether the panel may move to port: the inbounds already
+// there must be able to share it, and no other program may hold it.
+func checkPanelPort(st *store.Store, port int) error {
+	if strconv.Itoa(port) == st.GetSetting("panel_port", "") {
+		return nil
+	}
+	list, _ := st.Inbounds()
+	if msg := protocol.PanelPortConflict(list, port); msg != "" {
+		return errors.New(msg)
+	}
+	if !protocol.UsesPort(list, port) && !util.FreePort(port) {
+		return fmt.Errorf("port %d is used by another program on this server", port)
+	}
+	return nil
+}
+
+// listenEdge opens the shared port, waiting a little for a previous process
+// (or a core that used to listen there) to let it go.
+func listenEdge(addr string) (*edge.Router, error) {
+	var err error
+	for i := 0; i < 30; i++ {
+		var r *edge.Router
+		if r, err = edge.Listen(addr); err == nil {
+			return r, nil
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return nil, err
 }
 
 func randomPort() int {
@@ -191,8 +235,9 @@ func serve(home string) error {
 		return err
 	}
 	defer st.Close()
-	if u, p, created := ensureDefaults(st); created {
-		log.Printf("created admin %q with password %q (change it in the panel)", u, p)
+	ensureDefaults(st)
+	if st.AdminCount() == 0 {
+		log.Printf("first-run setup is waiting: run `dunvex info` on this server for the one-time setup link")
 	}
 	_, binDir, runDir := paths(home)
 	sys := sysinfo.NewSampler()
@@ -220,22 +265,35 @@ func serve(home string) error {
 	srv.Bot = tg
 	tg.Start()
 
+	// the panel's port is shared: Reality inbounds on it are reached by SNI,
+	// everything else (panel, subscription page, probes) gets the panel
+	panelPort, _ := strconv.Atoi(st.GetSetting("panel_port", "2096"))
+	addr := os.Getenv("DUNVEX_LISTEN") + ":" + strconv.Itoa(panelPort)
+	router, err := listenEdge(addr)
+	if err != nil {
+		return fmt.Errorf("panel port %d: %w", panelPort, err)
+	}
+	env := srv.Env()
+	cert, key := env.CertFile, env.KeyFile
+	useTLS := st.GetSetting("panel_tls", "false") == "true" && util.FileExists(cert) && util.FileExists(key)
+	router.PanelTLS = useTLS
+	mgr.SharedPort = func() int { return panelPort }
+	mgr.OnRoutes = router.SetRoutes
+	mgr.ClientOf = router.ClientOf
+	go router.Serve()
+
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
 
-	addr := os.Getenv("DUNVEX_LISTEN") + ":" + st.GetSetting("panel_port", "2096")
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}
-	env := srv.Env()
-	cert, key := env.CertFile, env.KeyFile
-	useTLS := st.GetSetting("panel_tls", "false") == "true" && util.FileExists(cert) && util.FileExists(key)
 	go func() {
 		var err error
-		log.Printf("Dunvex %s panel on %s%s (tls=%v)", Version, addr, st.GetSetting("panel_path", "/"), useTLS)
+		log.Printf("Dunvex %s panel on %s%s (tls=%v, shared with Reality by SNI)", Version, addr, st.GetSetting("panel_path", "/"), useTLS)
 		if useTLS {
-			err = hs.ListenAndServeTLS(cert, key)
+			err = hs.ServeTLS(router.PanelListener(), cert, key)
 		} else {
-			err = hs.ListenAndServe()
+			err = hs.Serve(router.PanelListener())
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Printf("panel server: %v", err)
@@ -246,6 +304,7 @@ func serve(home string) error {
 	sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	hs.Shutdown(sctx)
+	router.Close()
 	close(stopMgr)
 	<-mgrDone
 	if restartCode != 0 {
@@ -256,7 +315,7 @@ func serve(home string) error {
 
 func setup(home string, args []string) error {
 	fsf := flag.NewFlagSet("setup", flag.ExitOnError)
-	port := fsf.Int("port", 0, "panel port (random when 0)")
+	port := fsf.Int("port", 0, "panel port (443 when free, else random; shared with Reality)")
 	path := fsf.String("path", "", "panel path (random when empty)")
 	user := fsf.String("user", "", "admin username")
 	pass := fsf.String("pass", "", "admin password (random when empty)")
@@ -271,17 +330,17 @@ func setup(home string, args []string) error {
 	fresh := st.AdminCount() == 0
 	u, p, _ := ensureDefaults(st)
 	if *port > 0 {
+		if err := checkPanelPort(st, *port); err != nil {
+			return err
+		}
 		st.SetSetting("panel_port", strconv.Itoa(*port))
 	}
 	if *path != "" {
 		st.SetSetting("panel_path", "/"+strings.Trim(*path, "/")+"/")
 	}
-	if *user != "" || *pass != "" {
+	if *pass != "" { // unattended installs may still set the password up front
 		if *user == "" {
 			*user = "admin"
-		}
-		if *pass == "" {
-			*pass = util.RandomString(14)
 		}
 		h, _ := server.HashPassword(*pass)
 		if a, err := st.FirstAdmin(); err == nil {
@@ -290,6 +349,7 @@ func setup(home string, args []string) error {
 			st.UpsertAdmin(*user, h)
 		}
 		u, p = *user, *pass
+		st.SetSetting("setup_token", "")
 	}
 	_, binDir, _ := paths(home)
 	if !*noCores {
@@ -308,15 +368,22 @@ func setup(home string, args []string) error {
 	}
 	if fresh && *starter {
 		if list, _ := st.Inbounds(); len(list) == 0 {
+			// 443 for everything when we can: Reality shares the panel's TCP port
+			// by SNI, Hysteria2 takes UDP 443 and looks like ordinary HTTP/3
+			pp, _ := strconv.Atoi(st.GetSetting("panel_port", "0"))
 			pr := protocol.Get("vless-reality-universal")
 			port := 443
-			if !util.FreePort(port) {
+			if port != pp && !util.FreePort(port) {
 				port = 8443
 			}
 			st.CreateInbound(&store.Inbound{Preset: pr.ID, Port: port, Enabled: true, Remark: "Reality", Params: protocol.Defaults(pr, nil, "")})
 			hy := protocol.Get("hysteria2")
-			st.CreateInbound(&store.Inbound{Preset: hy.ID, Port: hy.DefaultPort, Enabled: true, Remark: "Hysteria2", Params: protocol.Defaults(hy, map[string]any{"obfs": true}, "")})
-			fmt.Println("  ✓ starter inbounds: VLESS Reality (port", port, ") + Hysteria2 (port", hy.DefaultPort, ")")
+			hport := 443
+			if !util.FreeUDPPort(hport) {
+				hport = hy.DefaultPort
+			}
+			st.CreateInbound(&store.Inbound{Preset: hy.ID, Port: hport, Enabled: true, Remark: "Hysteria2", Params: protocol.Defaults(hy, map[string]any{"obfs": true}, "")})
+			fmt.Println("  ✓ starter inbounds: VLESS Reality (port", port, ") + Hysteria2 (port", hport, ")")
 		}
 	}
 	printInfo(st, u, p)
@@ -324,26 +391,25 @@ func setup(home string, args []string) error {
 }
 
 func printInfo(st *store.Store, user, pass string) {
-	ip := st.GetSetting("domain", "")
-	if ip == "" {
-		ip = st.GetSetting("host", "")
-	}
-	if ip == "" {
-		ip = sysinfo.DetectPublicIP()
-	}
-	url := fmt.Sprintf("http://%s%s", net.JoinHostPort(ip, st.GetSetting("panel_port", "")), st.GetSetting("panel_path", "/"))
+	url := panelURL(st)
 	fmt.Println()
 	fmt.Println("  ╭──────────────────── Dunvex ────────────────────╮")
 	fmt.Println("    Panel:    ", url)
-	if user != "" {
-		fmt.Println("    Username: ", user)
-	} else if a, err := st.FirstAdmin(); err == nil {
-		fmt.Println("    Username: ", a.Username)
-	}
-	if pass != "" {
-		fmt.Println("    Password: ", pass)
+	if link := setupLink(st, url); link != "" {
+		fmt.Println("    Setup:    ", link)
+		fmt.Println("    Username:  (you choose it on the first visit)")
+		fmt.Println("    Password:  (you choose it on the first visit)")
 	} else {
-		fmt.Println("    Password:  (unchanged — reset with: dunvex admin <user> <pass>)")
+		if user != "" {
+			fmt.Println("    Username: ", user)
+		} else if a, err := st.FirstAdmin(); err == nil {
+			fmt.Println("    Username: ", a.Username)
+		}
+		if pass != "" {
+			fmt.Println("    Password: ", pass)
+		} else {
+			fmt.Println("    Password:  (unchanged — reset with: dunvex admin <user> <pass>)")
+		}
 	}
 	fmt.Println("  ╰────────────────────────────────────────────────╯")
 	fmt.Println()
@@ -355,6 +421,7 @@ func info(home string) error {
 		return err
 	}
 	defer st.Close()
+	ensureDefaults(st) // a database that was never set up gets its setup link here
 	printInfo(st, "", "")
 	return nil
 }
@@ -384,6 +451,7 @@ func admin(home string, args []string) error {
 	} else if err := st.UpsertAdmin(args[0], h); err != nil {
 		return err
 	}
+	st.SetSetting("setup_token", "")
 	printInfo(st, args[0], pass)
 	fmt.Println("  Two-step login is off for this admin; turn it on again in Settings › Security.")
 	return nil
@@ -405,6 +473,15 @@ func set(home string, args []string) error {
 	v := args[1]
 	if args[0] == "panel_path" || args[0] == "sub_path" {
 		v = "/" + strings.Trim(v, "/") + "/"
+	}
+	if args[0] == "panel_port" {
+		p, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("invalid port %q", v)
+		}
+		if err := checkPanelPort(st, p); err != nil {
+			return err
+		}
 	}
 	if err := st.SetSetting(args[0], v); err != nil {
 		return err

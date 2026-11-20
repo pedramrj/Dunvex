@@ -21,6 +21,10 @@ type devices struct {
 	seen  map[string]map[string]int64 // user → ip → last seen
 	conn  map[string]string           // sing-box connection id → client ip
 	order []string
+
+	// resolve turns a loopback address the edge router dialed from into the
+	// real client IP (sing-box sees only the router)
+	resolve func(addr string) string
 }
 
 func newDevices() *devices {
@@ -106,6 +110,11 @@ func (d *devices) singboxLine(line string) bool {
 	d.mu.Lock()
 	if dir == "from" {
 		if host, _, err := net.SplitHostPort(addr); err == nil {
+			if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() && d.resolve != nil {
+				if real := d.resolve(addr); real != "" {
+					host = real
+				}
+			}
 			if _, ok := d.conn[id]; !ok {
 				d.order = append(d.order, id)
 			}
