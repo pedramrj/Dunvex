@@ -57,6 +57,8 @@ func (s *Server) apiMux() http.Handler {
 	h("PUT /nodes/{id}", O, s.updateNode)
 	h("DELETE /nodes/{id}", O, s.deleteNode)
 	h("POST /nodes/{id}/sync", A, s.syncNodeNow)
+	h("POST /nodes/{id}/update", O, s.updateNodeVersion)
+	h("POST /nodes/update", O, s.updateAllNodes)
 
 	h("GET /users", R, s.listUsers)
 	h("POST /users", R, s.createUsers)
@@ -901,8 +903,19 @@ func (s *Server) checkServer(nodeID int64, p *protocol.Preset) string {
 	if n.IsRelay() {
 		return n.Name + " is a relay: it forwards to another server and runs no protocols of its own"
 	}
-	if p.NeedsDomain {
-		return p.Name + " needs a domain and a certificate; on other servers use Reality or another protocol without a domain"
+	if p.NeedsDomain && n.Domain == "" {
+		return p.Name + " needs a domain: give " + n.Name + " its domain on the Servers page first (it then gets a Let's Encrypt certificate)"
+	}
+	return ""
+}
+
+// domainOf is the domain of the server an inbound runs on.
+func (s *Server) domainOf(nodeID int64) string {
+	if nodeID == 0 {
+		return s.St.GetSetting("domain", "")
+	}
+	if n, err := s.St.NodeByID(nodeID); err == nil {
+		return n.Domain
 	}
 	return ""
 }
@@ -993,7 +1006,7 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ib := &store.Inbound{Preset: p.ID, Remark: strings.TrimSpace(in.Remark), Enabled: true, NodeID: in.NodeID,
-		Params: protocol.Defaults(p, in.Params, s.St.GetSetting("domain", ""))}
+		Params: protocol.Defaults(p, in.Params, s.domainOf(in.NodeID))}
 	sni := protocol.SharedSNI(ib)
 	port := in.Port
 	if port == 0 {
@@ -1063,7 +1076,7 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 			if pk, ok := in.Params["privateKey"]; ok && pk == "" {
 				delete(ib.Params, "privateKey") // empty = regenerate
 			}
-			ib.Params = protocol.Defaults(p, ib.Params, s.St.GetSetting("domain", ""))
+			ib.Params = protocol.Defaults(p, ib.Params, s.domainOf(ib.NodeID))
 		}
 	}
 	if sni := protocol.SharedSNI(ib); ib.Port != oldPort || ib.NodeID != oldNode || (sni != oldSNI && ib.NodeID == 0 && ib.Port == s.panelPort()) {

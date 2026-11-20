@@ -21,7 +21,6 @@ import (
 	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
-	"github.com/pedramrj/dunvex/internal/util"
 )
 
 // isNode reports whether this home belongs to a node (not a panel).
@@ -194,16 +193,9 @@ func nodeServe(home string) error {
 	}
 	_, binDir, runDir := paths(home)
 	sys := sysinfo.NewSampler()
-	env := func() protocol.Env {
-		host := nodeHost(st)
-		e := protocol.Env{Host: host, Listen: os.Getenv("DUNVEX_LISTEN")}
-		// protocols that need TLS get a self-signed certificate; links pin it
-		if c, k, err := util.SelfSignedCert(certDir, host); err == nil {
-			e.CertFile, e.KeyFile, e.SelfSigned = c, k, true
-			e.CertSHA256 = util.CertSHA256(c)
-		}
-		return e
-	}
+	// protocols that need TLS use the node's Let's Encrypt certificate once it
+	// has a domain and one was issued; until then a self-signed one links pin
+	env := func() protocol.Env { return node.EnvFor(st, certDir, nodeHost(st), os.Getenv("DUNVEX_LISTEN")) }
 	mgr := engine.NewManager(st, binDir, runDir, env)
 	mgr.InstallUsque = func() error { _, err := coremgr.InstallUsque(binDir); return err }
 	rl := relay.New(map[int]string{nodePort(st): "the Dunvex agent"})
@@ -211,14 +203,17 @@ func nodeServe(home string) error {
 	rl.SetCert(cert) // a reverse tunnel serves the agent's certificate, which the panel pins
 	tunnels := relay.NewTunnels(os.Getenv("DUNVEX_LISTEN"))
 	defer tunnels.Close()
-	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env, Relay: rl, Tunnels: tunnels}
-	agent.RestoreForwards()
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	restart := false
+	agent := &node.Agent{Version: Version, St: st, Mgr: mgr, Sys: sys, Env: env, Relay: rl, Tunnels: tunnels, CertDir: certDir,
+		Restart: func() { restart = true; stop() }} // systemd starts the new binary (Restart=always)
+	agent.RestoreForwards()
+
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
+	go agent.RunCerts(stopMgr)
 
 	addr := os.Getenv("DUNVEX_LISTEN") + ":" + strconv.Itoa(nodePort(st))
 	hs := &http.Server{Addr: addr, Handler: agent.Handler(), TLSConfig: agent.TLSConfig(cert),
@@ -240,5 +235,9 @@ func nodeServe(home string) error {
 	hs.Shutdown(sctx)
 	close(stopMgr)
 	<-mgrDone
+	if restart {
+		st.Close()
+		os.Exit(3)
+	}
 	return nil
 }

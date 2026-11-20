@@ -38,6 +38,11 @@ type Node struct {
 	RelayMode   string `json:"relayMode"`
 	RelayPort   int    `json:"relayPort"`
 	RelaySecret string `json:"-"`
+
+	// Domain is the node's own name: it gets a Let's Encrypt certificate for
+	// it, and TLS protocols (NaiveProxy, the CDN ones) can run on it.
+	Domain   string `json:"domain"`
+	RealCert bool   `json:"realCert"` // the node serves a real certificate (links do not pin it)
 }
 
 // Relay modes.
@@ -78,14 +83,14 @@ var nodeTables = []string{
 	)`,
 }
 
-const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret`
+const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real`
 
 func scanNode(r scanner) (*Node, error) {
 	n := &Node{}
-	var en, only int
+	var en, only, real int
 	err := r.Scan(&n.ID, &n.Name, &n.Address, &n.AgentPort, &n.Fingerprint, &n.Secret, &en, &n.CertSHA256, &n.StatsSeq, &n.Epoch, &n.LastSeen, &n.CreatedAt,
-		&n.Role, &n.RelayTarget, &only, &n.RelayShift, &n.RelayMode, &n.RelayPort, &n.RelaySecret)
-	n.Enabled, n.RelayOnly = en == 1, only == 1
+		&n.Role, &n.RelayTarget, &only, &n.RelayShift, &n.RelayMode, &n.RelayPort, &n.RelaySecret, &n.Domain, &real)
+	n.Enabled, n.RelayOnly, n.RealCert = en == 1, only == 1, real == 1
 	return n, err
 }
 
@@ -126,9 +131,9 @@ func (s *Store) CreateNode(n *Node) error {
 	if n.Role == "" {
 		n.Role = RoleServer
 	}
-	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.CreatedAt, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift,
-		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret)
+		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("a server named %q already exists", n.Name)
@@ -146,9 +151,9 @@ func (s *Store) UpdateNode(n *Node) error {
 	if n.Role == "" {
 		n.Role = RoleServer
 	}
-	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=?,role=?,relay_target=?,relay_only=?,relay_shift=?,relay_mode=?,relay_port=?,relay_secret=? WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=?,role=?,relay_target=?,relay_only=?,relay_shift=?,relay_mode=?,relay_port=?,relay_secret=?,domain=?,cert_real=? WHERE id=?`,
 		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.LastSeen, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift,
-		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.ID)
+		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert), n.ID)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return fmt.Errorf("a server named %q already exists", n.Name)
 	}

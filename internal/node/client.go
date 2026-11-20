@@ -98,6 +98,46 @@ func (c *Client) Push(ctx context.Context, s State) (Status, error) {
 	return st, err
 }
 
+// Update sends the node a Dunvex binary (bin, with its SHA-256) or, with bin
+// nil, the release version it downloads itself. The node restarts afterwards.
+func (c *Client) Update(ctx context.Context, bin []byte, sum, version string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+c.Addr+"/update", nil)
+	if err != nil {
+		return "", err
+	}
+	if bin != nil {
+		req.Body = io.NopCloser(bytes.NewReader(bin))
+		req.ContentLength = int64(len(bin))
+		req.Header.Set("Content-Type", "application/octet-stream")
+		req.Header.Set("X-Dunvex-SHA256", sum)
+		req.Header.Set("X-Dunvex-Version", version)
+	} else {
+		b, _ := json.Marshal(map[string]string{"version": version})
+		req.Body = io.NopCloser(bytes.NewReader(b))
+		req.ContentLength = int64(len(b))
+		req.Header.Set("Content-Type", "application/json")
+	}
+	// a large upload to a slow server: longer than the usual calls
+	hc := &http.Client{Transport: c.hc.Transport, Timeout: 15 * time.Minute}
+	res, err := hc.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	var out struct {
+		Version string `json:"version"`
+		Error   string `json:"error"`
+	}
+	json.NewDecoder(io.LimitReader(res.Body, 1<<20)).Decode(&out)
+	if res.StatusCode != http.StatusOK {
+		if out.Error != "" {
+			return "", fmt.Errorf("%s", out.Error)
+		}
+		return "", fmt.Errorf("node answered %s", res.Status)
+	}
+	return out.Version, nil
+}
+
 // Release tells the node it no longer belongs to this panel.
 func (c *Client) Release(ctx context.Context) error {
 	return c.call(ctx, http.MethodPost, "/release", nil, nil, nil)

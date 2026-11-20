@@ -255,6 +255,13 @@ export interface NodeStatus {
   tunnel?: { port: number; listening: boolean; error?: string; links: number; peer?: string; since?: number } | null;
   tunnelLinks?: { name: string; addr: string; links: number; error?: string; since?: number; streams: number }[];
   time: number;
+  os?: string;
+  arch?: string;
+  domain?: string;
+  realCert?: boolean; // a Let's Encrypt certificate for its domain
+  certExpiry?: number;
+  certError?: string;
+  certBusy?: boolean;
 }
 
 /** One port a relay forwards to its target server. */
@@ -298,6 +305,11 @@ export interface NodeView {
   targetName?: string;
   tunnelLinks: number; // this server's links to a reverse relay in front of it
   tunnelError?: string;
+  domain: string; // the server's own domain ("" = none)
+  realCert: boolean;
+  // the server runs another version than the panel: via "panel" (its binary)
+  // or "github"; "" with a reason (old: no remote updates yet; dev: a dev panel)
+  update?: { panel: string; via: "panel" | "github" | ""; newer: boolean; reason?: "old" | "dev" } | null;
 }
 
 export interface Line {

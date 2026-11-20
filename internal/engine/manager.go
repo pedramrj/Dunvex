@@ -919,3 +919,16 @@ func (m *Manager) UserRate(id int64) Sample {
 	defer m.mu.Unlock()
 	return m.userRate[id]
 }
+
+// CertsRenewed restarts the cores that read certificate files, so a renewed
+// certificate written over the old one is served at once.
+func (m *Manager) CertsRenewed() {
+	m.applyMu.Lock()
+	for _, c := range []*Core{m.Xray, m.SingBox} {
+		if c.Running() {
+			c.Restart()
+		}
+	}
+	m.applyMu.Unlock()
+	m.RequestApply()
+}

@@ -124,6 +124,8 @@ var addedColumns = []struct{ table, column, def string }{
 	{"nodes", "relay_mode", "TEXT NOT NULL DEFAULT 'forward'"},
 	{"nodes", "relay_port", "INTEGER NOT NULL DEFAULT 0"},
 	{"nodes", "relay_secret", "TEXT NOT NULL DEFAULT ''"},
+	{"nodes", "domain", "TEXT NOT NULL DEFAULT ''"},
+	{"nodes", "cert_real", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func (s *Store) migrate() error {

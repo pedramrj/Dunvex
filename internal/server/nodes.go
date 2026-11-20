@@ -164,7 +164,7 @@ func (s *Server) desired(n *store.Node) node.State {
 		"routing":       s.St.GetSetting("routing", ""),
 	}}
 	if n.IsRelay() {
-		// a relay forwards ports; it needs no protocols, users or routing
+		// a relay forwards ports; it needs no protocols, users, routing or domain
 		st.Settings["routing"] = ""
 		st.Forwards = s.relayForwards(n)
 		if n.Reverse() {
@@ -173,6 +173,9 @@ func (s *Server) desired(n *store.Node) node.State {
 		return st
 	}
 	st.Tunnels = s.tunnelLinks(n.ID)
+	if st.Domain = n.Domain; st.Domain != "" {
+		st.ACMEEmail = s.St.GetSetting("acme_email", "")
+	}
 	inbounds, _ := s.St.Inbounds()
 	for _, in := range inbounds {
 		if in.NodeID == n.ID {
@@ -202,7 +205,7 @@ func (s *Server) desired(n *store.Node) node.State {
 
 func stateHash(st node.State) string {
 	// counters change all the time and say nothing about what to serve
-	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards, Tunnel: st.Tunnel, Tunnels: st.Tunnels}
+	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards, Tunnel: st.Tunnel, Tunnels: st.Tunnels, Domain: st.Domain, ACMEEmail: st.ACMEEmail}
 	for _, in := range st.Inbounds {
 		c := *in
 		c.Up, c.Down = 0, 0
@@ -288,9 +291,8 @@ func (h *nodeHub) sync(n *store.Node) {
 		up, down = up+t.Up, down+t.Down
 	}
 
-	if status.CertSHA256 != n.CertSHA256 {
-		n.CertSHA256 = status.CertSHA256 // links pin the node's own certificate
-	}
+	// links pin a self-signed certificate, never a real one (it changes at each renewal)
+	n.CertSHA256, n.RealCert = status.CertSHA256, status.RealCert && n.Domain != "" && status.Domain == n.Domain
 	n.LastSeen = now
 	s.St.UpdateNode(n)
 
@@ -359,7 +361,11 @@ func (s *Server) envFor(in *store.Inbound, local protocol.Env, nodes map[int64]*
 	if n == nil {
 		return local
 	}
-	return protocol.Env{Host: n.Address, SelfSigned: true, CertSHA256: n.CertSHA256}
+	e := protocol.Env{Host: n.Address, Domain: n.Domain}
+	if !n.RealCert {
+		e.SelfSigned, e.CertSHA256 = true, n.CertSHA256
+	}
+	return e
 }
 
 // remarkFor names a config in client apps; a node's configs carry the server name.
@@ -393,12 +399,16 @@ type nodeView struct {
 	Inbounds    int          `json:"inbounds"`
 	RateUp      int64        `json:"rateUp"`
 	RateDown    int64        `json:"rateDown"`
+	Update      *nodeUpdate  `json:"update,omitempty"` // the node runs another version than the panel
 }
 
 func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
 	l := s.hub().snapshot(n.ID)
 	v := nodeView{Node: n, Paired: n.Paired(), Error: l.Error, LastTry: l.LastTry, Status: l.Status, RateUp: l.RateUp, RateDown: l.RateDown}
 	v.Online = n.Enabled && l.Status != nil && l.Fails < nodeOffline && time.Now().Unix()-l.LastOK < 60
+	if l.Status != nil {
+		v.Update = s.updateFor(l.Status)
+	}
 	for _, in := range inbounds {
 		if in.NodeID == n.ID {
 			v.Inbounds++
@@ -446,12 +456,18 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 		RelayShift  int    `json:"relayShift"`
 		RelayMode   string `json:"relayMode"`
 		RelayPort   int    `json:"relayPort"`
+		Domain      string `json:"domain"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
 		return
 	}
 	in.Name = strings.TrimSpace(in.Name)
+	domain, msg := cleanNodeDomain(in.Domain, in.Role == store.RoleRelay)
+	if msg != "" {
+		fail(w, 400, msg)
+		return
+	}
 	if in.Name == "" || len([]rune(in.Name)) > 32 {
 		fail(w, 400, "give the server a name of up to 32 characters")
 		return
@@ -470,7 +486,7 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	n := &store.Node{Name: in.Name, Address: host, AgentPort: p, Fingerprint: tok.Fingerprint, Secret: tok.Secret, Enabled: true, Role: store.RoleServer}
+	n := &store.Node{Name: in.Name, Address: host, AgentPort: p, Fingerprint: tok.Fingerprint, Secret: tok.Secret, Enabled: true, Role: store.RoleServer, Domain: domain}
 	if in.Role == store.RoleRelay {
 		if msg := s.checkRelayTarget(0, in.RelayTarget); msg != "" {
 			fail(w, 400, msg)
@@ -517,11 +533,13 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		RelayShift  *int    `json:"relayShift"`
 		RelayMode   *string `json:"relayMode"`
 		RelayPort   *int    `json:"relayPort"`
+		Domain      *string `json:"domain"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
 		return
 	}
+	oldDomain := n.Domain
 	if in.Name != nil {
 		name := strings.TrimSpace(*in.Name)
 		if name == "" || len([]rune(name)) > 32 {
@@ -590,6 +608,28 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if in.Domain != nil || n.IsRelay() {
+		want := n.Domain
+		if in.Domain != nil {
+			want = *in.Domain
+		}
+		d, msg := cleanNodeDomain(want, n.IsRelay())
+		if msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		if d == "" && n.Domain != "" {
+			for _, in := range s.inboundsOn(n.ID) {
+				if p := protocol.Get(in.Preset); p != nil && p.NeedsDomain {
+					fail(w, 400, fmt.Sprintf("%s runs %s, which needs the domain; move or remove it first", n.Name, p.Name))
+					return
+				}
+			}
+		}
+		if d != n.Domain {
+			n.Domain, n.RealCert = d, false // the new domain's certificate is not there yet
+		}
+	}
 	if n.IsRelay() {
 		if msg := s.checkRelayTarget(n.ID, n.RelayTarget); msg != "" {
 			fail(w, 400, msg)
@@ -599,6 +639,10 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 	if err := s.St.UpdateNode(n); err != nil {
 		fail(w, 400, err.Error())
 		return
+	}
+	if n.Domain != oldDomain {
+		s.moveNodeDomain(n, oldDomain)
+		s.St.Log("node", "%s set the domain of %s to %q", adminOf(r).Username, n.Name, n.Domain)
 	}
 	s.KickNodes()
 	s.applyTunnels()

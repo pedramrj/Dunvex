@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
@@ -43,7 +44,22 @@ type Agent struct {
 	Relay   *relay.Relay   // forwards to another server when this node is a relay
 	Tunnels *relay.Tunnels // links this node keeps to reverse relays in front of it
 
+	// the node's own certificate (CertDir holds it; Obtain is tlsmgr.Renew
+	// unless a test replaces it)
+	CertDir string
+	Obtain  func(certDir, domain, email string) (cert, key string, renewed bool, err error)
+
+	// updates from the panel: Restart asks the service to start again (with
+	// the new binary); the rest are for tests (the defaults use the running
+	// executable, run it with "version", and download from GitHub)
+	Restart     func()
+	Executable  string
+	CheckBinary func(path string) (string, error)
+	Download    func(version string) ([]byte, error)
+
 	mu    sync.Mutex // one state push or stats batch at a time
+	upd   sync.Mutex // one update at a time
+	cert  certJob
 	fails int
 }
 
@@ -108,6 +124,7 @@ func (a *Agent) Handler() http.Handler {
 	mux.HandleFunc("PUT /state", a.paired(a.state))
 	mux.HandleFunc("POST /stats", a.paired(a.stats))
 	mux.HandleFunc("POST /release", a.paired(a.release))
+	mux.HandleFunc("POST /update", a.paired(a.update))
 	return mux
 }
 
@@ -195,8 +212,9 @@ func (a *Agent) Status() Status {
 		CertSHA256: env.CertSHA256, Cores: a.Mgr.CoreStatuses(),
 		CoreErrors: cerr, InboundErrors: ierr, CPU: snap.CPU, MemUsed: snap.MemUsed, MemTotal: snap.MemTotal,
 		DiskUsed: snap.DiskUsed, DiskTotal: snap.DiskTotal, Uptime: snap.Uptime, NetUp: snap.NetUp, NetDown: snap.NetDown,
-		Users: len(users), Inbounds: len(inbounds), Time: time.Now().Unix(),
+		Users: len(users), Inbounds: len(inbounds), Time: time.Now().Unix(), OS: runtime.GOOS, Arch: runtime.GOARCH,
 	}
+	a.certStatus(&st, env)
 	if a.Relay != nil {
 		st.Forwards, st.Tunnel = a.Relay.Stats(), a.Relay.TunnelStat()
 	}
@@ -276,6 +294,7 @@ func (a *Agent) Apply(s State) error {
 			a.St.SetSetting(k, v)
 		}
 	}
+	a.setDomain(s.Domain, s.ACMEEmail)
 	if a.Relay != nil {
 		a.Relay.ApplyTunnel(s.Tunnel) // first: forwards must know the tunnel's port
 		a.Relay.Apply(s.Forwards)

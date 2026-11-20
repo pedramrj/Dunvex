@@ -99,7 +99,8 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 
 ## Phase 4: Network (v2.0)
 - [x] Multi-server: central panel + node agent (mTLS) (v1.8)
-- [ ] Nodes: domains and real certificates for TLS protocols, one-click node updates
+- [x] Nodes: domains with Let's Encrypt certificates (renewed by themselves) for TLS protocols, one-click node
+      updates from the panel's own binary or GitHub; the panel's certificate is renewed too (v1.18)
 - [x] Relay servers: a domestic server forwards every protocol (TCP and UDP) to a server abroad, with a port shift,
       relay-only configs and per-port traffic and delay (v1.15)
 - [x] Reverse tunnels: the server abroad keeps pinned TLS links to the relay, multiplexed, TCP and UDP, limited to the

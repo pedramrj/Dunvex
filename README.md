@@ -79,7 +79,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
 - **Several servers (v1.8)**: run `install.sh node` on another server and paste its token under Servers › Add server.
   Each protocol runs on the server you pick; users get one subscription with every server, and their usage, devices
-  and limits are counted in one place. Panel and nodes talk over mutual TLS with pinned certificates.
+  and limits are counted in one place. Panel and nodes talk over mutual TLS with pinned certificates. Since v1.18 a
+  node can have its own domain and Let's Encrypt certificate (renewed by itself), so NaiveProxy and the CDN protocols
+  run on it too, and nodes update to the panel's version in one click, even without GitHub access. See
+  [docs/NODES.md](docs/NODES.md).
 - **Where users connect from (v1.7)**: the world map draws arcs from each country to the server, looked up offline
   on the server itself (DB-IP country data, CC BY 4.0); addresses are never sent anywhere.
 - **Control-room panel (v1.2)**: KPI cards with live sparklines, a neon network topology and world map, CPU gauge,
@@ -162,7 +165,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
 - **چند سرور (نسخهٔ ۱.۸)**: روی سرور دیگر `install.sh node` را اجرا کنید و توکنش را در «سرورها › افزودن سرور» بگذارید.
   هر پروتکل روی سروری که انتخاب می‌کنید اجرا می‌شود؛ کاربر یک اشتراک واحد با همهٔ سرورها می‌گیرد و مصرف، دستگاه‌ها و
-  محدودیت‌هایش یکجا شمرده می‌شود. ارتباط پنل و سرورها با TLS دوطرفه و گواهی‌های سنجاق‌شده است.
+  محدودیت‌هایش یکجا شمرده می‌شود. ارتباط پنل و سرورها با TLS دوطرفه و گواهی‌های سنجاق‌شده است. از نسخهٔ ۱.۱۸ هر سرور
+  دامنه و گواهی Let's Encrypt خودش را دارد (و خودش تمدید می‌کند)، پس NaiveProxy و پروتکل‌های CDN هم رویش اجرا می‌شوند؛
+  و سرورها با یک کلیک به نسخهٔ پنل به‌روز می‌شوند، حتی بدون دسترسی به گیت‌هاب. راهنما: [docs/NODES.md](docs/NODES.md).
 - **کاربران از کجا وصل‌اند (نسخهٔ ۱.۷)**: نقشهٔ جهان از هر کشور تا سرور کمان می‌کشد؛ جستجوی کشور روی خود سرور و آفلاین
   انجام می‌شود (دادهٔ کشورهای DB-IP) و هیچ آدرسی به جایی فرستاده نمی‌شود.
 - **پنل اتاق کنترل (نسخهٔ ۱.۲)**: کارت‌های آماری با نمودار زنده، توپولوژی نئونی شبکه و نقشهٔ جهان، گیج پردازنده،

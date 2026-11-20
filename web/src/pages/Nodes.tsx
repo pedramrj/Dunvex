@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRightLeft, Cpu, HardDrive, LayoutGrid, List, MemoryStick, Network, Pencil, Plus, Power, RefreshCw, Server, Settings2, ShieldCheck, Trash2, Users as UsersIcon } from "lucide-react";
+import { ArrowRightLeft, CircleArrowUp, Cpu, Globe, HardDrive, LayoutGrid, List, MemoryStick, Network, Pencil, Plus, Power, RefreshCw, Server, Settings2, ShieldCheck, Trash2, TriangleAlert, Users as UsersIcon } from "lucide-react";
 import { api, type Geo, type NodeView, type Overview, type RelayStat } from "../lib/api";
-import { ago, bytes, cx, duration, speed } from "../lib/format";
+import { ago, bytes, cx, date, duration, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, ErrorState, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Skeleton, Textarea, Toggle, useToast } from "../components/ui";
 import { Spark } from "../components/charts";
@@ -21,6 +21,8 @@ export function NodesPage() {
   const [err, setErr] = useState("");
   const [mode, setMode] = useState<"grid" | "list">("grid");
   const [adding, setAdding] = useState(false);
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const toast = useToast();
   const loadNodes = useCallback(() => api<NodeView[]>("nodes").then(setNodes).catch(() => setNodes([])), []);
   useEffect(() => {
     let alive = true;
@@ -40,6 +42,18 @@ export function NodesPage() {
   const hist = d.history.slice(-90);
   const live = d.live[d.live.length - 1] ?? { up: 0, down: 0 };
   const servers = (nodes ?? []).filter((x) => x.role !== "relay"); // where a relay can point
+  const behind = (nodes ?? []).filter((x) => x.online && x.update && !x.update.newer && x.update.via);
+  const updateAll = () => {
+    setUpdatingAll(true);
+    api<{ results: { name: string; version?: string; error?: string }[] }>("nodes/update", { method: "POST" })
+      .then((r) => {
+        const bad = r.results.filter((x) => x.error);
+        bad.forEach((x) => toast(`${x.name}: ${x.error}`, "error"));
+        if (r.results.length > bad.length) toast(t("nodeUpdated"));
+        loadNodes();
+      })
+      .catch((e) => toast(e.message, "error")).finally(() => setUpdatingAll(false));
+  };
 
   const local = (
     <Panel>
@@ -86,6 +100,7 @@ export function NodesPage() {
     <div>
       <PageHead title={t("nodes")} sub={t("nodesSub")} action={
         <div className="flex items-center gap-2">
+          {owner && behind.length > 1 && <Button variant="soft" icon={<CircleArrowUp className="size-4" />} loading={updatingAll} onClick={updateAll}>{t("nodeUpdateAll")} · {n(behind.length)}</Button>}
           {owner && <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdding(true)}>{t("addServer")}</Button>}
           <Segmented value={mode} onChange={setMode} options={[{ value: "grid", label: <LayoutGrid className="size-4" /> }, { value: "list", label: <List className="size-4" /> }]} />
         </div>} />
@@ -160,7 +175,10 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(x.name);
   const [relaySet, setRelaySet] = useState(false);
+  const [domainSet, setDomainSet] = useState(false);
+  const [domain, setDomain] = useState(x.domain);
   const isRelay = x.role === "relay";
+  const up = x.update;
   const ns = x.status;
   const pct = (a: number, b: number) => (b ? (a / b) * 100 : 0);
   const st = !x.enabled ? { c: "var(--text3)", k: "nodeOff" as const }
@@ -180,7 +198,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
           : <span className="grid place-items-center size-14 rounded-2xl bg-cyan/10 border border-cyan/30 text-cyan"><Server className="size-6" /></span>}
         <div className="min-w-0">
           <div className="text-[18px] font-bold truncate" dir="ltr">{x.name}</div>
-          <div className="text-[12.5px] text-ink3"><span className="mono sensitive" dir="ltr">{x.address}</span>{ns ? <> · <span dir="ltr">Dunvex {ns.version}</span></> : null}</div>
+          <div className="text-[12.5px] text-ink3"><span className="mono sensitive" dir="ltr">{x.address}</span>{x.domain ? <> · <span className="mono" dir="ltr">{x.domain}</span></> : null}{ns ? <> · <span dir="ltr">Dunvex {ns.version}</span></> : null}</div>
         </div>
         <div className="ms-auto flex flex-wrap items-center gap-1.5">
           {isRelay && <Badge color="var(--color-violet)">{t("relayTo")} <bdi dir="ltr">{x.relayTarget ? x.targetName : t("thisServer")}</bdi>{x.relayMode === "reverse" ? ` · ${t("relayModeReverse")}` : ""}</Badge>}
@@ -188,6 +206,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
           {owner && (
             <>
               {isRelay && <IconButton label={t("relaySettings")} onClick={() => setRelaySet(true)}><Settings2 className="size-4" /></IconButton>}
+              {!isRelay && <IconButton label={t("nodeDomainTitle")} onClick={() => { setDomain(x.domain); setDomainSet(true); }}><Globe className="size-4" /></IconButton>}
               <IconButton label={t("syncNow")} onClick={() => act("sync", api(`nodes/${x.id}/sync`, { method: "POST" }))} disabled={!!busy}><RefreshCw className={cx("size-4", busy === "sync" && "animate-spin")} /></IconButton>
               <IconButton label={t("rename")} onClick={() => { setName(x.name); setRenaming(true); }}><Pencil className="size-4" /></IconButton>
               <IconButton label={x.enabled ? t("turnOff") : t("turnOn")} onClick={() => act("power", api(`nodes/${x.id}`, { method: "PUT", body: { enabled: !x.enabled } }))}><Power className="size-4" /></IconButton>
@@ -198,6 +217,26 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
 
       {x.error && (
         <div className="mb-4 rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad"><bdi dir="ltr" className="break-words">{x.error}</bdi></div>
+      )}
+      {up && x.online && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary2/30 bg-primary2/[.07] px-3 py-2 text-[12.5px]">
+          <CircleArrowUp className="size-4 text-primary2 shrink-0" />
+          <span className="flex-1 min-w-0">
+            {up.newer ? <>{t("nodeUpdateNewer")} (<bdi dir="ltr">{up.panel}</bdi>)</>
+              : up.via ? <>{t("nodeUpdateReady")} <bdi dir="ltr" className="font-medium">{up.panel}</bdi>{up.via === "github" ? <span className="text-ink3"> · {t("nodeUpdateGithub")}</span> : null}</>
+              : t(up.reason === "dev" ? "nodeUpdateDev" : "nodeUpdateOld")}
+          </span>
+          {owner && up.via && !up.newer && (
+            <Button size="sm" variant="primary" loading={busy === "update"}
+              onClick={() => act("update", api(`nodes/${x.id}/update`, { method: "POST" }), t("nodeUpdated"))}>{t("nodeUpdate")}</Button>
+          )}
+        </div>
+      )}
+      {ns?.certError && x.domain && (
+        <div className="mb-4 flex gap-2 rounded-xl border border-warn/40 bg-warn/[.08] px-3 py-2 text-[12.5px]">
+          <TriangleAlert className="size-4 text-warn shrink-0 mt-0.5" />
+          <span className="min-w-0">{t("nodeCertError")} <bdi dir="ltr" className="break-words text-ink2">{ns.certError}</bdi></span>
+        </div>
       )}
       {ns ? (
         <>
@@ -221,7 +260,10 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
             <KV label={t("ram")}><span className="num">{bytes(ns.memUsed, lang)} / {bytes(ns.memTotal, lang)}</span></KV>
             {isRelay
               ? <KV label={t("relayShift")}><span className="num" dir="ltr">{x.relayShift > 0 ? "+" : ""}{n(x.relayShift)}</span></KV>
-              : <KV label="TLS"><span className="mono text-[11.5px]" dir="ltr">{ns.certSha256 ? ns.certSha256.slice(0, 12) + "…" : "—"}</span></KV>}
+              : <KV label={t("nodeCert")}>{ns.realCert
+                  ? <span className="text-online">Let's Encrypt{ns.certExpiry ? <span className="text-ink3"> · {t("nodeCertUntil")} {date(ns.certExpiry, lang)}</span> : null}</span>
+                  : ns.certBusy ? <span className="text-ink2">{t("nodeCertIssuing")}</span>
+                  : <span className="text-ink2">{t("nodeCertSelf")} <span className="mono text-[11px] text-ink3" dir="ltr">{ns.certSha256 ? ns.certSha256.slice(0, 8) + "…" : ""}</span></span>}</KV>}
           </div>
           {isRelay && x.relayMode === "reverse" && <TunnelState x={x} />}
           {isRelay ? <RelayPorts list={ns.forwards ?? []} /> : (
@@ -253,6 +295,15 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
       </Dialog>
       {isRelay && <RelaySettings open={relaySet} node={x} servers={servers.filter((s) => s.id !== x.id)} onClose={() => setRelaySet(false)}
         onDone={() => { setRelaySet(false); onChange(); }} />}
+      <Dialog open={domainSet} onClose={() => setDomainSet(false)} title={<>{t("nodeDomainTitle")} · <bdi dir="ltr">{x.name}</bdi></>}
+        footer={<><Button variant="quiet" onClick={() => setDomainSet(false)}>{t("cancel")}</Button>
+          <Button variant="primary" loading={busy === "domain"} onClick={() => { act("domain", api(`nodes/${x.id}`, { method: "PUT", body: { domain: domain.trim() } }), t("saved")); setDomainSet(false); }}>{t("save")}</Button></>}>
+        <label>
+          <Label>{t("nodeDomain")}</Label>
+          <Input dir="ltr" className="mono" value={domain} placeholder="de.example.com" onChange={(e) => setDomain(e.target.value)} />
+          <span className="block text-[12.5px] text-ink3 leading-6 mt-2">{t("nodeDomainHint")}</span>
+        </label>
+      </Dialog>
     </Panel>
   );
 }
@@ -375,11 +426,12 @@ function AddServerDialog({ open, servers, onClose, onDone }: { open: boolean; se
   const [token, setToken] = useState("");
   const [role, setRole] = useState<"server" | "relay">("server");
   const [rf, setRf] = useState<RelayForm>(relayForm());
+  const [domain, setDomain] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setName(""); setToken(""); setRole("server"); setRf(relayForm()); } }, [open]);
+  useEffect(() => { if (open) { setName(""); setToken(""); setRole("server"); setRf(relayForm()); setDomain(""); } }, [open]);
   const add = () => {
     setBusy(true);
-    const relay = role === "relay" ? { role, ...relayBody(rf) } : {};
+    const relay = role === "relay" ? { role, ...relayBody(rf) } : { domain: domain.trim() };
     api<NodeView>("nodes", { body: { name: name.trim(), token: token.trim(), ...relay } })
       .then((x) => { x.paired ? toast(t("serverAdded")) : toast(x.error || t("nodePairing"), "error"); onDone(); })
       .catch((e) => toast(e.message, "error"))
@@ -404,6 +456,13 @@ function AddServerDialog({ open, servers, onClose, onDone }: { open: boolean; se
           <p className="text-[12.5px] text-ink3 mt-2">{role === "relay" ? t("roleRelayHint") : t("roleServerHint")}</p>
         </div>
         {role === "relay" && <RelayFields servers={servers} f={rf} set={setRf} />}
+        {role === "server" && (
+          <label>
+            <Label>{t("nodeDomain")} <span className="text-ink3 font-normal">· {t("optional")}</span></Label>
+            <Input dir="ltr" className="mono" value={domain} placeholder="de.example.com" onChange={(e) => setDomain(e.target.value)} />
+            <span className="block text-[12.5px] text-ink3 leading-6 mt-1.5">{t("nodeDomainHint")}</span>
+          </label>
+        )}
         <p className="text-[12px] text-ink3 inline-flex items-start gap-1.5"><ShieldCheck className="size-4 shrink-0 text-primary2" />{t("nodeSecure")}</p>
       </div>
     </Dialog>

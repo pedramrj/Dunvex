@@ -153,6 +153,9 @@ type State struct {
 	Forwards []relay.Forward      `json:"forwards,omitempty"`
 	Tunnel   *relay.TunnelServer  `json:"tunnel,omitempty"`  // a reverse relay's tunnel port
 	Tunnels  []relay.TunnelClient `json:"tunnels,omitempty"` // reverse relays this server keeps links to
+	// the node's own domain: it gets a Let's Encrypt certificate for it
+	Domain    string `json:"domain,omitempty"`
+	ACMEEmail string `json:"acmeEmail,omitempty"`
 }
 
 // Status is the node's health, as the panel shows it.
@@ -179,6 +182,14 @@ type Status struct {
 	Tunnel        *relay.TunnelStat  `json:"tunnel,omitempty"`      // a reverse relay's tunnel
 	TunnelLinks   []relay.ClientStat `json:"tunnelLinks,omitempty"` // this server's links to reverse relays
 	Time          int64              `json:"time"`
+	OS            string             `json:"os"`
+	Arch          string             `json:"arch"`
+	// the node's domain and its certificate
+	Domain     string `json:"domain,omitempty"`
+	RealCert   bool   `json:"realCert"`             // a real (Let's Encrypt) certificate is served
+	CertExpiry int64  `json:"certExpiry,omitempty"` // when it expires
+	CertError  string `json:"certError,omitempty"`  // why there is none yet
+	CertBusy   bool   `json:"certBusy,omitempty"`   // one is being issued now
 }
 
 // Batch is the traffic since the last acknowledged batch.

@@ -531,3 +531,51 @@ func InstallUsque(binDir string) (string, error) {
 	}
 	return ver, nil
 }
+
+// DunvexBinary downloads the Dunvex executable of release tag for this
+// server's system and returns it (checked against the release's digest).
+func DunvexBinary(tag string) ([]byte, error) {
+	req, _ := http.NewRequest("GET", "https://api.github.com/repos/"+Repo+"/releases/tags/"+tag, nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
+		req.Header.Set("Authorization", "Bearer "+t)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Dunvex %s on GitHub: %s", tag, resp.Status)
+	}
+	var r release
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+	want := fmt.Sprintf("dunvex-%s-%s.tar.gz", runtime.GOOS, goarch())
+	for _, a := range r.Assets {
+		if a.Name != want {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return nil, err
+		}
+		gz, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		tr := tar.NewReader(gz)
+		for {
+			h, err := tr.Next()
+			if err != nil {
+				break
+			}
+			if filepath.Base(h.Name) == "dunvex" && h.Typeflag == tar.TypeReg {
+				return io.ReadAll(io.LimitReader(tr, 256<<20))
+			}
+		}
+		return nil, fmt.Errorf("%s has no dunvex binary", want)
+	}
+	return nil, fmt.Errorf("%s is not in Dunvex %s", want, tag)
+}

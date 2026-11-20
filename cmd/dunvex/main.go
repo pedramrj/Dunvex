@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
@@ -32,6 +33,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/server"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
+	"github.com/pedramrj/dunvex/internal/tlsmgr"
 	"github.com/pedramrj/dunvex/internal/util"
 	"github.com/pedramrj/dunvex/web"
 )
@@ -310,6 +312,7 @@ func serve(home string) error {
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
 	go keepGeoIP(home, stopMgr)
+	go srv.RunCertRenewal(stopMgr)
 	srv.Tunnels = relay.NewTunnels(os.Getenv("DUNVEX_LISTEN")) // links to reverse relays in front of this server
 	defer srv.Tunnels.Close()
 	go srv.RunNodes(stopMgr)
@@ -319,7 +322,9 @@ func serve(home string) error {
 		var err error
 		log.Printf("Dunvex %s panel on %s%s (tls=%v, shared with Reality by SNI)", Version, addr, st.GetSetting("panel_path", "/"), useTLS)
 		if useTLS {
-			err = hs.ServeTLS(router.PanelListener(), cert, key)
+			// read again when the files change, so a renewed certificate needs no restart
+			hs.TLSConfig = &tls.Config{GetCertificate: (&tlsmgr.Reloader{Cert: cert, Key: key}).GetCertificate}
+			err = hs.ServeTLS(router.PanelListener(), "", "")
 		} else {
 			err = hs.Serve(router.PanelListener())
 		}
