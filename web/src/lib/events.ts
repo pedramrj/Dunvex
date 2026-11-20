@@ -14,6 +14,17 @@ type Rule = [RegExp, (m: string[]) => string];
 
 const rules: Rule[] = [
   [/^admin (.+) signed in from (.+)$/, (m) => `${iso(m[1])} از ${iso(m[2])} وارد شد`],
+  [/^owner account (.+) created from (.+)$/, (m) => `حساب مالک ${iso(m[1])} از ${iso(m[2])} ساخته شد`],
+  [/^(.+) signed out a session of (.+) \((.+), (.+)\)$/, (m) => `${iso(m[1])} نشست ${iso(m[2])} (${iso(m[3])}، ${iso(m[4])}) را بست`],
+  [/^(.+) signed out a session \((.+), (.+)\)$/, (m) => `${iso(m[1])} یک نشست (${iso(m[2])}، ${iso(m[3])}) را بست`],
+  [/^(.+) signed out (\d+) other session\(s\)$/, (m) => `${iso(m[1])} از ${fd(m[2])} نشست دیگر خارج شد`],
+  [/^(.+) created the API key "(.*)"$/, (m) => `${iso(m[1])} کلید API ${iso(m[2])} را ساخت`],
+  [/^(.+) deleted the API key "(.*)"$/, (m) => `${iso(m[1])} کلید API ${iso(m[2])} را حذف کرد`],
+  [/^(.+) added the server (.+) \((.+)\)$/, (m) => `${iso(m[1])} سرور ${iso(m[2])} (${iso(m[3])}) را افزود`],
+  [/^server (.+) was added and paired$/, (m) => `سرور ${iso(m[1])} اضافه و جفت شد`],
+  [/^server (.+) is not reachable: (.+)$/, (m) => `سرور ${iso(m[1])} در دسترس نیست: ${iso(m[2])}`],
+  [/^server (.+) is reachable again$/, (m) => `سرور ${iso(m[1])} دوباره در دسترس است`],
+  [/^(.+) removed the server (.+) and its protocols$/, (m) => `${iso(m[1])} سرور ${iso(m[2])} و پروتکل‌هایش را حذف کرد`],
   [/^failed sign-in for "(.*)" from (.+) \((.+)\)$/, (m) => `ورود ناموفق ${iso(m[1])} از ${iso(m[2])} (${reasons[m[3]] ?? iso(m[3])})`],
   [/^(.+) added admin (.+) \((.+)\)$/, (m) => `${iso(m[1])} مدیر ${iso(m[2])} را با نقش ${roles[m[3]] ?? iso(m[3])} افزود`],
   [/^(.+) removed admin (.+)$/, (m) => `${iso(m[1])} مدیر ${iso(m[2])} را حذف کرد`],

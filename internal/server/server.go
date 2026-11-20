@@ -48,6 +48,9 @@ type Server struct {
 
 	geoOnce sync.Once
 	geo2    *geoip.Loader // offline country data (see geoData)
+
+	nodeOnce sync.Once
+	nodes    *nodeHub // other servers (see hub)
 }
 
 // Bot is the Telegram side, as seen by the HTTP layer.

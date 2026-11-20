@@ -40,6 +40,8 @@ type Manager struct {
 	OnRoutes func(map[string]edge.Target)
 	// ClientOf maps a loopback address the router dialed from to the real client IP.
 	ClientOf func(string) string
+	// OnApplied runs after every apply, so other servers can be brought in line.
+	OnApplied func()
 
 	applyCh chan struct{}
 	applyMu sync.Mutex
@@ -230,8 +232,8 @@ func (m *Manager) build() (b built, err error) {
 	var sTags, sUsers []string
 	seenUser := map[string]bool{}
 	for _, in := range inbounds {
-		if !in.Enabled {
-			continue
+		if !in.Enabled || in.NodeID != 0 {
+			continue // inbounds of other servers run there
 		}
 		p := protocol.Get(in.Preset)
 		if p == nil {
@@ -416,6 +418,9 @@ func (m *Manager) Apply() error {
 	}
 	if m.OnRoutes != nil {
 		m.OnRoutes(b.routes)
+	}
+	if m.OnApplied != nil {
+		m.OnApplied()
 	}
 	ierrs, active := b.errs, b.active
 	m.mu.Lock()

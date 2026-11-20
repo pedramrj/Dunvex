@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, Globe2, Plus, Radar, Sparkles, Trash2 } from "lucide-react";
-import { api, type Field, type Group, type Inbound, type Preset } from "../lib/api";
+import { AlertTriangle, ChevronDown, Globe2, Plus, Radar, Server, Sparkles, Trash2 } from "lucide-react";
+import { api, type Field, type Group, type Inbound, type NodeView, type Preset } from "../lib/api";
 import { bytes, cx, groupColor, groups } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, Empty, Input, Label, SectionTitle, Select, Sheet, Skeleton, Toggle, useToast } from "../components/ui";
@@ -12,11 +12,14 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
   const toast = useToast();
   const [inbounds, setInbounds] = useState<Inbound[] | null>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
+  const [nodes, setNodes] = useState<NodeView[]>([]);
   const load = useCallback(() => api<Inbound[]>("inbounds").then(setInbounds).catch((e) => toast(e.message, "error")), [toast]);
   useEffect(() => {
     load();
     api<Preset[]>("presets").then(setPresets).catch(() => {});
+    api<NodeView[]>("nodes").then(setNodes).catch(() => {});
   }, [load]);
+  const nodeName = (id: number) => nodes.find((x) => x.id === id)?.name ?? "?";
   const byId = useMemo(() => Object.fromEntries(presets.map((p) => [p.id, p])), [presets]);
 
   const adding = arg?.startsWith("add");
@@ -82,6 +85,11 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                             <Badge color="var(--color-ink2)">{p?.engine === "singbox" ? "sing-box" : "Xray"}</Badge>
                             {p?.network === "udp" && <Badge color="var(--color-udp)">UDP</Badge>}
                             {p?.status === "beta" && <Badge color="var(--color-violet)">{t("beta")}</Badge>}
+                            {nodes.length > 0 && (
+                              <Badge color={i.nodeId ? "var(--color-cyan)" : "var(--color-ink3)"} icon={<Server className="size-3" />}>
+                                <bdi dir="ltr">{i.nodeId ? nodeName(i.nodeId) : t("thisServer")}</bdi>
+                              </Badge>
+                            )}
                           </div>
                           {i.error ? (
                             <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad">
@@ -105,30 +113,43 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
         </div>
       )}
 
-      <AddSheet open={!!adding} group={addGroup} presets={presets} onClose={close} onDone={() => { load(); close(); }} />
-      {editing && byId[editing.preset] && <EditSheet key={editing.id} inbound={editing} preset={byId[editing.preset]} onClose={close} onDone={() => { load(); }} />}
+      <AddSheet open={!!adding} group={addGroup} presets={presets} nodes={nodes} onClose={close} onDone={() => { load(); close(); }} />
+      {editing && byId[editing.preset] && <EditSheet key={editing.id} inbound={editing} preset={byId[editing.preset]} nodes={nodes} onClose={close} onDone={() => { load(); }} />}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- add
 
-function AddSheet({ open, group, presets, onClose, onDone }: { open: boolean; group?: Group; presets: Preset[]; onClose: () => void; onDone: () => void }) {
+/** The server a protocol runs on, when there is more than one. */
+function ServerPick({ nodes, value, onChange }: { nodes: NodeView[]; value: string; onChange: (v: string) => void }) {
+  const { t } = useI18n();
+  if (nodes.length === 0) return null;
+  return (
+    <label>
+      <Label>{t("server")}</Label>
+      <Select value={value} onChange={onChange} options={[{ value: "0", label: t("thisServer") }, ...nodes.map((x) => ({ value: String(x.id), label: x.name }))]} />
+    </label>
+  );
+}
+
+function AddSheet({ open, group, presets, nodes, onClose, onDone }: { open: boolean; group?: Group; presets: Preset[]; nodes: NodeView[]; onClose: () => void; onDone: () => void }) {
   const { t, lang } = useI18n();
   const toast = useToast();
   const [pick, setPick] = useState<Preset | null>(null);
   const [port, setPort] = useState("");
   const [remark, setRemark] = useState("");
   const [params, setParams] = useState<Record<string, any>>({});
+  const [server, setServer] = useState("0");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (open) { setPick(null); setPort(""); setRemark(""); setParams({}); }
+    if (open) { setPick(null); setPort(""); setRemark(""); setParams({}); setServer("0"); }
   }, [open]);
 
   const submit = () => {
     if (!pick) return;
     setBusy(true);
-    api<{ warning?: string }>("inbounds", { body: { preset: pick.id, port: +port || 0, remark, params } })
+    api<{ warning?: string }>("inbounds", { body: { preset: pick.id, port: +port || 0, remark, params, nodeId: +server } })
       .then((r) => { r.warning ? toast(r.warning, "error") : toast(t("saved")); onDone(); })
       .catch((e) => toast(e.message, "error"))
       .finally(() => setBusy(false));
@@ -170,6 +191,12 @@ function AddSheet({ open, group, presets, onClose, onDone }: { open: boolean; gr
       ) : (
         <div className="flex flex-col gap-5">
           <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? pick.descFa : pick.desc}</p>
+          {nodes.length > 0 && (
+            <div className="grid sm:grid-cols-2 gap-3 items-end">
+              <ServerPick nodes={nodes} value={server} onChange={setServer} />
+              {server !== "0" && <p className="text-[12px] text-ink3 pb-1">{t("nodeDomainNote")}</p>}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <label><Label hint={String(pick.defaultPort)}>{t("port")}</Label><Input type="number" value={port} placeholder={String(pick.defaultPort)} onChange={(e) => setPort(e.target.value)} className="num" /></label>
             <label><Label>{t("remark")}</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} dir="ltr" /></label>
@@ -183,16 +210,17 @@ function AddSheet({ open, group, presets, onClose, onDone }: { open: boolean; gr
 
 // ---------------------------------------------------------------- edit
 
-function EditSheet({ inbound, preset, onClose, onDone }: { inbound: Inbound; preset: Preset; onClose: () => void; onDone: () => void }) {
+function EditSheet({ inbound, preset, nodes, onClose, onDone }: { inbound: Inbound; preset: Preset; nodes: NodeView[]; onClose: () => void; onDone: () => void }) {
   const { t, lang } = useI18n();
   const toast = useToast();
+  const [server, setServer] = useState(String(inbound.nodeId ?? 0));
   const [port, setPort] = useState(String(inbound.port));
   const [remark, setRemark] = useState(inbound.remark);
   const [params, setParams] = useState<Record<string, any>>(inbound.params);
   const [busy, setBusy] = useState(false);
   const save = () => {
     setBusy(true);
-    api<{ warning?: string }>(`inbounds/${inbound.id}`, { method: "PUT", body: { port: +port, remark, params } })
+    api<{ warning?: string }>(`inbounds/${inbound.id}`, { method: "PUT", body: { port: +port, remark, params, nodeId: +server } })
       .then((r) => { r.warning ? toast(r.warning, "error") : toast(t("saved")); onDone(); })
       .catch((e) => toast(e.message, "error"))
       .finally(() => setBusy(false));
@@ -208,6 +236,7 @@ function EditSheet({ inbound, preset, onClose, onDone }: { inbound: Inbound; pre
       <div className="flex flex-col gap-5">
         <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? preset.descFa : preset.desc}</p>
         {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px]">{inbound.error}</bdi></div>}
+        {nodes.length > 0 && <div className="grid sm:grid-cols-2 gap-3"><ServerPick nodes={nodes} value={server} onChange={setServer} /></div>}
         <div className="grid grid-cols-2 gap-3">
           <label><Label>{t("port")}</Label><Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="num" /></label>
           <label><Label>{t("remark")}</Label><Input value={remark} onChange={(e) => setRemark(e.target.value)} dir="ltr" /></label>

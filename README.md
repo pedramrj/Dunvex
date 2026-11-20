@@ -32,6 +32,7 @@ a Reality SNI goes to Reality, everything else reaches the panel (and a stranger
 SNI; protocols that need a TLS certificate keep their own port.
 
 Manage from SSH: `dunvex menu` · Update: same command with `update` · Remove: `uninstall`.
+Another server for the same panel: the same command with `node` (it prints a token for Servers › Add server).
 
 The installer shows the DV logo, a live step log with download progress and checksum check, and ends with the
 login details and a QR code of the panel address. `dunvex menu` is a full-screen control centre built with Bubble Tea:
@@ -56,6 +57,9 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
 - **Exact per-user usage** across both cores, hourly history, live speed, who is online.
 - **Subscription** that adapts to the app: links, Clash Meta, sing-box JSON, plus a user page with QR codes and one-tap import (Hiddify, v2rayNG, Happ, Streisand, V2Box, Shadowrocket, NekoBox, sing-box, Clash).
+- **Several servers (v1.8)**: run `install.sh node` on another server and paste its token under Servers › Add server.
+  Each protocol runs on the server you pick; users get one subscription with every server, and their usage, devices
+  and limits are counted in one place. Panel and nodes talk over mutual TLS with pinned certificates.
 - **Where users connect from (v1.7)**: the world map draws arcs from each country to the server, looked up offline
   on the server itself (DB-IP country data, CC BY 4.0); addresses are never sent anywhere.
 - **Control-room panel (v1.2)**: KPI cards with live sparklines, a neon network topology and world map, CPU gauge,
@@ -96,6 +100,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 گواهی TLS لازم دارند پورت جدا می‌گیرند.
 
 مدیریت از SSH: ‏`dunvex menu` · به‌روزرسانی: همان دستور با `update` · حذف: `uninstall`.
+سرور دیگر برای همین پنل: همان دستور با `node` (توکنی می‌دهد که در «سرورها › افزودن سرور» گذاشته می‌شود).
 
 نصب‌کننده لوگوی DV، گزارش زندهٔ مراحل با نوار دانلود و بررسی checksum را نشان می‌دهد و در پایان اطلاعات ورود و QR آدرس پنل را می‌دهد.
 ‏`dunvex menu` یک مرکز کنترل تمام‌صفحه است: وضعیت زندهٔ سرویس، هسته‌ها، CPU، RAM، دیسک، شبکه و کاربران،
@@ -115,6 +120,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
 - **مصرف دقیق هر کاربر**، تاریخچهٔ ساعتی، سرعت لحظه‌ای، کاربران آنلاین.
 - **اشتراک هوشمند** برای همهٔ برنامه‌ها + صفحهٔ کاربر با QR و افزودن یک‌لمسی.
+- **چند سرور (نسخهٔ ۱.۸)**: روی سرور دیگر `install.sh node` را اجرا کنید و توکنش را در «سرورها › افزودن سرور» بگذارید.
+  هر پروتکل روی سروری که انتخاب می‌کنید اجرا می‌شود؛ کاربر یک اشتراک واحد با همهٔ سرورها می‌گیرد و مصرف، دستگاه‌ها و
+  محدودیت‌هایش یکجا شمرده می‌شود. ارتباط پنل و سرورها با TLS دوطرفه و گواهی‌های سنجاق‌شده است.
 - **کاربران از کجا وصل‌اند (نسخهٔ ۱.۷)**: نقشهٔ جهان از هر کشور تا سرور کمان می‌کشد؛ جستجوی کشور روی خود سرور و آفلاین
   انجام می‌شود (دادهٔ کشورهای DB-IP) و هیچ آدرسی به جایی فرستاده نمی‌شود.
 - **پنل اتاق کنترل (نسخهٔ ۱.۲)**: کارت‌های آماری با نمودار زنده، توپولوژی نئونی شبکه و نقشهٔ جهان، گیج پردازنده،

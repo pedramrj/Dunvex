@@ -40,6 +40,11 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/events?limit=200` | A | Event log |
 | GET | `/network/geo` | A | The server's own location |
 | GET | `/network/clients` | A | Devices of the last 5 minutes by country (counts only, looked up offline) |
+| GET | `/nodes` | A | Other servers with their state |
+| POST | `/nodes` | O | Add a server: `{"name":"Frankfurt","token":"dvxnode1.…"}` (pairs at once) |
+| PUT | `/nodes/{id}` | O | Rename, change the address, or turn a server off and on |
+| DELETE | `/nodes/{id}` | O | Remove a server and its protocols (the node is released) |
+| POST | `/nodes/{id}/sync` | A | Sync a server now |
 | GET | `/users` | R | All users with usage and status |
 | POST | `/users` | R | Create users: `{"name":"sara","dataLimit":32212254720,"durationDays":30,"ipLimit":2}` |
 | POST | `/users/bulk` | R | Act on many users at once |
@@ -52,7 +57,7 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/users/{id}/configs` | R | Share links and subscription address |
 | GET | `/presets` | A | Every protocol preset and its fields |
 | GET | `/inbounds` | A | Inbounds with their errors |
-| POST | `/inbounds` | A | Add an inbound: `{"preset":"vless-reality-universal","port":443,"params":{"sni":"www.speedtest.net"}}` |
+| POST | `/inbounds` | A | Add an inbound: `{"preset":"vless-reality-universal","port":443,"params":{"sni":"www.speedtest.net"},"nodeId":0}` (`nodeId`: the server, 0 = this one) |
 | PUT | `/inbounds/{id}` | A | Change an inbound |
 | DELETE | `/inbounds/{id}` | A | Remove an inbound |
 | POST | `/tools/sni` | A | Test Reality SNI candidates |

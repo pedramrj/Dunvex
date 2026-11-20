@@ -154,11 +154,13 @@ type profileItem struct {
 	p    *protocol.Preset
 	in   *store.Inbound
 	name string
+	env  protocol.Env // the address of the server the inbound runs on
 }
 
 func (s *Server) items(u *store.User) []profileItem {
 	inbounds, _ := s.St.Inbounds()
 	title := s.St.GetSetting("sub_title", "Dunvex")
+	local, nodes := s.Env(), s.nodeMap()
 	var out []profileItem
 	seen := map[string]int{}
 	for _, in := range inbounds {
@@ -169,22 +171,24 @@ func (s *Server) items(u *store.User) []profileItem {
 		if p == nil {
 			continue
 		}
-		name := protocol.Remark(in, p, u, title)
+		if in.NodeID != 0 && nodes[in.NodeID] == nil {
+			continue // its server was removed
+		}
+		name := remarkFor(in, p, u, title, nodes)
 		if seen[name]++; seen[name] > 1 {
 			name = fmt.Sprintf("%s %d", name, seen[name])
 		}
-		out = append(out, profileItem{p, in, name})
+		out = append(out, profileItem{p, in, name, s.envFor(in, local, nodes)})
 	}
 	return out
 }
 
 func (s *Server) clashProfile(u *store.User, now int64) []byte {
-	env := s.Env()
 	var proxies []obj
 	var names []string
 	if blockedReason(u, now) == "" {
 		for _, it := range s.items(u) {
-			if c := protocol.Clash(it.p, it.in, u, env, it.name); c != nil {
+			if c := protocol.Clash(it.p, it.in, u, it.env, it.name); c != nil {
 				proxies = append(proxies, c)
 				names = append(names, it.name)
 			}
@@ -217,12 +221,11 @@ func (s *Server) clashProfile(u *store.User, now int64) []byte {
 }
 
 func (s *Server) singboxProfile(u *store.User, now int64) []byte {
-	env := s.Env()
 	var outbounds, endpoints []obj
 	var tags []string
 	if blockedReason(u, now) == "" {
 		for _, it := range s.items(u) {
-			kind, items := protocol.SingboxOutbound(it.p, it.in, u, env, it.name)
+			kind, items := protocol.SingboxOutbound(it.p, it.in, u, it.env, it.name)
 			if len(items) == 0 {
 				continue
 			}

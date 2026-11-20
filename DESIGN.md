@@ -74,6 +74,11 @@ filters, export), Alerts (categories, severity, read state, quiet mode), Securit
 protections, admins without 2FA), Settings (appearance, brand studio, server, subscription, panel,
 security, admins, Telegram, cores, backup) and Mission control (a full-screen wall).
 
+Servers shows this server and every node as cards of the same shape (rings for CPU, memory and disk, uptime,
+last contact, speed, cores), so a fleet reads at a glance; a node's state is one word in its colour (connected,
+waiting to pair, not reachable, turned off). Adding a server is two steps in one dialog: the command to run on it,
+then its token. On Protocols every card names its server once there is more than one.
+
 Before any of that, Login. On a fresh install it shows the first-run card instead: the one-time setup link
 opens a form where the owner chooses the username and password (show/hide, strength meter, confirm). There is
 never a random password to copy. Without the link the card says to run `dunvex info` on the server.

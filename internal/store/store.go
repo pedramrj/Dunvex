@@ -115,10 +115,11 @@ var addedColumns = []struct{ table, column, def string }{
 	{"admins", "max_users", "INTEGER NOT NULL DEFAULT 0"},
 	{"admins", "max_data", "INTEGER NOT NULL DEFAULT 0"},
 	{"admins", "enabled", "INTEGER NOT NULL DEFAULT 1"},
+	{"inbounds", "node_id", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func (s *Store) migrate() error {
-	for _, m := range append(migrations, accessTables...) {
+	for _, m := range append(append(migrations, accessTables...), nodeTables...) {
 		if _, err := s.DB.Exec(m); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
@@ -592,6 +593,13 @@ func (s *Store) AddTraffic(now time.Time, users map[int64]Traffic, inbounds map[
 		return err
 	}
 	defer tx.Rollback()
+	if err := addTraffic(tx, now, users, inbounds); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func addTraffic(tx *sql.Tx, now time.Time, users map[int64]Traffic, inbounds map[int64]Traffic) error {
 	hour := now.Unix() / 3600
 	for id, t := range users {
 		if t.Up == 0 && t.Down == 0 {
@@ -611,7 +619,7 @@ func (s *Store) AddTraffic(now time.Time, users map[int64]Traffic, inbounds map[
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 // UsagePoint is one hourly bucket.
@@ -700,6 +708,7 @@ type Inbound struct {
 	Up        int64          `json:"up"`
 	Down      int64          `json:"down"`
 	CreatedAt int64          `json:"createdAt"`
+	NodeID    int64          `json:"nodeId"` // 0 = this server, otherwise the node it runs on
 }
 
 // Tag is the core-side tag of the inbound.
@@ -755,7 +764,7 @@ func scanInbound(r scanner) (*Inbound, error) {
 	in := &Inbound{}
 	var enabled int
 	var params string
-	if err := r.Scan(&in.ID, &in.Preset, &in.Remark, &in.Port, &enabled, &params, &in.Up, &in.Down, &in.CreatedAt); err != nil {
+	if err := r.Scan(&in.ID, &in.Preset, &in.Remark, &in.Port, &enabled, &params, &in.Up, &in.Down, &in.CreatedAt, &in.NodeID); err != nil {
 		return nil, err
 	}
 	in.Enabled = enabled == 1
@@ -764,7 +773,7 @@ func scanInbound(r scanner) (*Inbound, error) {
 	return in, nil
 }
 
-const inboundCols = `id,preset,remark,port,enabled,params,up,down,created_at`
+const inboundCols = `id,preset,remark,port,enabled,params,up,down,created_at,node_id`
 
 // Inbounds returns all inbounds.
 func (s *Store) Inbounds() ([]*Inbound, error) {
@@ -801,8 +810,8 @@ func (s *Store) CreateInbound(in *Inbound) error {
 	if in.CreatedAt == 0 {
 		in.CreatedAt = time.Now().Unix()
 	}
-	res, err := s.DB.Exec(`INSERT INTO inbounds(preset,remark,port,enabled,params,created_at) VALUES(?,?,?,?,?,?)`,
-		in.Preset, in.Remark, in.Port, b2i(in.Enabled), string(p), in.CreatedAt)
+	res, err := s.DB.Exec(`INSERT INTO inbounds(preset,remark,port,enabled,params,created_at,node_id) VALUES(?,?,?,?,?,?,?)`,
+		in.Preset, in.Remark, in.Port, b2i(in.Enabled), string(p), in.CreatedAt, in.NodeID)
 	if err != nil {
 		return err
 	}
@@ -815,8 +824,8 @@ func (s *Store) UpdateInbound(in *Inbound) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, _ := json.Marshal(in.Params)
-	_, err := s.DB.Exec(`UPDATE inbounds SET remark=?,port=?,enabled=?,params=? WHERE id=?`,
-		in.Remark, in.Port, b2i(in.Enabled), string(p), in.ID)
+	_, err := s.DB.Exec(`UPDATE inbounds SET remark=?,port=?,enabled=?,params=?,node_id=? WHERE id=?`,
+		in.Remark, in.Port, b2i(in.Enabled), string(p), in.NodeID, in.ID)
 	return err
 }
 

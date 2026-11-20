@@ -227,6 +227,50 @@ export interface Inbound {
   name: string;
   engine: string;
   error: string;
+  /** 0 = this server, otherwise the node it runs on */
+  nodeId: number;
+}
+
+/** Health a node reports. */
+export interface NodeStatus {
+  version: string;
+  hostname: string;
+  publicIp: string;
+  certSha256: string;
+  cores: { name: string; installed: boolean; running: boolean; version: string; uptime: number; restarts: number; error: string }[];
+  coreErrors: Record<string, string>;
+  inboundErrors: Record<string, string>;
+  cpu: number;
+  memUsed: number;
+  memTotal: number;
+  diskUsed: number;
+  diskTotal: number;
+  uptime: number;
+  netUp: number;
+  netDown: number;
+  users: number;
+  inbounds: number;
+  time: number;
+}
+
+/** Another server this panel runs protocols on. */
+export interface NodeView {
+  id: number;
+  name: string;
+  address: string;
+  agentPort: number;
+  fingerprint: string;
+  enabled: boolean;
+  lastSeen: number;
+  createdAt: number;
+  paired: boolean;
+  online: boolean;
+  error: string;
+  lastTry: number;
+  status: NodeStatus | null;
+  inbounds: number;
+  rateUp: number;
+  rateDown: number;
 }
 
 export interface Line {

@@ -71,13 +71,22 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Falls back to Xray's geoip.dat (Iran, Russia, China) when the full data is missing; the server's own
       location falls back to the offline data when the online lookup fails; `dunvex geoip [update]`
 
-## Phase 3: More protocols (v1.8)
+## Several servers (v1.8) ✅
+- [x] Nodes: `install.sh node` turns any server into a node; its token is pasted in the panel (Servers › Add server)
+- [x] Mutual TLS with both certificates pinned and a one-time pairing secret; a removed node is released
+- [x] Each protocol runs on a chosen server; only users who may connect are sent to a node
+- [x] One subscription for every server; configs carry the server's name and address
+- [x] Usage from nodes is counted exactly once (acknowledged batches), with online status, devices and limits
+- [x] Servers page with each node's health, cores, speed and errors; nodes going offline appear as alerts
+
+## Phase 3: More protocols (v1.9)
 - [ ] AmneziaWG 2.0, Mieru, TrustTunnel, MTProto (mtg)
 - [ ] DNS tunnel wizard: XDNS / dnstt / Slipstream (for internet shutdowns)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)
-- [ ] Multi-server: central panel + node agent (mTLS)
+- [x] Multi-server: central panel + node agent (mTLS) (v1.8)
+- [ ] Nodes: domains and real certificates for TLS protocols, one-click node updates
 - [ ] Relays and tunnels between the domestic and foreign servers, CDN helper
 - [ ] Routing: Iranian sites go direct, ad blocking, WARP output
 - [x] REST API with tokens (v1.6)

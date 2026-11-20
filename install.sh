@@ -323,17 +323,23 @@ fetch_binary() { # download, verify and install the dunvex binary for $TAG
   rm -rf "$TMP"
 }
 
+run_cmd() { # what the service runs: the panel, or a node for another panel
+  if [ "${MODE:-}" = node ] || grep -qs ' node serve' "$UNIT"; then echo "node serve"; else echo "serve"; fi
+}
+
 write_unit() {
+  local what="panel"
+  [ "${RUN:-serve}" = "node serve" ] && what="node"
   cat >"$UNIT" <<EOF
 [Unit]
-Description=Dunvex VPN panel (by Pedram)
+Description=Dunvex VPN $what (by Pedram)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 Environment=DUNVEX_HOME=$HOME_DIR
-ExecStart=$BIN serve
+ExecStart=$BIN ${RUN:-serve}
 Restart=always
 RestartSec=2
 LimitNOFILE=1048576
@@ -462,8 +468,56 @@ do_install() {
     [[ " ${fw_ports[*]} " == *" $p "* ]] || fw_ports+=("$p")
   done
   TASK_NOTE="$(IFS=' '; echo "${fw_ports[*]}") · tcp + udp" task SHIELD "firewall" open_firewall "${fw_ports[@]}"
-  TASK_NOTE="systemd · dunvex.service" task SERVICE "start service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN'; write_unit && systemctl enable --now dunvex && wait_active"
+  TASK_NOTE="systemd · dunvex.service" task SERVICE "start service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN' RUN=serve; write_unit && systemctl enable --now dunvex && wait_active"
   finale_install
+}
+
+finale_node() {
+  local agent token
+  agent=$(sed -n 's/.*Agent: *//p' "$HOME_DIR/node-info.txt" | head -n1 | tr -d ' ')
+  token=$(sed -n 's/.*Token: *//p' "$HOME_DIR/node-info.txt" | head -n1 | tr -d ' ')
+  printf '\n'
+  {
+    echo "AGENT|$agent (mutual TLS)"
+    echo "NEXT|panel › Servers › Add server, paste the token"
+    echo "VERSION|Dunvex $TAG"
+  } | box "$G" "▓▓ NODE READY ▓▓  waiting for its panel"
+  printf '\n  %s%sTOKEN%s %s(copy all of it; it works once)%s\n\n%s\n\n' "$C3" "$BD" "$R" "$DIM" "$R" "$token"
+  printf '  %s⟩%s show it again:     dunvex node token\n' "$C2" "$R"
+  printf '  %s⟩%s crafted by Pedram  ·  github.com/%s\n\n' "$C2" "$R" "$REPO"
+}
+
+do_node() { # a server that runs protocols for a panel elsewhere
+  if [ -x "$BIN" ] && [ -f "$HOME_DIR/data.db" ]; then
+    grep -qs ' node serve' "$UNIT" || die "This server runs a Dunvex panel. A node needs a server of its own."
+    do_update
+    return
+  fi
+  MODE=node
+  MODE_LABEL="deploying dunvex node"
+  banner full
+  need_deps
+  STEP_T=9
+  [ ${#NEED[@]} -gt 0 ] && STEP_T=10
+  STEP_N=1; step_ok PROBE "host" "$(host_line)"
+  if [ ${#NEED[@]} -gt 0 ]; then TASK_NOTE="${NEED[*]}" task DEPS "system packages" install_deps; fi
+  STEP_N=$((STEP_N + 1))
+  TAG=$(latest_tag) || true
+  [ -n "${TAG:-}" ] || step_fail RELEASE "latest release" "Could not read the latest release from GitHub."
+  step_ok RELEASE "latest release" "$TAG"
+  fetch_binary
+  mkdir -p "$HOME_DIR"
+  chmod 700 "$HOME_DIR"
+  local port="${DUNVEX_NODE_PORT:-62050}" args=()
+  args+=(--port "$port")
+  [ -n "${DUNVEX_NODE_HOST:-}" ] && args+=(--host "$DUNVEX_NODE_HOST")
+  export DUNVEX_HOME="$HOME_DIR"
+  TASK_NOTE="xray + sing-box + agent certificate" task CORES "cores and agent" bash -c "umask 077; '$BIN' node init ${args[*]} > '$HOME_DIR/node-info.txt'"
+  chmod 600 "$HOME_DIR/node-info.txt"
+  TASK_NOTE="bbr · fq · fast open" task TUNE "network tuning" tune_network
+  TASK_NOTE="$port agent · 443 · tcp + udp" task SHIELD "firewall" open_firewall "$port" 443
+  TASK_NOTE="systemd · dunvex.service" task SERVICE "start service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN' RUN='node serve'; write_unit && systemctl enable --now dunvex && wait_active"
+  finale_node
 }
 
 do_update() {
@@ -480,7 +534,9 @@ do_update() {
   [ -n "${TAG:-}" ] || step_fail RELEASE "latest release" "Could not read the latest release from GitHub."
   step_ok RELEASE "latest release" "${old:-?} → $TAG"
   fetch_binary
-  TASK_NOTE="restarted" task SERVICE "restart service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN'; write_unit && systemctl restart dunvex && wait_active"
+  local run
+  run=$(run_cmd)
+  TASK_NOTE="restarted" task SERVICE "restart service" bash -c "$(declare -f write_unit wait_active); UNIT='$UNIT' HOME_DIR='$HOME_DIR' BIN='$BIN' RUN='$run'; write_unit && systemctl restart dunvex && wait_active"
   printf '\n'
   printf '%s\n' "VERSION|${old:-?} → $TAG" "SERVICE|$(systemctl is-active dunvex)" | box "$G" "▓▓ UPDATED ▓▓  Dunvex $TAG"
   printf '\n  %s%s%s Updated to %s\n\n' "$G" "$OK" "$R" "$TAG"
@@ -503,6 +559,7 @@ do_uninstall() {
 case "${1:-install}" in
   install) do_install ;;
   update) do_update ;;
+  node) do_node ;;
   uninstall) do_uninstall ;;
-  *) die "Usage: install.sh [install|update|uninstall]" ;;
+  *) die "Usage: install.sh [install|node|update|uninstall]" ;;
 esac

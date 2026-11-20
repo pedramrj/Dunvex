@@ -448,6 +448,7 @@ const kindMeta: Record<string, { icon: typeof Bell; color: string; key: Key }> =
   core: { icon: Cpu, color: "var(--warn)", key: "catCore" },
   auth: { icon: KeyRound, color: "var(--ok)", key: "catAuth" },
   settings: { icon: SettingsIcon, color: "var(--text2)", key: "catSettings" },
+  node: { icon: Server, color: "var(--cyan)", key: "nodes" },
 };
 export const eventMeta = (k: string) => kindMeta[k] ?? { icon: Bell, color: "var(--text2)", key: "events" as Key };
 

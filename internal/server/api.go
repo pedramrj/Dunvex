@@ -51,6 +51,12 @@ func (s *Server) apiMux() http.Handler {
 	h("GET /network/geo", A, s.geo)
 	h("GET /network/clients", A, s.clients)
 
+	h("GET /nodes", A, s.listNodes)
+	h("POST /nodes", O, s.createNode)
+	h("PUT /nodes/{id}", O, s.updateNode)
+	h("DELETE /nodes/{id}", O, s.deleteNode)
+	h("POST /nodes/{id}/sync", A, s.syncNodeNow)
+
 	h("GET /users", R, s.listUsers)
 	h("POST /users", R, s.createUsers)
 	h("POST /users/bulk", R, s.bulkUsers)
@@ -643,7 +649,7 @@ type ConfigEntry struct {
 
 func (s *Server) configsFor(u *store.User) []ConfigEntry {
 	inbounds, _ := s.St.Inbounds()
-	env := s.Env()
+	local, nodes := s.Env(), s.nodeMap()
 	title := s.St.GetSetting("sub_title", "Dunvex")
 	out := []ConfigEntry{}
 	for _, in := range inbounds {
@@ -654,8 +660,11 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		if p == nil {
 			continue
 		}
-		name := protocol.Remark(in, p, u, title)
-		if l := protocol.Link(p, in, u, env, name); l != "" {
+		if in.NodeID != 0 && nodes[in.NodeID] == nil {
+			continue // its server was removed
+		}
+		name := remarkFor(in, p, u, title, nodes)
+		if l := protocol.Link(p, in, u, s.envFor(in, local, nodes), name); l != "" {
 			out = append(out, ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l})
 		}
 	}
@@ -686,9 +695,13 @@ func (s *Server) listInbounds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ierr, _ := s.Mgr.Errors()
+	nodes := s.nodeMap()
 	out := []inboundView{}
 	for _, in := range list {
 		v := inboundView{Inbound: in, Error: ierr[in.ID]}
+		if in.NodeID != 0 {
+			v.Error = s.nodeError(in, nodes)
+		}
 		if p := protocol.Get(in.Preset); p != nil {
 			v.Name, v.Engine = p.Name, p.Engine
 		}
@@ -702,21 +715,38 @@ func (s *Server) panelPort() int {
 	return pp
 }
 
-// portTaken explains why an inbound of preset p (Reality server name sni) cannot
-// use port, or returns "". The panel's port is shared with Reality and UDP.
-func (s *Server) portTaken(port int, except int64, p *protocol.Preset, sni string) string {
-	list, _ := s.St.Inbounds()
-	return protocol.PortConflict(list, s.panelPort(), port, except, p, sni)
+// inboundsOn lists the inbounds of one server (0 = this one).
+func (s *Server) inboundsOn(nodeID int64) []*store.Inbound {
+	all, _ := s.St.Inbounds()
+	out := all[:0:0]
+	for _, in := range all {
+		if in.NodeID == nodeID {
+			out = append(out, in)
+		}
+	}
+	return out
 }
 
-// portBusy reports a port held by another program. Ports Dunvex itself holds
-// (the panel's, or one of its inbounds') are not busy for this purpose.
-func (s *Server) portBusy(port int) bool {
-	if port == s.panelPort() {
-		return false
+// portTaken explains why an inbound of preset p (Reality server name sni) cannot
+// use port on server nodeID, or returns "". This server's panel port is shared
+// with Reality and UDP; on another server the Dunvex agent's port is reserved.
+func (s *Server) portTaken(nodeID int64, port int, except int64, p *protocol.Preset, sni string) string {
+	if nodeID == 0 {
+		return protocol.PortConflict(s.inboundsOn(0), s.panelPort(), port, except, p, sni)
 	}
-	list, _ := s.St.Inbounds()
-	if protocol.UsesPort(list, port) {
+	if n, err := s.St.NodeByID(nodeID); err == nil && port == n.AgentPort {
+		return fmt.Sprintf("port %d is used by the Dunvex agent on %s", port, n.Name)
+	}
+	return protocol.PortConflict(s.inboundsOn(nodeID), 0, port, except, p, sni)
+}
+
+// portBusy reports a port held by another program on this server. Ports Dunvex
+// itself holds (the panel's, or one of its inbounds') are not busy for this purpose.
+func (s *Server) portBusy(nodeID int64, port int) bool {
+	if nodeID != 0 || port == s.panelPort() {
+		return false // another server's ports are checked there, when it applies
+	}
+	if protocol.UsesPort(s.inboundsOn(0), port) {
 		return false
 	}
 	return !util.FreePort(port)
@@ -724,17 +754,31 @@ func (s *Server) portBusy(port int) bool {
 
 // pickPort chooses a port for a new inbound: the preset's default when it is
 // free (or can share the panel's port), otherwise a random free one.
-func (s *Server) pickPort(p *protocol.Preset, sni string) int {
-	if s.portTaken(p.DefaultPort, 0, p, sni) == "" && !s.portBusy(p.DefaultPort) {
+func (s *Server) pickPort(nodeID int64, p *protocol.Preset, sni string) int {
+	if s.portTaken(nodeID, p.DefaultPort, 0, p, sni) == "" && !s.portBusy(nodeID, p.DefaultPort) {
 		return p.DefaultPort
 	}
 	for i := 0; i < 200; i++ {
 		port := 20000 + int(util.RandomBytes(2)[0])*150 + int(util.RandomBytes(1)[0])
-		if s.portTaken(port, 0, p, sni) == "" && util.FreePort(port) {
+		if s.portTaken(nodeID, port, 0, p, sni) == "" && (nodeID != 0 || util.FreePort(port)) {
 			return port
 		}
 	}
 	return p.DefaultPort
+}
+
+// checkServer validates the server an inbound is put on.
+func (s *Server) checkServer(nodeID int64, p *protocol.Preset) string {
+	if nodeID == 0 {
+		return ""
+	}
+	if _, err := s.St.NodeByID(nodeID); err != nil {
+		return "that server does not exist"
+	}
+	if p.NeedsDomain {
+		return p.Name + " needs a domain and a certificate; on other servers use Reality or another protocol without a domain"
+	}
+	return ""
 }
 
 func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
@@ -743,6 +787,7 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		Port   int            `json:"port"`
 		Remark string         `json:"remark"`
 		Params map[string]any `json:"params"`
+		NodeID int64          `json:"nodeId"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -753,22 +798,26 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "unknown protocol")
 		return
 	}
-	if p.NeedsDomain && strings.TrimSpace(s.St.GetSetting("domain", "")) == "" {
+	if msg := s.checkServer(in.NodeID, p); msg != "" {
+		fail(w, 400, msg)
+		return
+	}
+	if in.NodeID == 0 && p.NeedsDomain && strings.TrimSpace(s.St.GetSetting("domain", "")) == "" {
 		fail(w, 400, p.Name+" needs a domain. Set your domain in Settings first.")
 		return
 	}
-	ib := &store.Inbound{Preset: p.ID, Remark: strings.TrimSpace(in.Remark), Enabled: true,
+	ib := &store.Inbound{Preset: p.ID, Remark: strings.TrimSpace(in.Remark), Enabled: true, NodeID: in.NodeID,
 		Params: protocol.Defaults(p, in.Params, s.St.GetSetting("domain", ""))}
 	sni := protocol.SharedSNI(ib)
 	port := in.Port
 	if port == 0 {
-		port = s.pickPort(p, sni)
+		port = s.pickPort(in.NodeID, p, sni)
 	}
-	if msg := s.portTaken(port, 0, p, sni); msg != "" {
+	if msg := s.portTaken(in.NodeID, port, 0, p, sni); msg != "" {
 		fail(w, 400, msg)
 		return
 	}
-	if in.Port != 0 && s.portBusy(port) {
+	if in.Port != 0 && s.portBusy(in.NodeID, port) {
 		fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", port))
 		return
 	}
@@ -778,6 +827,7 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.St.Log("inbound", "%s added on port %d", p.Name, port)
+	s.KickNodes()
 	if err := s.Mgr.Apply(); err != nil {
 		writeJSON(w, 200, map[string]any{"inbound": ib, "warning": err.Error()})
 		return
@@ -796,14 +846,22 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 		Remark  *string        `json:"remark"`
 		Enabled *bool          `json:"enabled"`
 		Params  map[string]any `json:"params"`
+		NodeID  *int64         `json:"nodeId"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
 		return
 	}
-	oldPort, oldSNI := ib.Port, protocol.SharedSNI(ib)
+	oldPort, oldSNI, oldNode := ib.Port, protocol.SharedSNI(ib), ib.NodeID
 	if in.Port != nil {
 		ib.Port = *in.Port
+	}
+	if in.NodeID != nil && *in.NodeID != ib.NodeID {
+		if msg := s.checkServer(*in.NodeID, protocol.Get(ib.Preset)); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+		ib.NodeID = *in.NodeID
 	}
 	if in.Remark != nil {
 		ib.Remark = strings.TrimSpace(*in.Remark)
@@ -822,12 +880,12 @@ func (s *Server) updateInbound(w http.ResponseWriter, r *http.Request) {
 			ib.Params = protocol.Defaults(p, ib.Params, s.St.GetSetting("domain", ""))
 		}
 	}
-	if sni := protocol.SharedSNI(ib); ib.Port != oldPort || (sni != oldSNI && ib.Port == s.panelPort()) {
-		if msg := s.portTaken(ib.Port, ib.ID, protocol.Get(ib.Preset), sni); msg != "" {
+	if sni := protocol.SharedSNI(ib); ib.Port != oldPort || ib.NodeID != oldNode || (sni != oldSNI && ib.NodeID == 0 && ib.Port == s.panelPort()) {
+		if msg := s.portTaken(ib.NodeID, ib.Port, ib.ID, protocol.Get(ib.Preset), sni); msg != "" {
 			fail(w, 400, msg)
 			return
 		}
-		if ib.Port != oldPort && s.portBusy(ib.Port) {
+		if (ib.Port != oldPort || ib.NodeID != oldNode) && s.portBusy(ib.NodeID, ib.Port) {
 			fail(w, 400, fmt.Sprintf("port %d is used by another program on this server", ib.Port))
 			return
 		}
@@ -932,7 +990,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if v != s.St.GetSetting("panel_port", "") {
-				list, _ := s.St.Inbounds()
+				list := s.inboundsOn(0)
 				if msg := protocol.PanelPortConflict(list, p); msg != "" {
 					fail(w, 400, msg)
 					return

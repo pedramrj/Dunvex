@@ -22,12 +22,18 @@ import (
 // menu is the SSH control centre: a full-screen terminal app (Bubble Tea) with
 // live status and the common server tasks. Without a terminal it falls back to a plain menu.
 func menu(home string) error {
-	if !term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
-		return menuLines(home)
-	}
 	st, err := openStore(home)
 	if err != nil {
 		return err
+	}
+	if isNode(st) { // a node is managed from its panel
+		st.Close()
+		fmt.Println("This server is a Dunvex node: manage it from its panel (Servers). Service: systemctl status dunvex")
+		return nodeToken(home, false)
+	}
+	if !term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
+		st.Close()
+		return menuLines(home)
 	}
 	defer st.Close()
 	m := newModel(home, st)

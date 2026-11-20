@@ -84,6 +84,8 @@ func main() {
 		err = core(home, args)
 	case "geoip":
 		err = geoipCmd(home, args)
+	case "node":
+		err = nodeCmd(home, args)
 	case "menu":
 		err = menu(home)
 	case "qr":
@@ -124,6 +126,7 @@ Usage: dunvex [--home DIR] <command>
   set <key> <value>     change a setting (panel_port, panel_path, sub_path, domain, host)
   core install          download/update Xray, sing-box and the GeoIP data
   geoip [update]        show (or download) the offline country data for the map
+  node <init|serve|token|reset>   run protocols for a panel on this server (see: dunvex node)
   menu                  interactive control centre for SSH (status, users, logs, restart, update…)
   qr <text>             print a QR code in the terminal
   update                update Dunvex itself
@@ -198,7 +201,13 @@ func checkPanelPort(st *store.Store, port int) error {
 	if strconv.Itoa(port) == st.GetSetting("panel_port", "") {
 		return nil
 	}
-	list, _ := st.Inbounds()
+	all, _ := st.Inbounds()
+	var list []*store.Inbound
+	for _, in := range all {
+		if in.NodeID == 0 {
+			list = append(list, in)
+		}
+	}
 	if msg := protocol.PanelPortConflict(list, port); msg != "" {
 		return errors.New(msg)
 	}
@@ -284,12 +293,14 @@ func serve(home string) error {
 	mgr.SharedPort = func() int { return panelPort }
 	mgr.OnRoutes = router.SetRoutes
 	mgr.ClientOf = router.ClientOf
+	mgr.OnApplied = srv.KickNodes // other servers follow every change
 	go router.Serve()
 
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
 	go keepGeoIP(home, stopMgr)
+	go srv.RunNodes(stopMgr)
 
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
@@ -430,6 +441,10 @@ func info(home string) error {
 	st, err := openStore(home)
 	if err != nil {
 		return err
+	}
+	if isNode(st) { // a node has no panel: show its token or pairing
+		st.Close()
+		return nodeToken(home, false)
 	}
 	defer st.Close()
 	ensureDefaults(st) // a database that was never set up gets its setup link here
