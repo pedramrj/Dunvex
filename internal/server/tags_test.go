@@ -32,10 +32,14 @@ func TestUserTags(t *testing.T) {
 	reseller.do("POST", "/login", map[string]string{"username": "seller", "password": "seller-pass-1"})
 
 	ids := map[string]float64{}
-	for name, tags := range map[string][]string{"ali": {"VIP", "iran"}, "sara": {"vip"}, "reza": nil} {
-		code, out := owner.do("POST", "/users", map[string]any{"name": name, "tags": tags})
+	// in this order: the first spelling of a tag ("VIP") is the one listed
+	for _, x := range []struct {
+		name string
+		tags []string
+	}{{"ali", []string{"VIP", "iran"}}, {"sara", []string{"vip"}}, {"reza", nil}} {
+		code, out := owner.do("POST", "/users", map[string]any{"name": x.name, "tags": x.tags})
 		if code != 200 {
-			t.Fatalf("create %s: %d %v", name, code, out)
+			t.Fatalf("create %s: %d %v", x.name, code, out)
 		}
 	}
 	code, list := owner.doList("GET", "/users")
