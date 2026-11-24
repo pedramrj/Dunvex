@@ -137,6 +137,7 @@ func (s *Server) Env() protocol.Env {
 		env.CertSHA256 = util.CertSHA256(env.CertFile)
 	}
 	env.Fragment = s.fragment()
+	env.Mux, env.Noise, env.ECH = s.mux(), s.noise(), s.ownECH()
 	return env
 }
 

@@ -43,6 +43,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 			if h := in.Str("host"); h != "" {
 				q.Set("host", h)
 			}
+			if env.Download != nil && Splittable(p, in) {
+				q.Set("extra", xhttpExtra(p, env.Download)) // downloads another way
+			}
 		case "grpc":
 			q.Set("type", "grpc")
 			q.Set("serviceName", in.Str("serviceName"))
@@ -90,14 +93,21 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 				// Xray 26 removed allowInsecure: clients pin the certificate instead
 				q.Set("pcs", env.CertSHA256)
 			}
+			if ech := echFor(p, env); ech != "" {
+				q.Set("ech", ech)
+			}
 		default:
 			q.Set("security", "none")
 		}
 	}
 
 	addFragment := func() {
-		if env.Fragment != nil && Fragmentable(p) {
-			q.Set("fm", fragmentMask(env.Fragment))
+		if f := env.Fragment; f != nil && Fragmentable(p) {
+			if p.Security == "reality" {
+				f = f.forReality()
+			}
+			q.Set("fm", fragmentMask(f))
+			q.Set("fragment", hiddifyFragment(f)) // Hiddify's own form
 		}
 	}
 
@@ -113,6 +123,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		addTransport()
 		addSecurity()
 		addFragment()
+		if env.Mux.singMux(p) {
+			env.Mux.linkParams(q)
+		}
 		if p.transport == "xdns" {
 			h, port := xdnsTarget(in, env)
 			return "vless://" + u.UUID + "@" + hostPort(h, port) + "?" + q.Encode() + frag
@@ -153,6 +166,12 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 			if env.SelfSigned {
 				v["allowInsecure"] = true
 				v["pcs"] = env.CertSHA256
+			}
+			if ech := echFor(p, env); ech != "" {
+				v["ech"] = ech
+			}
+			if env.Fragment != nil && Fragmentable(p) {
+				v["fragment"] = hiddifyFragment(env.Fragment) // Hiddify reads it here too
 			}
 		}
 		b, _ := json.Marshal(v)
@@ -195,6 +214,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		if env.SelfSigned {
 			q.Set("insecure", "1")
 		}
+		if env.Fragment != nil {
+			q.Set("fragment", hiddifyFragment(env.Fragment)) // Hiddify; its ECH is in the sing-box profile only
+		}
 		return "anytls://" + url.PathEscape(u.Password) + "@" + hostPort(host, in.Port) + "/?" + q.Encode() + frag
 	case "naive":
 		return "naive+https://" + url.PathEscape(u.Name) + ":" + url.PathEscape(u.Password) + "@" + hostPort(sni(in, env), in.Port) + frag
@@ -202,6 +224,10 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		q.Set("publickey", in.Str("publicKey"))
 		q.Set("address", wgAddress(u)+"/32")
 		q.Set("mtu", strconv.Itoa(max(in.Int("mtu"), 1280)))
+		if n := env.Noise; n != nil {
+			q.Set("fm", noiseMask(n)) // v2rayNG, v2rayN (Xray's UDP noise)
+			noiseLinkParams(n, q)     // Hiddify
+		}
 		return "wireguard://" + url.PathEscape(u.WGPrivate) + "@" + hostPort(host, in.Port) + "?" + q.Encode() + frag
 	case "socks":
 		return "socks://" + base64.StdEncoding.EncodeToString([]byte(u.Name+":"+u.Password)) + "@" + hostPort(host, in.Port) + frag
@@ -230,6 +256,9 @@ func Clash(p *Preset, in *store.Inbound, u *store.User, env Env, name string) ob
 			c["client-fingerprint"] = or(in.Str("fp"), "chrome")
 			if env.SelfSigned {
 				c["skip-cert-verify"] = true
+			}
+			if ech := echFor(p, env); ech != "" {
+				c["ech-opts"] = obj{"enable": true, "config": ech}
 			}
 		}
 	}
@@ -266,6 +295,9 @@ func Clash(p *Preset, in *store.Inbound, u *store.User, env Env, name string) ob
 			return nil
 		}
 		tlsOpts()
+		if env.Mux.singMux(p) {
+			c["smux"] = env.Mux.clash()
+		}
 	case "vmess":
 		c["type"], c["uuid"], c["alterId"], c["cipher"] = "vmess", u.UUID, 0, "aes-128-gcm"
 		if !netOpts() {
@@ -316,9 +348,15 @@ func Clash(p *Preset, in *store.Inbound, u *store.User, env Env, name string) ob
 		c["plugin"] = "shadow-tls"
 		c["client-fingerprint"] = "chrome"
 		c["plugin-opts"] = obj{"host": or(in.Str("handshake"), DefaultReality), "password": u.Password, "version": 3}
+		if env.Mux.singMux(p) {
+			c["smux"] = env.Mux.clash()
+		}
 	case "wireguard":
 		c["type"], c["ip"], c["private-key"], c["public-key"] = "wireguard", wgAddress(u), u.WGPrivate, in.Str("publicKey")
 		c["mtu"] = max(in.Int("mtu"), 1280)
+		if n := env.Noise; n != nil {
+			c["amnezia-wg-option"] = noiseClash(n)
+		}
 	case "socks":
 		c["type"], c["username"], c["password"] = "socks5", u.Name, u.Password
 	case "http":
@@ -350,6 +388,7 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 			if env.SelfSigned {
 				t["insecure"] = true
 			}
+			singboxTLSTricks(t, p, env)
 			return t
 		}
 		return nil
@@ -416,6 +455,9 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 		if tr != nil {
 			o["transport"] = tr
 		}
+		if env.Mux.singMux(p) {
+			o["multiplex"] = env.Mux.singbox()
+		}
 	case "shadowsocks":
 		method := in.Str("method")
 		o["type"], o["method"], o["password"] = "shadowsocks", method, u.Password
@@ -437,6 +479,7 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 		if env.SelfSigned {
 			t["insecure"] = true
 		}
+		singboxTLSTricks(t, p, env)
 		o["tls"] = t
 	case "naive":
 		o["type"], o["username"], o["password"] = "naive", u.Name, u.Password
@@ -448,6 +491,9 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 			"tls": obj{"enabled": true, "server_name": or(in.Str("handshake"), DefaultReality), "utls": obj{"enabled": true, "fingerprint": "chrome"}}}
 		ss := obj{"type": "shadowsocks", "tag": tag, "method": "2022-blake3-aes-128-gcm",
 			"password": in.Str("ssKey") + ":" + util.SSKeyFrom(u.UUID, 16), "detour": stTag}
+		if env.Mux.singMux(p) {
+			ss["multiplex"] = env.Mux.singbox()
+		}
 		return "outbound", []obj{ss, st}
 	case "wireguard":
 		ep := obj{"type": "wireguard", "tag": tag, "address": []string{wgAddress(u) + "/32"}, "private_key": u.WGPrivate,

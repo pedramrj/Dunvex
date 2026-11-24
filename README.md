@@ -97,6 +97,12 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
   routing and DNS) for v2rayNG, v2rayN and Streisand, one tap from the user page; and the owner can turn on the TLS
   fragment (the ClientHello sent in small pieces) for every TLS and Reality config, in the links and in that
   subscription. See [docs/XRAY-JSON.md](docs/XRAY-JSON.md).
+- **More anti-censorship options**: **ECH** (the server name hidden: this server's own keys on its TLS protocols, or
+  the CDN's ECH on the configs through it), **multiplexing** (Xray's Mux.Cool, and sing-box's with **TCP Brutal** on
+  this server's sing-box protocols, the server side included), **WireGuard noise** and **XHTTP with upload and download
+  on different ways** through the CDN. The fragment now reaches Hiddify and sing-box apps too, and Reality configs
+  get it in a form Reality takes. Each goes only into the apps that read it. See
+  [docs/ANTI-CENSORSHIP.md](docs/ANTI-CENSORSHIP.md).
 - **CDN helper (v1.17)**: put the CDN protocols behind Cloudflare. Their configs go through the CDN name plus one per
   clean address (labelled, for example by operator); a check tries the DNS, each protocol through the CDN and straight
   to the server, and each clean address, explaining Cloudflare's errors; and one click with your own API token (never
@@ -221,6 +227,12 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
   می‌گیرد، برای v2rayNG، v2rayN و Streisand، با یک لمس از صفحهٔ کاربر؛ و مالک می‌تواند Fragment (فرستادن ClientHello در
   تکه‌های کوچک) را برای همهٔ کانفیگ‌های TLS و Reality روشن کند، هم در لینک‌ها و هم در همین اشتراک.
   راهنما: [docs/XRAY-JSON.md](docs/XRAY-JSON.md).
+- **گزینه‌های بیشتر ضد فیلتر**: **ECH** (پنهان شدن نام سرور: با کلید خود سرور روی پروتکل‌های TLS آن، یا با ECH خود CDN
+  روی کانفیگ‌هایی که از آن می‌گذرند)، **مالتی‌پلکس** (Mux.Cool برای Xray و مالتی‌پلکس sing-box با **TCP Brutal** روی
+  پروتکل‌های sing-box همین سرور، همراه با تنظیم سمت سرور)، **نویز وایرگارد** و **XHTTP با آپلود و دانلود از دو راه جدا**
+  از راه CDN. Fragment حالا به Hiddify و برنامه‌های sing-box هم می‌رسد و کانفیگ‌های Reality آن را به شکلی می‌گیرند که
+  Reality می‌پذیرد. هرکدام فقط به برنامه‌هایی می‌رسد که آن را می‌خوانند. راهنما:
+  [docs/ANTI-CENSORSHIP.md](docs/ANTI-CENSORSHIP.md).
 - **دستیار CDN (نسخهٔ ۱.۱۷)**: پروتکل‌های CDN پشت کلادفلر؛ کانفیگ‌ها از راه نام CDN و یکی هم برای هر آی‌پی تمیز (با
   برچسب، مثلاً نام اپراتور)؛ بررسی DNS، هر پروتکل از راه CDN و مستقیم و هر آی‌پی تمیز با توضیح خطاهای کلادفلر؛ و با یک
   کلیک و توکن API خودتان (که ذخیره نمی‌شود) رکورد DNS پروکسی ساخته و SSL/TLS و WebSockets درست می‌شود. راهنما:

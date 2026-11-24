@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Bot, Palette, Sparkles, Cpu, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2,
-  UserCog, Users as UsersIcon, Webhook,
+  ArrowDownUp, Bot, EyeOff, Layers, Palette, Sparkles, Cpu, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2,
+  UserCog, Users as UsersIcon, Waves, Webhook,
 } from "lucide-react";
 import { api, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
 import { GB, bytes, cx, date, duration } from "../lib/format";
@@ -18,7 +18,16 @@ import { Logo } from "../components/Logo";
 import { IntegrationsTab } from "./Integrations";
 
 type S = Record<string, string>;
-type Info = { publicIp: string; effectiveHost: string; selfSigned: boolean; certExpiry?: number; telegram?: { running: boolean; configured: boolean; username: string; error: string; admins: number } };
+type Tricks = {
+  brutal?: { ready: boolean; why: string };
+  ech?: { publicName: string };
+  echCdn?: { domain: string; on: boolean; publicName?: string; source?: string };
+};
+type Info = {
+  publicIp: string; effectiveHost: string; selfSigned: boolean; certExpiry?: number;
+  telegram?: { running: boolean; configured: boolean; username: string; error: string; admins: number };
+  tricks?: Tricks;
+};
 type TabId = "appearance" | "server" | "sub" | "brand" | "panel" | "security" | "admins" | "telegram" | "integrations" | "cores" | "backup";
 
 const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
@@ -195,6 +204,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
         <p className="mt-4 text-[12px] text-ink3 leading-relaxed max-w-[70ch]">{t("fragmentNote")}</p>
         <SaveBar keys={["fragment", "fragment_packets", "fragment_length", "fragment_delay"]} />
       </Panel>
+      <TrickPanels s={s} set={set} info={info} SaveBar={SaveBar} />
       </>
     );
 
@@ -590,5 +600,111 @@ function BrandTab() {
         </div>
       </Panel>
     </div>
+  );
+}
+
+/** ECH, multiplexing with TCP Brutal, WireGuard noise and XHTTP's split: the
+ * anti-censorship options next to the fragment (Settings › Subscription). */
+function TrickPanels({ s, set, info, SaveBar }: { s: S; set: (k: string, v: string) => void; info: Info; SaveBar: (p: { keys: string[] }) => JSX.Element }) {
+  const { t } = useI18n();
+  const tr = info.tricks ?? {};
+  const on = (k: string) => s[k] === "true";
+  const badge = (v: boolean) => <Badge color={v ? "var(--color-online)" : "var(--color-ink3)"}>{v ? t("on") : t("off")}</Badge>;
+  const help = (k: Key) => <p className="text-[13.5px] text-ink2 leading-relaxed max-w-[70ch]">{t(k)}</p>;
+  const note = (k: Key) => <p className="mt-4 text-[12px] text-ink3 leading-relaxed max-w-[70ch]">{t(k)}</p>;
+  const range = (k: string, def: string, label: Key, unit: string) => (
+    <label><Label hint={<span className="mono">{unit}</span>}>{t(label)}</Label>
+      <Input dir="ltr" className="mono" value={s[k] ?? def} placeholder={def} onChange={(e) => set(k, e.target.value)} /></label>
+  );
+  const cdn = tr.echCdn;
+  const cdnState = !cdn ? null : !cdn.on || !cdn.domain ? t("echCdnOff")
+    : cdn.publicName ? t("echCdnFrom").replace("{name}", cdn.source ?? cdn.domain).replace("{pub}", cdn.publicName)
+    : t("echCdnNone").replace("{name}", cdn.domain);
+
+  return (
+    <>
+      <Panel icon={<EyeOff className="size-4" />} title={t("echTitle")} sub={t("echSub")} action={badge(on("ech_cdn") || on("ech_direct"))}>
+        {help("echHelp")}
+        <div className="mt-4 grid gap-4">
+          <Toggle checked={on("ech_cdn")} onChange={(v) => set("ech_cdn", String(v))} label={t("echCdn")}
+            hint={<>{t("echCdnHint")}{cdnState && <span className="block mt-1 text-ink2" dir="auto">{cdnState}</span>}</>} />
+          <Toggle checked={on("ech_direct")} onChange={(v) => set("ech_direct", String(v))} label={t("echDirect")} hint={t("echDirectHint")} />
+        </div>
+        {on("ech_direct") && (
+          <div className="mt-5 grid sm:grid-cols-2 gap-4">
+            <label><Label hint={tr.ech ? <span className="mono" dir="ltr">{tr.ech.publicName}</span> : undefined}>{t("echName")}</Label>
+              <Input dir="ltr" className="mono" value={s.ech_name ?? ""} placeholder="www.speedtest.net" onChange={(e) => set("ech_name", e.target.value)} /></label>
+          </div>
+        )}
+        {note("echNote")}
+        <SaveBar keys={["ech_cdn", "ech_direct", "ech_name"]} />
+      </Panel>
+
+      <Panel icon={<Layers className="size-4" />} title={t("muxTitle")} sub={t("muxSub")} action={badge(on("mux"))}>
+        {help("muxHelp")}
+        <div className="mt-4"><Toggle checked={on("mux")} onChange={(v) => set("mux", String(v))} label={t("muxOn")} /></div>
+        {on("mux") && (
+          <>
+            <div className="mt-5 grid sm:grid-cols-2 gap-4">
+              <label><Label>{t("muxProtocol")}</Label>
+                <Select value={s.mux_protocol || "h2mux"} onChange={(v) => set("mux_protocol", v)}
+                  options={["h2mux", "smux", "yamux"].map((v) => ({ value: v, label: v }))} /></label>
+              <label><Label>{t("muxStreams")}</Label>
+                <Input type="number" className="num" value={s.mux_streams ?? "8"} onChange={(e) => set("mux_streams", e.target.value)} /></label>
+            </div>
+            <div className="mt-4"><Toggle checked={s.mux_padding !== "false"} onChange={(v) => set("mux_padding", String(v))} label={t("muxPadding")} /></div>
+            <div className="mt-5 pt-4 border-t border-hair">
+              <Toggle checked={on("mux_brutal")} onChange={(v) => set("mux_brutal", String(v))} label={t("brutal")} hint={t("brutalHelp")} />
+              {on("mux_brutal") && (
+                <>
+                  <div className="mt-4 grid sm:grid-cols-2 gap-4">
+                    <label><Label hint={<span className="mono">Mbps</span>}>{t("brutalUp")}</Label>
+                      <Input type="number" className="num" value={s.mux_up ?? "20"} onChange={(e) => set("mux_up", e.target.value)} /></label>
+                    <label><Label hint={<span className="mono">Mbps</span>}>{t("brutalDown")}</Label>
+                      <Input type="number" className="num" value={s.mux_down ?? "100"} onChange={(e) => set("mux_down", e.target.value)} /></label>
+                  </div>
+                  {tr.brutal && (
+                    <p className="mt-3 text-[12.5px] leading-relaxed" dir="auto"
+                      style={{ color: tr.brutal.ready ? "var(--color-online)" : "var(--color-warn)" }}>
+                      {tr.brutal.ready ? t("brutalReady") : tr.brutal.why === "not-linux" ? t("brutalNotLinux") : t("brutalNoModule")}
+                      {!tr.brutal.ready && tr.brutal.why !== "not-linux" && (
+                        <code className="block mt-1.5 mono text-[12px] text-ink2" dir="ltr">bash &lt;(curl -fsSL https://tcp.hy2.sh/)</code>
+                      )}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
+        {note("muxNote")}
+        <SaveBar keys={["mux", "mux_protocol", "mux_streams", "mux_padding", "mux_brutal", "mux_up", "mux_down"]} />
+      </Panel>
+
+      <Panel icon={<Waves className="size-4" />} title={t("noiseTitle")} sub={t("noiseSub")} action={badge(on("wg_noise"))}>
+        {help("noiseHelp")}
+        <div className="mt-4"><Toggle checked={on("wg_noise")} onChange={(v) => set("wg_noise", String(v))} label={t("noiseOn")} /></div>
+        {on("wg_noise") && (
+          <div className="mt-5 grid sm:grid-cols-3 gap-4">
+            <label><Label>{t("noiseCount")}</Label>
+              <Input type="number" className="num" value={s.wg_noise_count ?? "5"} onChange={(e) => set("wg_noise_count", e.target.value)} /></label>
+            {range("wg_noise_size", "50-100", "noiseSize", "bytes")}
+            {range("wg_noise_delay", "10-20", "noiseDelay", "ms")}
+          </div>
+        )}
+        {note("noiseNote")}
+        <SaveBar keys={["wg_noise", "wg_noise_count", "wg_noise_size", "wg_noise_delay"]} />
+      </Panel>
+
+      <Panel icon={<ArrowDownUp className="size-4" />} title={t("splitTitle")} sub={t("splitSub")} action={badge(!!s.xhttp_split)}>
+        {help("splitHelp")}
+        <div className="mt-4">
+          <Segmented value={s.xhttp_split ?? ""} onChange={(v) => set("xhttp_split", v)}
+            options={[{ value: "", label: t("splitOff") }, { value: "down", label: t("splitDown") }, { value: "up", label: t("splitUp") }]} />
+        </div>
+        {note("splitNote")}
+        <SaveBar keys={["xhttp_split"]} />
+      </Panel>
+    </>
   );
 }

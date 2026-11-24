@@ -139,3 +139,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       receipts as reactions and "typing…", answers from the panel or from Telegram signed "Support", close/reopen,
       search, an unread badge, resellers limited to their users, a `support` event and webhook kind, a rate limit, a
       length limit and retention (v1.30). See [SUPPORT.md](SUPPORT.md)
+- [x] More anti-censorship options in the subscriptions: ECH (this server's own keys on its TLS protocols, or the
+      CDN's from its DNS record), Mux (Xray's Mux.Cool in the Xray JSON; sing-box's multiplex with TCP Brutal on this
+      server's sing-box protocols, the inbounds included, Brutal only where the kernel has it), WireGuard noise, XHTTP
+      with upload and download on different ways through the CDN; the fragment for Hiddify and sing-box apps, and in
+      TCP pieces for Reality. Mixed-case SNI and TLS padding stay out: no current app applies them (v1.31). See
+      [ANTI-CENSORSHIP.md](ANTI-CENSORSHIP.md)
