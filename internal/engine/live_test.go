@@ -107,7 +107,7 @@ func TestLiveUsersOnRealXray(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(bin, exe), raw, 0o755) // no geoip.dat: local test traffic is allowed
+	os.WriteFile(filepath.Join(bin, exe), raw, 0o755) // no site lists: the routing works without them
 
 	st, err := store.Open(filepath.Join(dir, "t.db"))
 	if err != nil {

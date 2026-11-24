@@ -97,6 +97,23 @@ func (rp *routePlan) iranOut() string {
 	return ""
 }
 
+// privateNets are this server and the networks around it: loopback (Xray's
+// API, usque, the panel), unspecified (Linux connects 0.0.0.0 and :: to
+// loopback), private, link-local (cloud metadata), CGNAT and multicast.
+// Users never reach them, whether they ask for an address or for a name that
+// resolves to one (localtest.me is 127.0.0.1).
+var privateNets = []string{"127.0.0.0/8", "::1/128", "0.0.0.0/8", "::/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"169.254.0.0/16", "fe80::/10", "100.64.0.0/10", "fc00::/7", "224.0.0.0/4", "ff00::/8"}
+
+// privateIPs is the Xray form of the private networks: geoip.dat's list when
+// the site lists are there (Xray will not start without the file otherwise).
+func (rp *routePlan) privateIPs() []string {
+	if rp.dat != "" {
+		return []string{"geoip:private"}
+	}
+	return privateNets
+}
+
 // ---------------------------------------------------------------- Xray
 
 func domainList(prefix string, ds []string) []string {
@@ -110,7 +127,12 @@ func domainList(prefix string, ds []string) []string {
 // xrayRouting adds the routing rules, outbounds and loopback inbounds to an Xray config.
 func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj, outbounds []obj, inbounds []obj, strategy string) {
 	strategy = "AsIs"
-	direct := obj{"protocol": "freedom", "tag": "direct"}
+	private := rp.privateIPs()
+	// the rules see a name, not the address it resolves to, and Xray's own
+	// guard skips SOCKS and HTTP inbounds (the router, the DNS tunnels, SSH):
+	// the way out checks every address after the lookup, for TCP and UDP
+	direct := obj{"protocol": "freedom", "tag": "direct",
+		"settings": obj{"finalRules": []obj{{"action": "block", "ip": private}}}}
 	block := obj{"protocol": "blackhole", "tag": "block"}
 	outbounds = []obj{direct, block}
 	if rp.acct != nil {
@@ -134,9 +156,7 @@ func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj,
 			"sniffing": obj{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true}})
 	}
 	geo := rp.dat != ""
-	if geo {
-		rules = append(rules, obj{"ip": []string{"geoip:private"}, "outboundTag": "block"})
-	}
+	rules = append(rules, obj{"ip": private, "outboundTag": "block"}) // an address, whichever way it would leave
 	if blockTorrent {
 		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "outboundTag": "block"})
 	}
@@ -178,7 +198,7 @@ func (rp *routePlan) xrayRouting(blockTorrent bool, mitaOrTT bool) (rules []obj,
 
 // singboxRouting returns the route rules, rule-sets and endpoints for sing-box.
 func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleSets, endpoints, outbounds []obj, final string, resolver bool, err error) {
-	rules = []obj{{"action": "sniff"}, {"ip_is_private": true, "action": "reject"}}
+	rules = []obj{{"action": "sniff"}}
 	if blockTorrent {
 		rules = append(rules, obj{"protocol": []string{"bittorrent"}, "action": "reject"})
 	}
@@ -206,6 +226,11 @@ func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleS
 	if len(s.BlockDomains) > 0 {
 		rules = append(rules, obj{"domain_suffix": s.BlockDomains, "action": "reject"})
 	}
+	// a name is looked up before anything is routed, so one that resolves to
+	// this server (localtest.me is 127.0.0.1) meets the private-address rule;
+	// ip_is_private leaves out CGNAT and 0.0.0.0/8, the list has them
+	rules = append(rules, obj{"action": "resolve"}, obj{"ip_is_private": true, "ip_cidr": privateNets, "action": "reject"})
+	resolver = true
 	if rp.warp() {
 		if rp.acct.Masque() {
 			outbounds = append(outbounds, obj{"type": "socks", "tag": warpTag, "server": "127.0.0.1", "server_port": rp.usque, "version": "5"})
@@ -250,14 +275,13 @@ func (m *Manager) singboxRouting(rp *routePlan, blockTorrent bool) (rules, ruleS
 		}
 	}
 	if irOut != "" {
-		// names not on the list are resolved and checked against Iran's addresses
+		// names not on the list are checked against Iran's addresses (looked up above)
 		tag := "ip-" + routing.IPIran
 		if path, e := m.ipRuleSet(rp.dat, routing.IPIran, tag); e == nil {
 			ruleSets = append(ruleSets, obj{"type": "local", "tag": tag, "format": "source", "path": path})
 			r := act(irOut)
 			r["rule_set"] = []string{tag}
-			rules = append(rules, obj{"action": "resolve"}, r)
-			resolver = true
+			rules = append(rules, r)
 		} else if err == nil {
 			err = e
 		}

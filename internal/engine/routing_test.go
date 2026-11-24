@@ -60,7 +60,8 @@ func TestRoutingDefaults(t *testing.T) {
 		t.Error("Mieru and TrustTunnel are sent through Xray without any rule")
 	}
 	srules, sets, eps, _, final, resolver, err := m.singboxRouting(rp, true)
-	if err != nil || len(sets) != 0 || len(eps) != 0 || final != "direct" || resolver || len(srules) != 3 {
+	// sniff, BitTorrent, look the name up, private addresses
+	if err != nil || len(sets) != 0 || len(eps) != 0 || final != "direct" || !resolver || len(srules) != 4 {
 		t.Errorf("sing-box defaults: %v %s %s", err, js(srules), js(sets))
 	}
 }
@@ -110,12 +111,15 @@ func TestRoutingRules(t *testing.T) {
 		`{"domain_suffix":["bank.com"],"outbound":"direct"}`,
 		`{"action":"reject","rule_set":["site-category-ir"]}`,
 		`{"domain_suffix":["x.ai"],"outbound":"warp","rule_set":["site-category-ai-not-cn","site-netflix"]}`,
-		`{"action":"resolve"},{"action":"reject","rule_set":["ip-ir"]}`,
+		`{"action":"reject","rule_set":["ip-ir"]}`,
 		`{"action":"reject","protocol":["bittorrent"]}`,
 	} {
 		if !strings.Contains(sall, want) {
 			t.Errorf("sing-box: missing %s in\n%s", want, sall)
 		}
+	}
+	if strings.Count(sall, `"resolve"`) != 1 || strings.Index(sall, `"rule_set":["ip-ir"]`) < strings.Index(sall, `"resolve"`) {
+		t.Errorf("sing-box: Iran's addresses are checked before the name is looked up:\n%s", sall)
 	}
 	if final != "direct" || !resolver || len(eps) != 1 || eps[0]["tag"] != "warp" || len(sets) != 5 {
 		t.Errorf("final %s resolver %v endpoints %s sets %s", final, resolver, js(eps), js(sets))
@@ -253,6 +257,107 @@ func TestWarpOverMasque(t *testing.T) {
 	routing.SaveAccount(st, fakeAccount())
 	if b, _ = m.build(); b.usque != nil {
 		t.Error("usque runs for a WireGuard device")
+	}
+}
+
+// mustBlock are the private ranges that a name may never reach once it is
+// looked up (localtest.me is 127.0.0.1 and ::1).
+var mustBlock = []string{"127.0.0.0/8", "::1/128", "0.0.0.0/8", "::/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",
+	"169.254.0.0/16", "100.64.0.0/10", "fc00::/7", "fe80::/10"}
+
+// A name that resolves to a private address must not reach the server itself
+// (Xray's API, usque, the panel), in every routing mode. Xray's rules see the
+// name, not its address, so the direct outbound checks the address after the
+// lookup; sing-box looks the name up before its private-address rule, and no
+// rule sends traffic anywhere before that.
+func TestPrivateAddressesRefusedAfterLookup(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		geo  bool
+		warp bool
+		set  routing.Settings
+	}{
+		{"defaults", true, false, routing.Defaults()},
+		{"no site lists", false, false, routing.Settings{Iran: routing.IranDirect, BlockDomains: []string{"example.org"}}},
+		{"everything through WARP", true, true, routing.Settings{Iran: routing.IranDirect, Warp: routing.WarpAll, DirectDomains: []string{"bank.com"}}},
+		{"sites through WARP", true, true, routing.Settings{BlockAds: true, Iran: routing.IranBlock, Warp: routing.WarpSites,
+			WarpDomains: []string{"x.ai"}, DirectDomains: []string{"bank.com"}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m, st := routingSetup(t)
+			if !c.geo {
+				os.Remove(filepath.Join(m.Xray.BinDir, "geosite.dat"))
+				os.Remove(filepath.Join(m.Xray.BinDir, "geoip.dat"))
+			}
+			if c.warp {
+				routing.SaveAccount(st, fakeAccount())
+			}
+			if _, err := routing.Save(st, c.set); err != nil {
+				t.Fatal(err)
+			}
+			rp := m.routePlan()
+			if (rp.dat != "") != c.geo || rp.warp() != c.warp {
+				t.Fatalf("plan: dat %q warp %v", rp.dat, rp.warp())
+			}
+
+			rules, outs, _, _ := rp.xrayRouting(true, true)
+			var direct obj
+			for _, o := range outs {
+				if o["tag"] == "direct" {
+					direct = o
+				}
+			}
+			settings, _ := direct["settings"].(obj)
+			fr, _ := settings["finalRules"].([]obj)
+			if direct == nil || len(fr) != 1 || fr[0]["action"] != "block" || fr[0]["network"] != nil || fr[0]["port"] != nil {
+				t.Fatalf("Xray's direct outbound does not refuse private addresses after the lookup: %s", js(direct))
+			}
+			ips, _ := fr[0]["ip"].([]string)
+			if c.geo {
+				if js(ips) != `["geoip:private"]` {
+					t.Errorf("with the site lists: %s", js(ips))
+				}
+			} else {
+				for _, n := range mustBlock {
+					if !strings.Contains(js(ips), `"`+n+`"`) {
+						t.Errorf("without the site lists %s is not refused: %s", n, js(ips))
+					}
+				}
+			}
+			// literal addresses are refused by the rules too, whichever way out
+			if !strings.Contains(js(rules), `{"ip":`+js(ips)+`,"outboundTag":"block"}`) {
+				t.Errorf("no rule blocks %s: %s", js(ips), js(rules))
+			}
+
+			srules, _, _, _, _, resolver, err := m.singboxRouting(rp, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolve, private := -1, -1
+			for i, r := range srules {
+				if _, routes := r["outbound"]; routes && private < 0 {
+					t.Errorf("sing-box sends traffic away (%s) before the private-address rule", js(r))
+				}
+				switch {
+				case r["action"] == "resolve" && resolve < 0:
+					resolve = i
+				case r["ip_is_private"] == true:
+					private = i
+					if r["action"] != "reject" {
+						t.Errorf("private rule %s", js(r))
+					}
+					for _, n := range mustBlock {
+						if !strings.Contains(js(r["ip_cidr"]), `"`+n+`"`) {
+							t.Errorf("sing-box does not refuse %s: %s", n, js(r))
+						}
+					}
+				}
+			}
+			if resolve < 0 || private < resolve || !resolver {
+				t.Errorf("sing-box must look names up before its private-address rule (resolve %d, private %d, resolver %v): %s",
+					resolve, private, resolver, js(srules))
+			}
+		})
 	}
 }
 

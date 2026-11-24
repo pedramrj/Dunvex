@@ -14,7 +14,10 @@ Other servers (nodes) get the same rules from the panel.
 - **Adult sites**: the `category-porn` list.
 - **Your own domains**: one per line. A domain also blocks its subdomains; URLs and `*.` are cleaned up.
 
-Private and local addresses are always blocked, so nobody can reach the server's own services through the VPN.
+Private and local addresses are always blocked, so nobody can reach the server's own services (Xray's API, WARP's
+local proxy, the panel) through the VPN. That holds for a name that leads to one too (`localtest.me` is 127.0.0.1):
+Xray checks every address its direct way out connects to, for TCP and UDP, and sing-box looks each name up before
+routing it. Without the site lists Dunvex uses its own list (loopback, private, link-local, CGNAT, multicast).
 
 ## Iranian sites
 
