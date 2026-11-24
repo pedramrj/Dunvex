@@ -27,13 +27,20 @@ type cdnVariant struct {
 
 // cdnLinks is what the CDN settings mean for the links of this server.
 type cdnLinks struct {
-	set    cdn.Settings
-	domain string // the proxied name
+	set     cdn.Settings
+	domain  string        // the proxied name
+	ech     *protocol.ECH // the CDN's ECH for configs through it (nil = none)
+	echFrom string        // the name it was published under
+	split   string        // how XHTTP through the CDN sends its downloads (protocol.Split*)
 }
 
 func (s *Server) cdnLinks(local protocol.Env) cdnLinks {
 	set := cdn.Load(s.St)
-	return cdnLinks{set, set.DomainFor(local.Domain)}
+	c := cdnLinks{set: set, domain: set.DomainFor(local.Domain), split: s.split()}
+	if set.Enabled && c.domain != "" && s.setting(echCDNSetting, "false") == "true" {
+		c.ech, c.echFrom = cdnECH(c.domain)
+	}
+	return c
 }
 
 // on reports whether an inbound's users reach it through the CDN.
@@ -48,13 +55,38 @@ func (c cdnLinks) direct(in *store.Inbound, p *protocol.Preset) bool {
 
 // variants are the configs of a CDN protocol through the CDN: the proxied
 // name (or the inbound's own link address), then each clean address. Clients
-// check the CDN's certificate, never this server's.
+// check the CDN's certificate, never this server's, and carry the CDN's ECH,
+// never this server's (the CDN ends their TLS). With the XHTTP split, an XHTTP
+// config sends its downloads (or its uploads) straight to the server instead.
 func (c cdnLinks) variants(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env) []cdnVariant {
 	if !c.on(in, p) {
 		return nil
 	}
+	out := c.throughCDN(in, p, title, env)
+	if c.split == protocol.SplitOff || !protocol.Splittable(p, in) {
+		return out
+	}
+	direct := directEnv(in, env)
+	for i, v := range out {
+		cdnRoute := &protocol.Route{In: v.in, Env: v.env}
+		if c.split == protocol.SplitDown {
+			// uploads through the CDN, downloads straight from the server
+			out[i].env.Download = &protocol.Route{In: in, Env: direct}
+		} else {
+			// uploads straight to the server, downloads through the CDN
+			e := direct
+			e.Download = cdnRoute
+			out[i].in, out[i].env = in, e
+		}
+	}
+	return out
+}
+
+// throughCDN are the variants as plain CDN copies.
+func (c cdnLinks) throughCDN(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env) []cdnVariant {
 	env.SelfSigned, env.CertSHA256 = false, ""
 	env.Domain, env.Host = c.domain, c.domain
+	env.ECH, env.Download = c.ech, nil
 	name := in.Remark
 	if name == "" {
 		name = p.Name

@@ -66,7 +66,11 @@ func TestFragmentInLinks(t *testing.T) {
 			t.Fatalf("%s: %v", p.ID, err)
 		}
 		m := at(o, "streamSettings", "finalmask", "tcp", 0)
-		if at(m, "type") != "fragment" || at(m, "settings", "packets") != "tlshello" || at(m, "settings", "length") != "100-200" || at(m, "settings", "delay") != "10-20" {
+		packets := "tlshello"
+		if p.Security == "reality" {
+			packets = "1-1" // Reality takes the ClientHello in TCP segments, not in TLS records (forReality)
+		}
+		if at(m, "type") != "fragment" || at(m, "settings", "packets") != packets || at(m, "settings", "length") != "100-200" || at(m, "settings", "delay") != "10-20" {
 			t.Errorf("%s: mask %v", p.ID, m)
 		}
 	}

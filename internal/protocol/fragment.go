@@ -12,8 +12,9 @@ import (
 // which names the site) into small pieces with short pauses, so filters that
 // read the server name from one packet miss it. It is the client's doing:
 // Xray apps read it from the link ("fm", Xray's finalmask) and from the Xray
-// JSON subscription; the server needs nothing. Apps whose core has no TCP
-// finalmask (Xray before 2026-03) ignore it and connect as before.
+// JSON subscription, Hiddify from the link's "fragment", sing-box apps from
+// tls.fragment and tls.record_fragment; the server needs nothing. Apps whose
+// core has none of these ignore it and connect as before.
 type Fragment struct {
 	Packets string // "tlshello", or which packets ("1-3")
 	Length  string // bytes per piece ("100-200")
@@ -64,10 +65,46 @@ func (f *Fragment) mask() obj {
 	return obj{"type": "fragment", "settings": obj{"packets": strings.ToLower(f.Packets), "length": f.Length, "delay": f.Delay}}
 }
 
+// forReality is the fragment for a Reality config. Xray's "tlshello" splits
+// the ClientHello into many TLS records sent apart; Xray's Reality server
+// fails such a handshake ("target sent incorrect server hello") unless they
+// reach it together, as the panel's router on 443 passes them on. So Reality
+// gets the ClientHello (its first write) split into TCP segments instead,
+// with the same sizes and pauses: one TLS record the server reads whole, in
+// pieces a filter that reads one packet still misses.
+func (f *Fragment) forReality() *Fragment {
+	if strings.ToLower(f.Packets) != "tlshello" {
+		return f
+	}
+	g := *f
+	g.Packets = "1-1"
+	return &g
+}
+
 // fragmentMask is the link's "fm" with the fragment in it.
 func fragmentMask(f *Fragment) string {
 	b, _ := json.Marshal(obj{"tcp": []obj{f.mask()}})
 	return string(b)
+}
+
+// hiddifyFragment is the fragment as Hiddify reads it from a link
+// ("fragment": size, pause and what is split); Hiddify splits the
+// ClientHello.
+func hiddifyFragment(f *Fragment) string {
+	return f.Length + "," + f.Delay + ",tlshello"
+}
+
+// singboxTLSTricks adds what a sing-box app's TLS takes: the fragment, as
+// sing-box's own (record_fragment splits the ClientHello into TLS records,
+// fragment into TCP segments; sing-box takes no sizes or pauses, and its
+// Reality ignores both, so Reality is left alone), and ECH.
+func singboxTLSTricks(t obj, p *Preset, env Env) {
+	if env.Fragment != nil && p.Security == "tls" && p.Network == "tcp" {
+		t["fragment"], t["record_fragment"] = true, true
+	}
+	if ech := echFor(p, env); ech != "" {
+		t["ech"] = echSingbox(ech)
+	}
 }
 
 // Fragmentable: a TCP transport carrying TLS or Reality, where the
@@ -99,7 +136,11 @@ func WithFragment(o map[string]any, f *Fragment) {
 	default:
 		return
 	}
-	if sec := ss["security"]; sec != "tls" && sec != "reality" {
+	switch ss["security"] {
+	case "tls":
+	case "reality":
+		f = f.forReality()
+	default:
 		return
 	}
 	fm, _ := ss["finalmask"].(map[string]any)

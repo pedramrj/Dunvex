@@ -132,3 +132,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Free trial in the bot: one per Telegram account, chosen data, hours, devices and protocols, a daily cap, an
       optional channel to join, the shop offered at the end, ended trials removed, and how many bought (v1.28). See
       [TRIAL.md](TRIAL.md)
+- [x] More anti-censorship options in the subscriptions: ECH (this server's own keys on its TLS protocols, or the
+      CDN's from its DNS record), Mux (Xray's Mux.Cool in the Xray JSON; sing-box's multiplex with TCP Brutal on this
+      server's sing-box protocols, the inbounds included, Brutal only where the kernel has it), WireGuard noise, XHTTP
+      with upload and download on different ways through the CDN; the fragment for Hiddify and sing-box apps, and in
+      TCP pieces for Reality. Mixed-case SNI and TLS padding stay out: no current app applies them. See
+      [ANTI-CENSORSHIP.md](ANTI-CENSORSHIP.md)

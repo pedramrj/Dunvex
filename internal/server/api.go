@@ -789,7 +789,7 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		relays := relaysFor(in, p, nodes)
 		if !onlyViaRelay(relays) && cl.direct(in, p) {
 			name := remarkFor(in, p, u, title, nodes)
-			if l := protocol.Link(p, in, u, env, name); l != "" {
+			if l := protocol.Link(p, in, u, directEnv(in, env), name); l != "" {
 				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, Note: protocol.TunnelDetails(p, in, env)}
 				if strings.HasPrefix(l, "[Interface]") {
 					c.File, c.QR = confName(title, in.ID), QRSVG(l)
@@ -1200,8 +1200,9 @@ func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
 var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
 	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
 	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes", "sub_accent", healthHoursSetting,
-	fragmentSetting, fragmentPacketsSetting, fragmentLengthSetting, fragmentDelaySetting,
 	"tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_backup", "tg_user_bot", "tg_api"}
+
+func init() { editableSettings = append(editableSettings, trickSettings...) } // the anti-censorship ones (tricks.go)
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	all := s.St.AllSettings()
@@ -1212,8 +1213,10 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	defaults := map[string]string{"sub_title": "Dunvex", "sub_update_hours": "12", "block_torrent": "true",
 		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true",
 		"ip_pause_minutes": "10", healthHoursSetting: healthDefaultHours, "tg_lang": "fa",
-		fragmentSetting: "false", fragmentPacketsSetting: protocol.FragmentPackets, fragmentLengthSetting: protocol.FragmentLength,
-		fragmentDelaySetting: protocol.FragmentDelay, "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
+		"tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
+	for k, v := range trickDefaults {
+		defaults[k] = v
+	}
 	for k, v := range defaults {
 		if out[k] == "" {
 			out[k] = v
@@ -1232,6 +1235,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	if s.Bot != nil {
 		info["telegram"] = s.Bot.Status()
 	}
+	info["tricks"] = s.trickInfo()
 	writeJSON(w, 200, map[string]any{"settings": out, "info": info})
 }
 
@@ -1245,30 +1249,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	for _, k := range editableSettings {
 		allowed[k] = true
 	}
-	// the fragment's parts are checked together, as they will be used
-	fragChanged := false
-	for _, k := range []string{fragmentSetting, fragmentPacketsSetting, fragmentLengthSetting, fragmentDelaySetting} {
-		if v, ok := in[k]; ok {
-			in[k] = strings.TrimSpace(v)
-			fragChanged = fragChanged || in[k] != s.St.GetSetting(k, "")
-		}
-	}
-	if fragChanged {
-		get := func(k, def string) string {
-			if v, ok := in[k]; ok && v != "" {
-				return v
-			}
-			return s.St.GetSetting(k, def)
-		}
-		f := protocol.Fragment{Packets: get(fragmentPacketsSetting, protocol.FragmentPackets),
-			Length: get(fragmentLengthSetting, protocol.FragmentLength), Delay: get(fragmentDelaySetting, protocol.FragmentDelay)}
-		if err := f.Check(); err != nil {
-			fail(w, 400, "fragment: "+err.Error())
-			return
-		}
-		if v, ok := in[fragmentSetting]; ok && v != "true" {
-			in[fragmentSetting] = "false"
-		}
+	// the anti-censorship settings are checked together, as they will be used
+	tricksChanged, err := s.checkTricks(in)
+	if err != nil {
+		fail(w, 400, err.Error())
+		return
 	}
 	needRestart := false
 	for k, v := range in {
@@ -1340,9 +1325,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "panel path and subscription path must differ")
 		return
 	}
+	if tricksChanged {
+		s.afterTricks() // this server's ECH keys, when they are new
+		forgetBrutal()  // look for TCP Brutal again (the owner may just have installed it)
+		forgetCDNECH()
+	}
 	s.St.Log("settings", "settings updated")
 	s.Mgr.RequestApply()
-	if fragChanged && engine.HealthUser(s.St) != nil {
+	if tricksChanged && engine.HealthUser(s.St) != nil {
 		s.CheckConfigs() // links changed: see at once whether every config still works
 	}
 	if s.Bot != nil {

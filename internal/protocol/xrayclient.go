@@ -181,6 +181,7 @@ func xrayVMess(link string) (obj, error) {
 		q.Set("fp", str("fp"))
 		q.Set("alpn", str("alpn"))
 		q.Set("pcs", str("pcs"))
+		q.Set("ech", str("ech"))
 	}
 	stream, err := xrayStream(q)
 	if err != nil {
@@ -261,7 +262,16 @@ func xrayWireGuard(link string) (obj, error) {
 	if mtu > 0 {
 		s["mtu"] = mtu
 	}
-	return obj{"protocol": "wireguard", "settings": s}, nil
+	o := obj{"protocol": "wireguard", "settings": s}
+	if fm := q.Get("fm"); fm != "" {
+		// Xray's WireGuard sends through the UDP finalmask (the noise before its first packet)
+		var m any
+		if err := json.Unmarshal([]byte(fm), &m); err != nil {
+			return nil, fmt.Errorf("the link's finalmask (fm): %v", err)
+		}
+		o["streamSettings"] = obj{"finalmask": m}
+	}
+	return o, nil
 }
 
 // xraySocks splits the link by hand: its base64 "user:pass" (v2rayN's form)
@@ -337,6 +347,14 @@ func xrayStream(q url.Values) (obj, error) {
 		if h := q.Get("host"); h != "" {
 			x["host"] = h
 		}
+		if e := q.Get("extra"); e != "" {
+			// the rest of XHTTP's settings, downloadSettings included, as v2rayNG and v2rayN take them
+			var m map[string]any
+			if err := json.Unmarshal([]byte(e), &m); err != nil {
+				return nil, fmt.Errorf("the link's XHTTP extra: %v", err)
+			}
+			x["extra"] = m
+		}
 		s["xhttpSettings"] = x
 	case "grpc":
 		s["network"] = "grpc"
@@ -376,6 +394,9 @@ func xrayStream(q url.Values) (obj, error) {
 		}
 		if pcs := q.Get("pcs"); pcs != "" {
 			t["pinnedPeerCertSha256"] = pcs
+		}
+		if ech := q.Get("ech"); ech != "" {
+			t["echConfigList"] = ech
 		}
 		s["security"] = "tls"
 		s["tlsSettings"] = t

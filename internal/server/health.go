@@ -129,12 +129,14 @@ func healthClient(t *health.Target, it profileItem, hu *store.User) {
 	p, in := it.p, it.in
 	switch p.Engine {
 	case "xray":
-		// the exact link the users import, read the way an Xray app reads it
+		// the exact link the users import, read the way an Xray app reads it,
+		// with what the Xray JSON subscription adds (the fragment, Mux.Cool)
 		o, err := protocol.XrayOutbound(protocol.Link(p, in, hu, it.env, it.name), "proxy")
 		if err != nil {
 			t.Broken = "the link cannot be opened: " + err.Error()
 			return
 		}
+		protocol.XrayExtras(o, p, it.env)
 		t.Kind, t.Xray = health.KindXray, o
 		t.Slow = protocol.DNSRouted(p) || protocol.IsXICMP(p)
 		if protocol.IsXICMP(p) {

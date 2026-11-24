@@ -192,7 +192,7 @@ func (s *Server) items(u *store.User) []profileItem {
 			if seen[name]++; seen[name] > 1 {
 				name = fmt.Sprintf("%s %d", name, seen[name])
 			}
-			out = append(out, profileItem{p, in, name, env, ""})
+			out = append(out, profileItem{p, in, name, directEnv(in, env), ""})
 		}
 		for _, v := range cl.variants(in, p, title, env) {
 			name := v.name
@@ -258,8 +258,9 @@ func (s *Server) clashProfile(u *store.User, now int64) []byte {
 
 // xrayProfile is the Xray JSON subscription: one whole Xray config per config
 // of the user, for v2rayNG, v2rayN and Streisand. Unlike plain links it
-// carries the routing (local networks and, when on, Iranian sites direct) and
-// the TLS fragment for every TCP config with TLS or Reality, VMess included.
+// carries the routing (local networks and, when on, Iranian sites direct),
+// the TLS fragment for every TCP config with TLS or Reality, VMess included,
+// and Mux.Cool when multiplexing is on.
 // Configs Xray cannot open (TUIC, AnyTLS, Mieru, AmneziaWG…) are left out.
 func (s *Server) xrayProfile(u *store.User, now int64) []byte {
 	var domains, ips []string
@@ -282,7 +283,7 @@ func (s *Server) xrayProfile(u *store.User, now int64) []byte {
 			if err != nil {
 				continue
 			}
-			protocol.WithFragment(o, it.env.Fragment)
+			protocol.XrayExtras(o, it.p, it.env) // the fragment (VMess too) and Mux.Cool
 			out = append(out, protocol.XrayClientConfig(it.name, o, domains, ips))
 		}
 	}

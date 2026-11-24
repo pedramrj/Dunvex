@@ -363,7 +363,15 @@ func (s *Server) envFor(in *store.Inbound, local protocol.Env, nodes map[int64]*
 	if n == nil {
 		return local
 	}
-	e := protocol.Env{Host: n.Address, Domain: n.Domain, Fragment: local.Fragment}
+	// what the apps do on their own reaches its configs too; what the server
+	// must take as well (sing-box's multiplex, this server's ECH) does not:
+	// that server builds its cores from its own settings
+	e := protocol.Env{Host: n.Address, Domain: n.Domain, Fragment: local.Fragment, Noise: local.Noise}
+	if local.Mux != nil {
+		m := *local.Mux
+		m.Singbox, m.Brutal = false, nil
+		e.Mux = &m
+	}
 	if !n.RealCert {
 		e.SelfSigned, e.CertSHA256 = true, n.CertSHA256
 	}

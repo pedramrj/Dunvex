@@ -19,7 +19,11 @@ type Env struct {
 	SelfSigned bool      // certificate is self-signed: clients must skip verification
 	Listen     string    // bind address for inbounds ("" = all interfaces)
 	CertSHA256 string    // hex SHA-256 of the certificate, for pinning self-signed certs
-	Fragment   *Fragment // TLS fragment for Xray clients (links and the Xray JSON subscription); nil = off
+	Fragment   *Fragment // TLS fragment for the apps (links, Xray JSON, sing-box); nil = off
+	Mux        *Mux      // multiplexing (Xray JSON, and sing-box's on this server's sing-box protocols); nil = off
+	Noise      *Noise    // WireGuard noise for the apps; nil = off
+	ECH        *ECH      // ECH of the TLS configs: this server's own (with keys) or a CDN's; nil = off
+	Download   *Route    // XHTTP: downloads take this other way (through the CDN or straight); nil = the same way
 }
 
 type obj = map[string]any
@@ -217,6 +221,9 @@ func XrayInbound(p *Preset, in *store.Inbound, users []*store.User, env Env) (ob
 		default:
 			t["alpn"] = []string{"http/1.1"}
 		}
+		if keys := echServerKeys(p, env); keys != "" {
+			t["echServerKeys"] = keys // apps with the config hide the server name; others connect as before
+		}
 		stream["security"] = "tls"
 		stream["tlsSettings"] = t
 	default:
@@ -268,6 +275,9 @@ func SingboxInbounds(p *Preset, in *store.Inbound, users []*store.User, env Env)
 		base["tls"] = obj{"enabled": true, "server_name": in.Str("sni"), "reality": obj{
 			"enabled": true, "handshake": obj{"server": host, "server_port": port},
 			"private_key": in.Str("privateKey"), "short_id": []string{"", in.Str("shortId")}}}
+		if env.Mux.singMux(p) {
+			base["multiplex"] = env.Mux.singboxServer() // apps without it connect as before
+		}
 	case "tuic":
 		us := []obj{}
 		for _, u := range users {
@@ -305,6 +315,9 @@ func SingboxInbounds(p *Preset, in *store.Inbound, users []*store.User, env Env)
 		if err != nil {
 			return nil, err
 		}
+		if keys := echServerKeys(p, env); keys != "" {
+			t["ech"] = echSingboxServer(keys)
+		}
 		base["users"] = us
 		base["tls"] = t
 	case "naive":
@@ -332,6 +345,9 @@ func SingboxInbounds(p *Preset, in *store.Inbound, users []*store.User, env Env)
 		base["detour"] = innerTag
 		inner := obj{"type": "shadowsocks", "tag": innerTag, "listen": "127.0.0.1", "network": "tcp",
 			"method": "2022-blake3-aes-128-gcm", "password": in.Str("ssKey"), "users": ssUsers}
+		if env.Mux.singMux(p) {
+			inner["multiplex"] = env.Mux.singboxServer()
+		}
 		return []obj{base, inner}, nil
 	default:
 		return nil, fmt.Errorf("preset %s is not a sing-box preset", p.ID)

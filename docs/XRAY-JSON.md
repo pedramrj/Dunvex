@@ -15,6 +15,7 @@ Each config has:
   geo file is needed on the device;
 - DNS over HTTPS (1.1.1.1 and 8.8.8.8) through the proxy;
 - the **TLS fragment** (below) on every TCP config with TLS or Reality, VMess included;
+- **Mux.Cool** when multiplexing is on ([ANTI-CENSORSHIP.md](ANTI-CENSORSHIP.md));
 - the config's name in `remarks`, as in the other formats, with the usage line first when **Show data and days in the
   config list** is on. A user who is over the limit, expired or disabled gets one config that says so.
 
@@ -40,11 +41,19 @@ It uses Xray's current form, a TCP finalmask: `streamSettings.finalmask.tcp: [{"
 `fragment` of the freedom outbound is deprecated since Xray 26. Where it goes:
 
 - **Links** of TLS and Reality configs over TCP (VLESS and Trojan; raw, XHTTP, gRPC, WebSocket and HTTPUpgrade) carry
-  it as `fm`, which v2rayNG, v2rayN and other Xray apps read. VMess links have no place for it, so VMess gets it only
-  in the Xray JSON subscription.
+  it as `fm`, which v2rayNG, v2rayN and other Xray apps read, and as `fragment` (size, pause, `tlshello`), which
+  Hiddify reads. VMess links have no place for `fm`, so VMess gets Xray's form only in the Xray JSON subscription.
 - **The Xray JSON subscription** has it on every such config.
-- UDP and QUIC protocols (Hysteria2, TUIC, WireGuard, mKCP, XDNS, xICMP) and plain configs are left alone. sing-box
-  and Clash profiles do not change.
+- **sing-box profiles** get `tls.fragment` and `tls.record_fragment` on their TLS configs over TCP (sing-box takes no
+  sizes or pauses, and its Reality ignores both).
+- **Reality configs** get the ClientHello split into TCP pieces (`1-1`, same sizes and pauses) instead of TLS records:
+  Xray's Reality server fails a ClientHello that arrives as many TLS records sent apart, so with `tlshello` every Xray
+  Reality config on its own port stopped working.
+- UDP and QUIC protocols (Hysteria2, TUIC, WireGuard, mKCP, XDNS, xICMP) and plain configs are left alone. Clash
+  profiles do not change (Clash Meta has no fragment).
+
+More options next to it (ECH, Mux with TCP Brutal, WireGuard noise, XHTTP with separate upload and download):
+[ANTI-CENSORSHIP.md](ANTI-CENSORSHIP.md).
 
 Apps whose Xray is older than March 2026 (the first with TCP finalmask) ignore it and connect as before.
 
@@ -55,7 +64,8 @@ so it tests every config with the fragment as the users get it.
 
 A fragmented ClientHello arrives in many small TLS records. The router on the panel's port, which sends Reality,
 TrustTunnel and the Telegram proxy their connections by server name, joins those records until the ClientHello is
-whole before it reads the name (v1.25). Before that, only the first protocol on 443 worked with the fragment.
+whole before it reads the name (v1.25), and passes them on together. Before that, only the first protocol on 443
+worked with the fragment.
 
 ### Tested
 
