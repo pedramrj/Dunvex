@@ -158,7 +158,7 @@ func TestDNSTunnelsOnRealXray(t *testing.T) {
 		"log":      map[string]any{"loglevel": "warning"},
 		"inbounds": []any{map[string]any{"listen": "127.0.0.1", "port": socks, "protocol": "socks", "settings": map[string]any{"udp": false}}},
 		"outbounds": []any{map[string]any{"protocol": "vless", "settings": map[string]any{"vnext": []any{map[string]any{
-			"address": host, "port": lp, "users": []any{map[string]any{"id": sara.UUID, "encryption": "none"}}}}},
+			"address": host, "port": lp, "users": []any{map[string]any{"id": sara.UUID, "encryption": xl.Query().Get("encryption")}}}}},
 			"streamSettings": map[string]any{"network": "kcp", "security": "none", "finalmask": fm}}},
 	})
 	cpath := filepath.Join(dir, "client.json")

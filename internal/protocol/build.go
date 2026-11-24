@@ -75,7 +75,7 @@ func XrayInbound(p *Preset, in *store.Inbound, users []*store.User, env Env) (ob
 			clients = append(clients, c)
 		}
 		dec := "none"
-		if p.ID == "vless-enc-xhttp" {
+		if VLESSEncrypted(p.ID) && in.Str("decryption") != "" {
 			dec = in.Str("decryption")
 		}
 		ib["settings"] = obj{"clients": clients, "decryption": dec}

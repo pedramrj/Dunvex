@@ -286,6 +286,28 @@ func MTProtoSecret(key, domain string) string {
 }
 
 // Defaults fills missing parameters for a new inbound of the given preset.
+// VLESSEncrypted says whether a VLESS preset carries VLESS Encryption
+// (ML-KEM-768 + X25519) keys: the one made to go without TLS, and the xDNS and
+// xICMP tunnels, which Xray 26.11 clients refuse to open to a public address
+// without TLS or encryption.
+func VLESSEncrypted(id string) bool {
+	switch id {
+	case "vless-enc-xhttp", "vless-xdns", "vless-xicmp":
+		return true
+	}
+	return false
+}
+
+// vlessEncKeys gives a VLESS Encryption preset its server and client keys once.
+func vlessEncKeys(params map[string]any) {
+	if s, _ := params["decryption"].(string); s != "" {
+		return
+	}
+	priv, pub := util.X25519()
+	params["decryption"] = "mlkem768x25519plus.native.600s." + priv
+	params["encryption"] = "mlkem768x25519plus.native.0rtt." + pub
+}
+
 func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 	if params == nil {
 		params = map[string]any{}
@@ -334,8 +356,10 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		set("congestion", "bbr")
 	case "vless-xdns":
 		set("resolver", "8.8.8.8")
+		vlessEncKeys(params)
 	case "vless-xicmp":
 		set("icmpDgram", true)
+		vlessEncKeys(params)
 	case "dnstt", "slipstream":
 		set("resolver", "8.8.8.8")
 		set("signIn", "user")
@@ -371,11 +395,7 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 			params["privateKey"], params["publicKey"] = priv, pub
 		}
 	case "vless-enc-xhttp":
-		if s, _ := params["decryption"].(string); s == "" {
-			priv, pub := util.X25519()
-			params["decryption"] = "mlkem768x25519plus.native.600s." + priv
-			params["encryption"] = "mlkem768x25519plus.native.0rtt." + pub
-		}
+		vlessEncKeys(params)
 	}
 	return params
 }

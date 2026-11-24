@@ -257,6 +257,7 @@ func serve(home string) error {
 	}
 	defer st.Close()
 	ensureDefaults(st)
+	upgradeInbounds(st)
 	if st.AdminCount() == 0 {
 		log.Printf("first-run setup is waiting: run `dunvex info` on this server for the one-time setup link")
 	}

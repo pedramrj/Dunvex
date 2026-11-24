@@ -114,7 +114,7 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 	switch p.proto {
 	case "vless":
 		q.Set("encryption", "none")
-		if p.ID == "vless-enc-xhttp" {
+		if VLESSEncrypted(p.ID) && in.Str("encryption") != "" {
 			q.Set("encryption", in.Str("encryption"))
 		}
 		if p.flow != "" {
@@ -423,7 +423,7 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 	}
 	switch p.proto {
 	case "vless", "vmess", "trojan":
-		if p.ID == "vless-enc-xhttp" {
+		if VLESSEncrypted(p.ID) { // sing-box has no VLESS Encryption
 			return "", nil
 		}
 		// Xray ≥ 26.9.8 REALITY servers require an X25519MLKEM768 key share that

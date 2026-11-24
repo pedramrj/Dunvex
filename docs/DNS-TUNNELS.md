@@ -10,7 +10,7 @@ still works.
 | Runs as | Xray (finalmask + mKCP) | inside Dunvex (dnstt v1.20260501.0, CC0) | the official Slipstream server v0.1.1 (Apache-2.0), downloaded with the first one |
 | Apps | Xray-based apps (v2rayNG, Happ…) | SlipNet (Android); DNSTT.XYZ (Android, desktop) when open; any dnstt client | SlipNet; DNSTT.XYZ when open |
 | Speed | slow | slow | often several times faster than dnstt (QUIC) |
-| Encryption | VLESS over mKCP | Noise, to this server's key (the apps check it) | TLS 1.3 inside QUIC; the apps do not verify the server's certificate |
+| Encryption | VLESS Encryption (ML-KEM-768 + X25519) over mKCP, since v1.31.1: Xray 26.11 apps refuse plain VLESS | Noise, to this server's key (the apps check it) | TLS 1.3 inside QUIC; the apps do not verify the server's certificate |
 | Per server | any number | any number | one |
 
 ## Set up the DNS records
