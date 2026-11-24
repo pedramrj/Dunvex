@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { createContext, forwardRef, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Check, Copy, Eye, EyeOff, GripVertical, Loader2, RefreshCw, X } from "lucide-react";
 import { copyText, cx, statusMeta } from "../lib/format";
@@ -94,9 +94,9 @@ export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputEleme
   return <input spellCheck={false} {...rest} className={cx(fieldCls, className)} />;
 }
 
-export function Textarea({ className, ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...rest} className={cx(fieldCls, "h-auto py-2.5 min-h-24", className)} />;
-}
+export const Textarea = forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea({ className, ...rest }, ref) {
+  return <textarea ref={ref} {...rest} className={cx(fieldCls, "h-auto py-2.5 min-h-24", className)} />;
+});
 
 export function Select({ value, onChange, options, className }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; className?: string }) {
   return (

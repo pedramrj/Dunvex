@@ -64,6 +64,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
+- **Broadcast (v1.26)**: one message to every user, the active ones, those running out or ended, or users you pick,
+  through the bot, with each user's name, days and data filled in, a live preview, a test to yourself, progress with
+  Stop, and a history; from the panel or the bot itself. Resellers reach their own users. See
+  [docs/BROADCAST.md](docs/BROADCAST.md).
 - **Webhooks and Prometheus metrics (v1.19)**: every event (users limited or expired, servers offline, core errors,
   sign-ins, orders…) goes to your own code as signed JSON, or to Slack and Discord, with retries and a delivery log;
   and `/api/metrics` gives Prometheus users, traffic per user and protocol, protocol and core health, each server's
@@ -168,6 +172,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.
+- **پیام همگانی (نسخهٔ ۱.۲۶)**: یک پیام برای همهٔ کاربران، فعال‌ها، کسانی که اشتراکشان رو به پایان یا تمام شده، یا
+  کاربرانی که خودتان انتخاب می‌کنید، از راه ربات؛ با نام، روز و حجم مانده‌ی هر کاربر، پیش‌نمایش زنده، ارسال آزمایشی برای
+  خودتان، نوار پیشرفت با دکمهٔ توقف و تاریخچه؛ از پنل یا خود ربات. نماینده‌ها فقط به کاربران خودشان پیام می‌دهند.
+  راهنما: [docs/BROADCAST.md](docs/BROADCAST.md).
 - **وب‌هوک و آمار Prometheus (نسخهٔ ۱.۱۹)**: هر رویداد (محدود یا منقضی شدن کاربران، قطع شدن سرورها، خطای هسته‌ها، ورودها،
   سفارش‌ها و…) به برنامهٔ خودتان با JSON امضاشده یا به Slack و Discord فرستاده می‌شود، با تلاش دوباره و فهرست ارسال‌ها؛ و
   ‎`/api/metrics`‎ برای Prometheus کاربران، مصرف هر کاربر و پروتکل، سلامت پروتکل‌ها و هسته‌ها، منابع هر سرور، انقضای گواهی‌ها

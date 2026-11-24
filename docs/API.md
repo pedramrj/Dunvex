@@ -69,6 +69,10 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/cores/{name}/config` | O | The generated core config |
 | POST | `/cores/{name}/install` | O | Install or update a core |
 | GET / PUT | `/settings` | O | Read or change settings |
+| GET | `/broadcasts` | R | Broadcast audiences, the bot's state and the history; see [BROADCAST.md](BROADCAST.md) |
+| POST | `/broadcasts` | R | Send a message to users through the Telegram bot (or a test to the bot's admins) |
+| POST | `/broadcasts/count` | R | How many of the picked users the bot can reach |
+| POST | `/broadcasts/{id}/cancel` | R | Stop the running broadcast |
 | GET | `/backup` | O | Download the database |
 | GET / POST | `/update` | O | Check for, or install, a new Dunvex version |
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |

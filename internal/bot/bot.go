@@ -58,11 +58,14 @@ type Bot struct {
 	waiting   map[int64]string // chat → what the next text answers ("new", "find")
 	lastDaily string
 	sent      []time.Time // alert rate limit
+
+	bc     broadcasting               // one message to many users (see broadcast.go)
+	drafts map[int64]BroadcastRequest // admin chat → the broadcast waiting for "send"
 }
 
 // New creates the bot; call Start to run it.
 func New(d Deps) *Bot {
-	return &Bot{d: d, client: &http.Client{Timeout: 75 * time.Second}, waiting: map[int64]string{}}
+	return &Bot{d: d, client: &http.Client{Timeout: 75 * time.Second}, waiting: map[int64]string{}, drafts: map[int64]BroadcastRequest{}}
 }
 
 // Start reads the settings and starts polling (if a token is set). It also
@@ -75,6 +78,7 @@ func (b *Bot) Start() {
 		}
 		b.onEvent(kind, msg)
 	}
+	b.markInterrupted()
 	b.Reload()
 	if b.d.Bill != nil {
 		b.d.Bill.OnEvent(b.onOrder)
@@ -416,6 +420,10 @@ func (b *Bot) onText(chat int64, text string) {
 		b.sendBackup(chat)
 	case strings.HasPrefix(text, "/new ") || want == "new":
 		b.createUser(chat, strings.TrimSpace(strings.TrimPrefix(text, "/new")))
+	case strings.HasPrefix(want, "bc:"):
+		b.broadcastDraft(chat, strings.TrimPrefix(want, "bc:"), text)
+	case text == "/broadcast":
+		b.send(chat, b.t("bc_pick"), b.audienceMenu())
 	case strings.HasPrefix(text, "/find ") || want == "find":
 		q := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(text, "/find")))
 		b.send(chat, b.t("results"), b.usersMenu(0, q))
@@ -464,7 +472,7 @@ func (b *Bot) mainMenu() keyboard {
 		{{Text: b.t("b_status"), Data: "st"}, {Text: b.t("b_users"), Data: "ul:0"}},
 		{{Text: b.t("b_new"), Data: "new"}, {Text: b.t("b_find"), Data: "find"}},
 		{{Text: b.t("b_online"), Data: "on"}, {Text: b.t("b_backup"), Data: "bk"}},
-		{{Text: b.t("b_orders"), Data: "ol"}},
+		{{Text: b.t("b_orders"), Data: "ol"}, {Text: b.t("b_broadcast"), Data: "bc"}},
 	}
 }
 
@@ -509,6 +517,8 @@ func (b *Bot) onButton(chat, msg int64, data string) {
 		b.send(chat, b.t("ask_find"), nil)
 	case "bk":
 		b.sendBackup(chat)
+	case "bc", "bca", "bcs", "bcx", "bcq":
+		b.broadcastButton(chat, msg, parts)
 	case "u":
 		id, _ := strconv.ParseInt(arg(parts, 1), 10, 64)
 		if u, err := b.d.St.UserByID(id); err == nil {

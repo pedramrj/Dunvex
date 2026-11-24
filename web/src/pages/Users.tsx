@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock, CalendarPlus, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
-  Users as UsersIcon, Wifi,
+  Users as UsersIcon, Wifi, Megaphone,
 } from "lucide-react";
 import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type User, type WalletInfo } from "../lib/api";
 import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
@@ -132,6 +132,7 @@ export function UsersPage({ arg }: { arg?: string }) {
       {sel.size > 0 && (
         <div className="rise sticky top-16 md:top-4 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl glass-strong px-3 py-2.5 shadow-[0_18px_40px_-16px_rgba(0,0,0,.8)]">
           <Badge color="var(--color-cdn)" className="h-7">{n(sel.size)} {t("selected")}</Badge>
+          <Button size="sm" icon={<Megaphone className="size-4" />} onClick={() => navigate("broadcast", "u" + [...sel].join("-"))}>{t("bcMessageUsers")}</Button>
           <Button size="sm" icon={<CalendarPlus className="size-4" />} onClick={() => bulk("extend", { days: 30 })}>{t("extend")} {n(30)} {t("days")}</Button>
           <Button size="sm" icon={<RotateCcw className="size-4" />} onClick={() => bulk("reset")}>{t("resetUsage")}</Button>
           <Button size="sm" icon={<Play className="size-4" />} onClick={() => bulk("enable")}>{t("enable")}</Button>

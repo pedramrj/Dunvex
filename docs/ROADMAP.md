@@ -123,3 +123,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Xray JSON subscription (whole configs with routing for v2rayNG, v2rayN and Streisand) and the TLS fragment for
       every TLS and Reality config, in the links (`fm`) and that subscription; the router on 443 reads fragmented
       ClientHellos (v1.25). See [XRAY-JSON.md](XRAY-JSON.md)
+- [x] Broadcast through the Telegram bot: audiences (everyone, active, running out, ended, picked users), placeholders,
+      Telegram HTML checked before sending, a test to the bot's admins, paced sending with Stop, history, blocked users
+      unlinked, resellers limited to their users; from the panel and from the bot (v1.26). See [BROADCAST.md](BROADCAST.md)

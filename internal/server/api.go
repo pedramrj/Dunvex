@@ -106,6 +106,10 @@ func (s *Server) apiMux() http.Handler {
 	h("PUT /settings", O, s.putSettings)
 	h("POST /settings/cert", O, s.obtainCert)
 	h("POST /settings/telegram/test", O, s.telegramTest)
+	h("GET /broadcasts", R, s.getBroadcasts)
+	h("POST /broadcasts", R, s.postBroadcast)
+	h("POST /broadcasts/count", R, s.countBroadcast)
+	h("POST /broadcasts/{id}/cancel", R, s.cancelBroadcast)
 
 	h("GET /routing", O, s.getRouting)
 	h("PUT /routing", O, s.putRouting)

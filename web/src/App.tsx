@@ -4,6 +4,7 @@ import {
   LayoutDashboard, LogOut, Maximize2, Monitor, Moon, Network, Plus, Route as RouteIcon, ScrollText, Search, Server, Settings as SettingsIcon, ShieldCheck,
   ShoppingBag, Star, Sun, UserPlus, Users as UsersIcon, Wallet, Waypoints, X, Zap,
   HeartPulse,
+  Megaphone,
 } from "lucide-react";
 import { api, setUnauthorizedHandler, VERSION_LABEL, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
 import { ago, cx } from "./lib/format";
@@ -22,6 +23,7 @@ import { NetworkPage } from "./pages/Network";
 import { AnalyticsPage } from "./pages/Analytics";
 import { LogsPage } from "./pages/Logs";
 import { AlertsPage } from "./pages/Alerts";
+import { BroadcastPage } from "./pages/Broadcast";
 import { SecurityPage } from "./pages/Security";
 import { NodesPage } from "./pages/Nodes";
 import { MissionControl } from "./pages/Mission";
@@ -32,9 +34,9 @@ import { CDNPage } from "./pages/CDN";
 
 // ================================================================= routes
 
-export type Page = "overview" | "users" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
+export type Page = "overview" | "users" | "broadcast" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
 export type Route = { page: Page; arg?: string };
-const pages: Page[] = ["overview", "users", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
+const pages: Page[] = ["overview", "users", "broadcast", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
 
 function parseHash(): Route {
   const [page, arg] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -50,6 +52,7 @@ interface NavItem { page: Page; key: Key; icon: typeof Monitor; need: Role; grou
 export const navItems: NavItem[] = [
   { page: "overview", key: "overview", icon: LayoutDashboard, need: "reseller", group: "main" },
   { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "main" },
+  { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "main" },
   { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "main" },
   { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "main" },
   { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "main" },
@@ -196,6 +199,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
             <div key={page} className="rise">
               {page === "overview" && <OverviewPage />}
               {page === "users" && <UsersPage arg={route.arg} />}
+              {page === "broadcast" && <BroadcastPage arg={route.arg} />}
               {page === "protocols" && <ProtocolsPage arg={route.arg} />}
               {page === "network" && <NetworkPage />}
               {page === "nodes" && <NodesPage />}

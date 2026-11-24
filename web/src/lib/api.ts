@@ -220,6 +220,33 @@ export interface Preset {
   fields: Field[];
 }
 
+export type BroadcastAudience = "all" | "active" | "ending" | "ended" | "selected";
+
+/** One message sent (or sending) to many users through the Telegram bot. */
+export interface BroadcastRun {
+  id: number;
+  at: number;
+  done: number; // 0 while sending
+  by: string;
+  audience: BroadcastAudience;
+  text: string;
+  html: boolean;
+  total: number;
+  sent: number;
+  failed: number;
+  blocked: number; // blocked the bot or left Telegram (unlinked)
+  canceled?: boolean;
+  interrupted?: boolean;
+  errors?: string[];
+}
+
+export interface BroadcastInfo {
+  counts: Record<"all" | "active" | "ending" | "ended", { users: number; linked: number }>;
+  history: BroadcastRun[];
+  userBot: boolean;
+  bot?: { configured: boolean; running: boolean; username: string; admins: number };
+}
+
 /** One config's result in the config health check (GET /health). */
 export interface HealthResult {
   inboundId: number;
