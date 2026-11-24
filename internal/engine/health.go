@@ -71,11 +71,11 @@ func HealthUser(st *store.Store) *store.User {
 }
 
 // HealthServed says whether the check's user is added to an inbound of this
-// preset: the protocols the check has a client for. The others (Mieru,
+// preset: the protocols the check has a client for (SSH: sing-box). The others (Mieru,
 // TrustTunnel, AmneziaWG, Slipstream, the Telegram proxy) are left as they are.
 func HealthServed(p *protocol.Preset) bool {
 	switch p.Engine {
-	case "xray", "singbox", "dnstt":
+	case "xray", "singbox", "dnstt", "ssh":
 		return true
 	}
 	return false

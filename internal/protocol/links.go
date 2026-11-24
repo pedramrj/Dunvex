@@ -138,6 +138,8 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		return mieruLink(p, in, u, env, remark)
 	case "trusttunnel":
 		return ttLink(in, u, env, remark)
+	case "ssh":
+		return sshLink(in, u, env, remark)
 	case "dnstt", "slipstream":
 		// a SlipNet profile; DNSTT.XYZ takes the same details typed in (TunnelDetails)
 		return slipnetLink(p, in, u, env, remark)
@@ -364,6 +366,8 @@ func Clash(p *Preset, in *store.Inbound, u *store.User, env Env, name string) ob
 		delete(c, "udp")
 	case "mieru":
 		mieruClash(p, in, u, c)
+	case "ssh":
+		sshClash(in, u, c)
 	default:
 		return nil
 	}
@@ -504,6 +508,8 @@ func SingboxOutbound(p *Preset, in *store.Inbound, u *store.User, env Env, tag s
 		o["type"], o["username"], o["password"] = "socks", u.Name, u.Password
 	case "http":
 		o["type"], o["username"], o["password"] = "http", u.Name, u.Password
+	case "ssh":
+		sshSingbox(in, u, o)
 	default:
 		return "", nil
 	}

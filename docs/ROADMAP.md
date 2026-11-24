@@ -101,6 +101,8 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] A fresh install turns on every protocol that needs no domain: Reality, Reality XHTTP (its camouflage site
       tested at install), TrustTunnel and the Telegram proxy on TCP 443, Hysteria2 on UDP 443, AmneziaWG, Mieru and
       xICMP (v1.23)
+- [x] SSH proxy built into Dunvex: port forwarding only, each user's name and password, the host key pinned in the
+      links, out through Xray's routing, UDP over TCP, links for Hiddify and SlipNet (v1.35). See [SSH.md](SSH.md)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)

@@ -441,7 +441,10 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 				continue
 			}
 			hint := ""
-			if strings.HasPrefix(c.Link, "slipnet://") {
+			switch {
+			case strings.HasPrefix(c.Link, "ssh://"):
+				hint = "در برنامهٔ Hiddify این لینک را وارد کنید (یا لینک اشتراک را). در NetMod، HTTP Injector و برنامه‌های دیگر SSH این مشخصات را دستی وارد کنید:"
+			case strings.HasPrefix(c.Link, "slipnet://"):
 				hint = "در برنامهٔ SlipNet لینک را وارد کنید (Import) یا کد QR را اسکن کنید."
 				if c.Note != "" {
 					hint += " در DNSTT.XYZ هم می‌توانید این مشخصات را دستی وارد کنید:"

@@ -132,6 +132,16 @@ func slipnetLink(p *Preset, in *store.Inbound, u *store.User, env Env, remark st
 	return "slipnet://" + base64.StdEncoding.EncodeToString([]byte(strings.Join(f, "|")))
 }
 
+// Details is what a user types into an app that cannot import the config's
+// link: an open DNS tunnel's details (DNSTT.XYZ) or an SSH server's (NetMod,
+// HTTP Injector); "" for everything else.
+func Details(p *Preset, in *store.Inbound, u *store.User, env Env) string {
+	if IsSSH(p) && u != nil {
+		return SSHDetails(in, u, env)
+	}
+	return TunnelDetails(p, in, env)
+}
+
 // TunnelDetails is what an app without SlipNet links needs to set an open
 // DNS tunnel up by hand (DNSTT.XYZ, the dnstt command line): "" for others,
 // and for a tunnel that signs users in (those apps cannot send a SOCKS password).
