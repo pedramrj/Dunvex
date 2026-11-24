@@ -14,7 +14,7 @@ const INSTALL_NODE = "bash <(curl -Ls https://raw.githubusercontent.com/pedramrj
 
 /** This server and every node it runs protocols on, with their real state. */
 export function NodesPage() {
-  const { t, lang, n, pc } = useI18n();
+  const { t, lang, n, pc, sep } = useI18n();
   const { me } = useSession();
   const owner = me.admin.role === "owner";
   const [d, setD] = useState<Overview | null>(null);
@@ -78,7 +78,7 @@ export function NodesPage() {
         <KV label={t("netNow")}><span className="num flex flex-wrap gap-x-2 whitespace-normal"><span>↓ {speed(s.netDown, lang)}</span><span>↑ {speed(s.netUp, lang)}</span></span></KV>
         <KV label={t("today")}>{bytes(d.today.down + d.today.up, lang)}</KV>
         <KV label={t("thisMonth")}>{bytes(d.month.down + d.month.up, lang)}</KV>
-        <KV label={t("users")}><span className="inline-flex items-center gap-1"><UsersIcon className="size-3.5 text-ink3" /><span className="num">{n(d.users)} · {n(d.online)} {t("online")}</span></span></KV>
+        <KV label={t("users")}><span className="inline-flex items-center gap-1"><UsersIcon className="size-3.5 text-ink3" /><span className="num">{n(d.users)}{sep}{n(d.online)} {t("online")}</span></span></KV>
         <KV label={t("protocols")}><span className="inline-flex items-center gap-1"><Network className="size-3.5 text-ink3" /><span className="num">{n(d.inboundsOn)} / {n(d.inbounds)}</span></span></KV>
       </div>
       <div className="grid sm:grid-cols-2 gap-4">
@@ -102,7 +102,7 @@ export function NodesPage() {
     <div>
       <PageHead title={t("nodes")} sub={t("nodesSub")} action={
         <div className="flex items-center gap-2">
-          {owner && behind.length > 1 && <Button variant="soft" icon={<CircleArrowUp className="size-4" />} loading={updatingAll} onClick={updateAll}>{t("nodeUpdateAll")} · {n(behind.length)}</Button>}
+          {owner && behind.length > 1 && <Button variant="soft" icon={<CircleArrowUp className="size-4" />} loading={updatingAll} onClick={updateAll}>{t("nodeUpdateAll")}{sep}{n(behind.length)}</Button>}
           {owner && <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setAdding(true)}>{t("addServer")}</Button>}
           <Segmented value={mode} onChange={setMode} options={[{ value: "grid", label: <LayoutGrid className="size-4" /> }, { value: "list", label: <List className="size-4" /> }]} />
         </div>} />
@@ -137,7 +137,7 @@ export function NodesPage() {
                     <td className="px-4 num">{ns ? pc(pct(ns.memUsed, ns.memTotal), 0) : "—"}</td>
                     <td className="px-4 num">{ns ? pc(pct(ns.diskUsed, ns.diskTotal), 0) : "—"}</td>
                     <td className="px-4">{ns ? duration(ns.uptime, lang) : "—"}</td>
-                    <td className="px-4 num">{x.role === "relay" ? `${t("relay")} · ${n(ns?.forwards?.length ?? 0)}` : n(x.inbounds)}</td>
+                    <td className="px-4 num">{x.role === "relay" ? `${t("relay")}${sep}${n(ns?.forwards?.length ?? 0)}` : n(x.inbounds)}</td>
                   </tr>
                 );
               })}

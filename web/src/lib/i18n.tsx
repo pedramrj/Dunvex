@@ -2375,6 +2375,8 @@ interface Ctx {
   n: (v: number, digits?: number) => string;
   /** A percentage in the current language's digits and percent sign. */
   pc: (v: number, digits?: number) => string;
+  /** The separator between facts: the Persian comma in Persian, where a middle dot beside a digit reads as a zero. */
+  sep: string;
 }
 
 const I18n = createContext<Ctx>(null as any);
@@ -2403,6 +2405,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         } catch {}
         setLangState(l);
       },
+      sep: lang === "fa" ? "، " : " · ",
       n: (v, digits = 0) => {
         if (!nf.has(digits)) nf.set(digits, new Intl.NumberFormat(lang === "fa" ? "fa-IR" : "en-US", { maximumFractionDigits: digits, minimumFractionDigits: 0 }));
         return nf.get(digits)!.format(v);

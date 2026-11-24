@@ -173,7 +173,7 @@ function Stored({ info, reload }: { info: BackupInfo; reload: () => void }) {
               <div className="min-w-0 flex-1">
                 <bdi dir="ltr" className="block mono text-[12.5px] truncate">{f.name}</bdi>
                 <div className="text-[12px] text-ink3 flex flex-wrap gap-x-2">
-                  <span>{ago(f.at, lang)}</span><span>·</span><span className="num">{bytes(f.size, lang)}</span>
+                  <span>{ago(f.at, lang)}</span><span aria-hidden className="self-center w-px h-3 bg-[var(--border2)]" /><span className="num">{bytes(f.size, lang)}</span>
                   {f.safety && <><span>·</span><span className="text-warn">{t("bkSafety")}</span></>}
                 </div>
               </div>

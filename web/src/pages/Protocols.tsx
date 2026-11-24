@@ -144,11 +144,11 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 
 /** What the last config check found for an inbound (its worst copy). */
 function HealthBadge({ r }: { r: HealthResult & { copies: number; failing: number } }) {
-  const { t, n } = useI18n();
+  const { t, n, sep } = useI18n();
   if (r.status === "ok")
     return <Badge color={msColor(r.ms)} icon={<CircleCheck className="size-3" />}><span className="num">{n(r.ms ?? 0)}</span> ms</Badge>;
   if (r.status === "fail")
-    return <Badge color="var(--color-bad)" icon={<CircleX className="size-3" />}>{t("healthFail")}{r.copies > 1 && <span className="num"> · {n(r.failing)}/{n(r.copies)}</span>}</Badge>;
+    return <Badge color="var(--color-bad)" icon={<CircleX className="size-3" />}>{t("healthFail")}{r.copies > 1 && <span className="num">{sep}{n(r.failing)}/{n(r.copies)}</span>}</Badge>;
   return <span title={r.error}><Badge color="var(--color-ink3)" icon={<CircleSlash className="size-3" />}>{t("healthSkip")}</Badge></span>;
 }
 

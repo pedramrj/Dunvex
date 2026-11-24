@@ -95,7 +95,7 @@ export function SettingsPage({ arg }: { arg?: string }) {
 // ---------------------------------------------------------------- owner settings
 
 function OwnerSettings({ tab }: { tab: TabId }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const toast = useToast();
   const [s, setS] = useState<S | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
@@ -159,7 +159,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
           action={<Badge color={info.selfSigned ? "var(--color-ink2)" : "var(--color-online)"}>{info.selfSigned ? (lang === "fa" ? "خودامضا" : "Self-signed") : "TLS ✓"}</Badge>}>
           <p className="text-[13.5px] text-ink2 mb-4">
             {t("dmMovedBody")}
-            {info.certExpiry ? <> · <span className="num">{date(info.certExpiry, lang)}</span></> : null}
+            {info.certExpiry ? <>{sep}<span className="num">{date(info.certExpiry, lang)}</span></> : null}
           </p>
           <div className="flex justify-end"><Button variant="primary" icon={<Globe className="size-4" />} onClick={() => navigate("domains")}>{t("dmOpen")}</Button></div>
         </Panel>
@@ -310,7 +310,7 @@ function SecurityTab() {
 // ---------------------------------------------------------------- admins
 
 function AdminsTab() {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const toast = useToast();
   const { me } = useSession();
   const [list, setList] = useState<Admin[] | null>(null);
@@ -333,7 +333,7 @@ function AdminsTab() {
                 </div>
                 <div className="text-[12px] text-ink3 num">
                   {n(a.userCount ?? 0)} {t("users2")}
-                  {a.role === "reseller" && <> · {bytes(a.allocated ?? 0, lang)} / {a.maxData ? bytes(a.maxData, lang) : "∞"}</>}
+                  {a.role === "reseller" && <>{sep}{bytes(a.allocated ?? 0, lang)} / {a.maxData ? bytes(a.maxData, lang) : "∞"}</>}
                 </div>
               </div>
               <Badge color={roleColor[a.role]}>{t(roleKey[a.role])}</Badge>

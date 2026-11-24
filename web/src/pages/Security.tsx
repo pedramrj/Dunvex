@@ -9,7 +9,7 @@ import { ApiKeysPanel, SessionsPanel } from "./Access";
 
 /** Security centre: sign-ins, failures, two-step login and roles, from real events. */
 export function SecurityPage() {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const { me } = useSession();
   const [events, setEvents] = useState<Event[]>([]);
   const [admins, setAdmins] = useState<Admin[] | null>(null);
@@ -70,7 +70,7 @@ export function SecurityPage() {
                   </li>
                 ))}
               </ul>
-              <p className="text-[12px] text-ink3 mt-3">{n(admins?.length ?? 0)} · {t("sessionNote")}</p>
+              <p className="text-[12px] text-ink3 mt-3">{n(admins?.length ?? 0)}{sep}{t("sessionNote")}</p>
             </Panel>
           )}
         </div>

@@ -22,7 +22,7 @@ const EarthCard = lazy(() => import("../components/Earth").then((m) => ({ defaul
 const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", map: "liveMap", network: "network", configs: "configHealth", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
 
 export function OverviewPage() {
-  const { t, lang, n, pc } = useI18n();
+  const { t, lang, n, pc, sep } = useI18n();
   const { me, events } = useSession();
   const { prefs } = usePrefs();
   const [d, setD] = useState<Overview | null>(null);
@@ -71,7 +71,7 @@ export function OverviewPage() {
             {problems === 0 ? (
               <Badge color="var(--ok)" icon={<CheckCircle2 className="size-3.5" />} className="h-9 px-3">{t("allGood")}</Badge>
             ) : (
-              <Badge color="var(--bad)" icon={<AlertTriangle className="size-3.5" />} className="h-9 px-3">{t("issues")} · {n(problems)}</Badge>
+              <Badge color="var(--bad)" icon={<AlertTriangle className="size-3.5" />} className="h-9 px-3">{t("issues")}{sep}{n(problems)}</Badge>
             )}
             <Button icon={<LayoutGrid className="size-4" />} onClick={() => setCustom(true)}>{t("customize")}</Button>
             <NewUserButton />
@@ -113,7 +113,7 @@ export function OverviewPage() {
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[12.5px]">
                 <Row k={t("netNow")} v={<span className="num">↓{speed(sys.netDown, lang)} ↑{speed(sys.netUp, lang)}</span>} />
-                <Row k={t("connections")} v={<span className="num">TCP {n(sys.tcp)} · UDP {n(sys.udp)}</span>} />
+                <Row k={t("connections")} v={<span className="num">TCP {n(sys.tcp)}{sep}UDP {n(sys.udp)}</span>} />
                 <Row k={t("load")} v={<span className="mono text-[12px]" dir="ltr">{(sys.load ?? []).map((x) => x.toFixed(2)).join("  ") || "—"}</span>} />
                 <Row k={t("swap")} v={<span className="num">{sys.swapTotal ? `${bytes(sys.swapUsed, lang)} / ${bytes(sys.swapTotal, lang)}` : "—"}</span>} />
               </dl>

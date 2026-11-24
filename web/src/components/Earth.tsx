@@ -56,7 +56,7 @@ interface Props {
 }
 
 export function Earth({ data, focusUser, hl, setHl, height = 520, compact }: Props) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const [view, setView] = useState<View>(FULL);
   const [tip, setTip] = useState<{ x: number; y: number; p: MapPlace } | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -193,7 +193,7 @@ export function Earth({ data, focusUser, hl, setHl, height = 520, compact }: Pro
         <div className="absolute z-10 pointer-events-none rounded-xl border border-hair2 bg-panel/95 px-3 py-2 text-[13px] shadow-xl max-w-[260px]"
           style={{ left: Math.min(tip.x + 14, (box.current?.clientWidth ?? 300) - 260), top: Math.max(8, tip.y - 10) }}>
           <div className="font-semibold"><bdi>{tip.p.city || t("mapUnknownCity")}</bdi> <span className="text-ink3 font-normal">· {regionName(tip.p.cc, lang)}</span></div>
-          <div className="text-ink2">{n(tip.p.devices.length)} {t("mapStatDevices")} · {n(new Set(tip.p.devices.map((d) => d.uid)).size)} {t("mapStatUsers")}</div>
+          <div className="text-ink2">{n(tip.p.devices.length)} {t("mapStatDevices")}{sep}{n(new Set(tip.p.devices.map((d) => d.uid)).size)} {t("mapStatUsers")}</div>
           <div className="mt-1 flex flex-wrap gap-1">{[...new Set(tip.p.devices.map((d) => d.user))].slice(0, 8).map((u) => <span key={u} className="mono text-[11.5px] px-1.5 rounded bg-fg/[.06]" dir="ltr">{u}</span>)}</div>
           {tip.p.devices.some((d) => d.org) && <div className="mt-1 text-[12px] text-ink3">{[...new Set(tip.p.devices.map((d) => operatorName(d.asn, d.org, lang)).filter(Boolean))].slice(0, 3).join(" · ")}</div>}
         </div>
@@ -211,7 +211,7 @@ export function Earth({ data, focusUser, hl, setHl, height = 520, compact }: Pro
 
 /** The whole page: the map with its categorised side lists. */
 export function EarthView({ height = "auto" }: { height?: number | string }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const [data, setData] = useState<UserMap | null>(null);
   const [err, setErr] = useState("");
   const [hl, setHl] = useState<string | null>(null);
@@ -318,7 +318,7 @@ export function EarthView({ height = "auto" }: { height?: number | string }) {
           ))}
         </div>
         <div className="px-3 py-2.5 border-t border-hair text-[11.5px] text-ink3 leading-6">
-          {data && (data.relayed > 0 || data.unplaced > 0) && <div>{data.relayed > 0 && t("mapRelayed").replace("{n}", n(data.relayed))}{data.relayed > 0 && data.unplaced > 0 && " · "}{data.unplaced > 0 && t("mapUnplaced").replace("{n}", n(data.unplaced))}</div>}
+          {data && (data.relayed > 0 || data.unplaced > 0) && <div>{data.relayed > 0 && t("mapRelayed").replace("{n}", n(data.relayed))}{data.relayed > 0 && data.unplaced > 0 && sep}{data.unplaced > 0 && t("mapUnplaced").replace("{n}", n(data.unplaced))}</div>}
           {data && !data.city && <div>{t("mapNoCity")}</div>}
           <div>{t("mapSource").replace("{src}", data?.source || "DB-IP")}</div>
         </div>
@@ -329,7 +329,7 @@ export function EarthView({ height = "auto" }: { height?: number | string }) {
 
 /** A small map on the overview: click through to the full page. */
 export function EarthCard() {
-  const { t, n } = useI18n();
+  const { t, n, sep } = useI18n();
   const [data, setData] = useState<UserMap | null>(null);
   useEffect(() => {
     let alive = true;
@@ -343,7 +343,7 @@ export function EarthCard() {
       <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         <h3 className="text-[15px] font-semibold">{t("liveMap")}</h3>
         <span className="ss">LIVE</span><span className="led on live" />
-        <span className="ms-auto text-[12.5px] text-ink2">{n(data?.users ?? 0)} {t("mapStatUsers")} · {n(data?.places.length ?? 0)} {t("mapPlaces")}</span>
+        <span className="ms-auto text-[12.5px] text-ink2">{n(data?.users ?? 0)} {t("mapStatUsers")}{sep}{n(data?.places.length ?? 0)} {t("mapPlaces")}</span>
         <button className="link-btn" onClick={() => navigate("map")}>{t("mapOpen")}</button>
       </div>
       <Earth data={data} height={300} compact />

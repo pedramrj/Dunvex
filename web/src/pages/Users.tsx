@@ -441,7 +441,7 @@ interface FormState {
 }
 
 function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boolean; onClose: () => void; onSaved: (u: User, all?: User[]) => void; user?: User; tagSuggest?: string[] }) {
-  const { t, n } = useI18n();
+  const { t, n, sep } = useI18n();
   const toast = useToast();
   const { me } = useSession();
   const isAdmin = can(me.admin.role, "admin");
@@ -500,7 +500,7 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
   return (
     <Sheet open={open} onClose={onClose} wide title={user ? t("edit") : t("newUser")} sub={user ? <span dir="ltr">{user.name}</span> : undefined}
       footer={<>
-        {!user && <span className="hidden sm:block me-auto min-w-0 text-[12.5px] text-ink3 truncate"><bdi dir="ltr" className="text-ink">{f.name || "…"}</bdi> · {f.gb > 0 ? (f.gb >= 1024 ? `${n(f.gb / 1024)} ${t("tbUnit")}` : `${n(f.gb)} ${t("gb")}`) : t("unlimited")} · {f.days > 0 ? (f.days === 365 ? t("oneYear") : `${n(f.days)} ${t("days")}`) : t("never")}<span className="hidden sm:inline"> · <kbd className="mono">Ctrl ↵</kbd></span></span>}
+        {!user && <span className="hidden sm:block me-auto min-w-0 text-[12.5px] text-ink3 truncate"><bdi dir="ltr" className="text-ink">{f.name || "…"}</bdi>{sep}{f.gb > 0 ? (f.gb >= 1024 ? `${n(f.gb / 1024)} ${t("tbUnit")}` : `${n(f.gb)} ${t("gb")}`) : t("unlimited")}{sep}{f.days > 0 ? (f.days === 365 ? t("oneYear") : `${n(f.days)} ${t("days")}`) : t("never")}<span className="hidden sm:inline">{sep}<kbd className="mono">Ctrl ↵</kbd></span></span>}
         <Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} onClick={submit}>{user ? t("save") : t("createShare")}</Button></>}>
       <div className="flex flex-col gap-5" onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}>
         <FormSection title={t("general")}>
@@ -552,7 +552,7 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
           <details className="adv-sec mach rounded-2xl" open={!!user}>
             <summary className="flex items-center gap-3 px-4 min-h-12 py-2 cursor-pointer list-none">
               <SlidersHorizontal className="size-4 text-ink3 shrink-0" /><b className="font-semibold">{t("advanced")}</b>
-              <span className="text-[12.5px] text-ink3 truncate min-w-0">{t("deviceLimit")}: {f.ipLimit > 0 ? n(f.ipLimit) : "∞"} · {t("resetPeriod")}: {t(f.resetPeriod === "none" ? "none" : f.resetPeriod)} · {f.inboundIds.length ? `${n(f.inboundIds.length)} ${t("protocols")}` : t("allProtocols")}</span>
+              <span className="text-[12.5px] text-ink3 truncate min-w-0">{t("deviceLimit")}: {f.ipLimit > 0 ? n(f.ipLimit) : "∞"}{sep}{t("resetPeriod")}: {t(f.resetPeriod === "none" ? "none" : f.resetPeriod)}{sep}{f.inboundIds.length ? `${n(f.inboundIds.length)} ${t("protocols")}` : t("allProtocols")}</span>
               <ChevronDown className="adv-chev size-4 ms-auto text-ink3 shrink-0" />
             </summary>
             <div className="px-4 pb-4 pt-1 flex flex-col gap-5 border-t border-hair">
@@ -684,7 +684,7 @@ function pace(series: { t: number; up: number; down: number }[], u: User): { avg
 
 /** Where a user is connected from: a small map, then each address with its city, network and server. */
 function Connections({ u, det }: { u: User; det: Detail | null }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang, n, sep } = useI18n();
   const [map, setMap] = useState<UserMap | null>(null);
   useEffect(() => {
     let alive = true;
@@ -701,7 +701,7 @@ function Connections({ u, det }: { u: User; det: Detail | null }) {
         <div className="flex items-center gap-2 px-4 pt-3 pb-2">
           <h4 className="font-semibold text-[15px]">{t("connNow")}</h4>
           <span className="ss">LIVE</span>{list.length > 0 && <span className="led on live" />}
-          <span className="ms-auto text-[12.5px] text-ink2">{n(list.length)} {t("mapStatDevices")} · {t("connPlaces").replace("{n}", n(places))}{u.ipLimit > 0 ? ` · ${t("deviceLimit")}: ${n(u.ipLimit)}` : ""}</span>
+          <span className="ms-auto text-[12.5px] text-ink2">{n(list.length)} {t("mapStatDevices")}{sep}{t("connPlaces").replace("{n}", n(places))}{u.ipLimit > 0 ? `${sep}${t("deviceLimit")}: ${n(u.ipLimit)}` : ""}</span>
         </div>
         <Suspense fallback={<Skeleton className="h-[240px] rounded-none" />}>
           <EarthLazy data={map} focusUser={u.id} height={240} compact />
@@ -734,7 +734,7 @@ function Connections({ u, det }: { u: User; det: Detail | null }) {
 }
 
 function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: () => void; onChanged: () => void; tagSuggest: string[] }) {
-  const { t, lang, n, pc } = useI18n();
+  const { t, lang, n, pc, sep } = useI18n();
   const toast = useToast();
   const [cfg, setCfg] = useState<{ subUrl: string; configs: ConfigEntry[] } | null>(null);
   const [series, setSeries] = useState<{ t: number; up: number; down: number }[]>([]);
@@ -820,7 +820,7 @@ function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: (
           </Ring>
           <div className="grid grid-cols-2 gap-x-5 gap-y-3.5">
             <KV label={t("status")}><StatusBadge status={cur.status} /></KV>
-            <KV label={t("expiry")}>{cur.daysLeft === null ? t("never") : <span className="num">{n(cur.daysLeft)} {t("days")}{cur.expireAt ? <span className="text-ink3 text-[12px]"> · {date(cur.expireAt, lang)}</span> : null}</span>}</KV>
+            <KV label={t("expiry")}>{cur.daysLeft === null ? t("never") : <span className="num">{n(cur.daysLeft)} {t("days")}{cur.expireAt ? <span className="text-ink3 text-[12px]">{sep}{date(cur.expireAt, lang)}</span> : null}</span>}</KV>
             <KV label={t("speedNow")}><span className="num">↓ {speed(cur.speedDown, lang)} · ↑ {speed(cur.speedUp, lang)}</span></KV>
             <KV label={t("lastOnline")}>{cur.online ? <span className="text-online inline-flex items-center gap-1.5"><Dot color="var(--color-online)" pulse size={7} />{t("online")}</span> : ago(cur.lastOnlineAt, lang)}</KV>
             <KV label={t("devices")}><span className="num">{n(det?.deviceList?.length ?? cur.devices)} / {cur.ipLimit > 0 ? n(cur.ipLimit) : "∞"}</span></KV>
