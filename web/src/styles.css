@@ -995,3 +995,10 @@ svg:has(.topo-node:hover) .topo-node:not(:hover) {
   .earth-arc, .earth-packet, .earth-ring, .earth-place, .led.live, .earth-scan { animation: none; stroke-dashoffset: 0; }
 }
 :root[data-motion="reduced"] :is(.earth-arc, .earth-packet, .earth-ring, .earth-place, .led.live, .earth-scan) { animation: none; stroke-dashoffset: 0; }
+
+/* the overview rack: machined modules, a packet per cable */
+.rack-mod { background: linear-gradient(180deg, var(--surface3), var(--surface)); box-shadow: inset 0 1px 0 var(--edge); transition: border-color 0.15s, transform 0.12s; }
+.rack-mod:hover { border-color: var(--primary2); }
+.rack-mod:active { transform: scale(0.98); }
+.rack-pulse { stroke-dasharray: 3 97; animation: earth-ride 2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .rack-pulse { animation: none; display: none; } }

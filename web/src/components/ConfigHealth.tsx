@@ -8,6 +8,7 @@ import { Badge, Button, Dot, Panel, Ring, Skeleton, useToast } from "./ui";
 import { StackBar } from "./charts";
 import { navigate } from "../App";
 import { shortName } from "./NetworkMap";
+import { ErrText } from "./ErrText";
 
 const SHOWN = 9; // tiles before "Show all"
 
@@ -138,7 +139,7 @@ function Tile({ r, name }: { r: HealthResult; name: string }) {
             {r.via === "domain" && <Badge className="h-5 text-[10.5px] px-2" color="var(--cyan)" icon={<Globe2 className="size-2.5" />}>{t("viaDomain")}</Badge>}
           </div>
         )}
-        {failed && r.error && <p className="mt-1.5 text-[11.5px] text-bad/90 line-clamp-2 [overflow-wrap:anywhere]" dir="ltr" title={r.error}>{r.error}</p>}
+        {failed && r.error && <ErrText raw={r.error} compact className="mt-1.5 text-[12px] text-bad/90 line-clamp-2" />}
       </button>
     </li>
   );

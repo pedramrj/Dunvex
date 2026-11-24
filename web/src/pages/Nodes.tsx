@@ -7,6 +7,7 @@ import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, ErrorState, IconB
 import { Spark } from "../components/charts";
 import { Logo } from "../components/Logo";
 import { PageHead, useSession } from "../App";
+import { ErrText } from "../components/ErrText";
 
 const INSTALL_NODE = "bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.sh) node";
 
@@ -216,7 +217,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
       </div>
 
       {x.error && (
-        <div className="mb-4 rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad"><bdi dir="ltr" className="break-words">{x.error}</bdi></div>
+        <div className="mb-4 rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2"><ErrText raw={x.error} /></div>
       )}
       {up && x.online && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary2/30 bg-primary2/[.07] px-3 py-2 text-[12.5px]">
@@ -275,7 +276,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
           )}
           {coreErr.length > 0 && (
             <ul className="mt-3 flex flex-col gap-1 text-[12px] text-bad">
-              {coreErr.map(([k, v]) => <li key={k}><bdi dir="ltr" className="break-words">{k}: {v}</bdi></li>)}
+              {coreErr.map(([k, v]) => <li key={k}><ErrText raw={v.includes(k) ? v : `${k}: ${v}`} compact /></li>)}
             </ul>
           )}
         </>

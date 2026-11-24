@@ -11,6 +11,7 @@ import { useI18n } from "../lib/i18n";
 import {  Avatar, Badge, Button, Chip, ChipSelect, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
   Skeleton, StatusBadge, Tabs, Toggle, useToast, ContextMenu, useConfirm, type MenuItem, EventMsg } from "../components/ui";
 import { UsageChart } from "../components/charts";
+import { ShareSheet } from "../components/ShareSheet";
 import { PageHead, can, eventMeta, navigate, useSession } from "../App";
 
 type Filter = "" | "online" | Status;
@@ -47,6 +48,7 @@ export function UsersPage({ arg }: { arg?: string }) {
   const [tagsOpen, setTagsOpen] = useState(false);
   const [tagDlg, setTagDlg] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false); // phones: the bar folds away
+  const [shared, setShared] = useState<User[] | null>(null); // the users just made, with their links
   const isAdmin = can(me.admin.role, "admin");
 
   const load = useCallback(() => {
@@ -255,15 +257,13 @@ export function UsersPage({ arg }: { arg?: string }) {
           action={filtersOn ? <Button icon={<FilterX className="size-4" />} onClick={clearFilters}>{t("clearFilters")}</Button> : undefined} /></div>
       ) : (
         <div className="glass edge rounded-[20px] overflow-hidden">
-          <div className="hidden lg:grid grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-3 px-5 h-12 text-[12px] text-ink3 font-medium border-b border-hair bg-fg/[.015]">
+          <div className="hidden lg:grid grid-cols-[32px_minmax(200px,1.6fr)_124px_minmax(180px,1.4fr)_84px_176px] items-center gap-3 px-5 h-12 text-[12px] text-ink3 font-medium border-b border-hair bg-fg/[.015]">
             <input type="checkbox" aria-label={t("all")} className="accent-[var(--primary)] size-4 cursor-pointer" checked={sel.size > 0 && sel.size === list.length}
               onChange={(e) => setSel(e.target.checked ? new Set(list.map((u) => u.id)) : new Set())} />
             <Sh k="name">{t("name")}</Sh>
-            <Sh k="status">{t("status")}</Sh>
+            <Sh k="expiry">{t("ends")}</Sh>
             <Sh k="usage">{t("usage")}</Sh>
-            <Sh k="expiry">{t("expiry")}</Sh>
             <Sh k="devices">{t("devices")}</Sh>
-            <Sh k="speed">{t("speed")}</Sh>
             <span />
           </div>
           <div role="list">
@@ -278,7 +278,8 @@ export function UsersPage({ arg }: { arg?: string }) {
         </div>
       )}
 
-      <UserForm open={arg === "new"} onClose={close} tagSuggest={allTags.map((x) => x.tag)} onSaved={(u) => { load(); reload(); navigate("users", String(u.id)); }} />
+      <UserForm open={arg === "new"} onClose={close} tagSuggest={allTags.map((x) => x.tag)} onSaved={(u, all) => { load(); reload(); navigate("users"); setShared(all ?? [u]); }} />
+      <ShareSheet users={shared} onClose={() => setShared(null)} onOpen={(id) => { setShared(null); navigate("users", String(id)); }} onNext={() => { setShared(null); navigate("users", "new"); }} />
       {editing && <UserDetail key={editing.id} u={editing} tagSuggest={allTags.map((x) => x.tag)} onClose={close} onChanged={() => { load(); reload(); }} />}
       <BulkTagDialog open={tagDlg} onClose={() => setTagDlg(false)} count={sel.size} all={allTags.map((x) => x.tag)} present={selTags}
         onApply={(action, tag) => { setTagDlg(false); bulk(action, { tag }); }} />
@@ -355,7 +356,7 @@ function ExpiryCell({ u }: { u: User }) {
   const warn = u.daysLeft <= 3;
   return (
     <div>
-      <span className={cx("num text-[13px] font-medium", warn && "text-warn", u.daysLeft === 0 && "text-bad")}>{n(u.daysLeft)} {t("daysLeft")}</span>
+      <span className={cx("num text-[13px] font-medium", warn && "text-warn", u.daysLeft === 0 && "text-bad")}>{n(u.daysLeft)} {u.daysLeft === 1 && lang === "en" ? "day left" : t("daysLeft")}</span>
       <div className="text-[11.5px] text-ink3 num">{date(u.expireAt, lang)}</div>
     </div>
   );
@@ -368,13 +369,13 @@ function UserRow({ u, checked, onCheck, onQr, onCopy, onTag, activeTags }: {
   const pct = u.dataLimit > 0 ? (u.used / u.dataLimit) * 100 : 0;
   return (
     <div role="listitem" style={{ contentVisibility: "auto", containIntrinsicSize: "0 var(--row)" }} className={cx("border-b border-hair transition-colors", checked ? "bg-primary/[.08]" : "hover:bg-fg/[.025]")}>
-      <div className="grid grid-cols-[28px_1fr_auto] lg:grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-x-3 gap-y-2.5 px-4 lg:px-5 py-3.5">
+      <div className="grid grid-cols-[28px_1fr_auto] lg:grid-cols-[32px_minmax(200px,1.6fr)_124px_minmax(180px,1.4fr)_84px_176px] items-center gap-x-3 gap-y-2.5 px-4 lg:px-5 py-3.5">
         <input type="checkbox" aria-label={u.name} className="accent-[var(--primary)] size-4 cursor-pointer" checked={checked} onChange={(e) => onCheck(e.target.checked)} />
         <div className="min-w-0">
           <a href={`#/users/${u.id}`} className="min-w-0 flex items-center gap-3 group">
             <Avatar name={u.name} size={38} online={u.online} />
             <span className="min-w-0">
-              <span className="block font-semibold truncate group-hover:text-primary2" dir="ltr">{u.name}</span>
+              <span className="flex items-center gap-2 min-w-0"><span className="font-semibold truncate group-hover:text-primary2" dir="ltr">{u.name}</span>{u.status !== "active" && <StatusBadge status={u.status} />}</span>
               <span className="block text-[12px] text-ink3 truncate">
                 {u.note || (u.online ? <span className="text-online">{t("online")}</span> : ago(u.lastOnlineAt, lang))}
                 {u.owner && <span className="text-violet"> · {u.owner}</span>}
@@ -396,7 +397,7 @@ function UserRow({ u, checked, onCheck, onQr, onCopy, onTag, activeTags }: {
           <IconButton label={t("copy")} onClick={onCopy}><Copy className="size-4" /></IconButton>
           <IconButton label="QR" onClick={onQr}><QrCode className="size-4" /></IconButton>
         </div>
-        <div className="col-start-2 lg:col-start-auto"><StatusBadge status={u.status} /></div>
+        <div className="col-start-2 lg:col-start-auto"><ExpiryCell u={u} /></div>
         <div className="col-span-3 lg:col-span-1 col-start-1 lg:col-start-auto min-w-0 ps-10 lg:ps-0">
           <div className="flex justify-between items-baseline gap-2 text-[12.5px] num mb-1.5">
             <span className="font-medium">{bytes(u.used, lang)}</span>
@@ -407,16 +408,15 @@ function UserRow({ u, checked, onCheck, onQr, onCopy, onTag, activeTags }: {
             )}
           </div>
           <Meter value={u.used} max={u.dataLimit > 0 ? u.dataLimit : 0} />
+          {u.speedDown + u.speedUp > 0 && <div className="mt-1 text-[11.5px] text-online num inline-flex items-center gap-1.5"><span className="led on live" style={{ width: 5, height: 5 }} />{speed(u.speedDown + u.speedUp, lang)}</div>}
         </div>
-        <div className="hidden lg:block"><ExpiryCell u={u} /></div>
         <div className="hidden lg:flex items-center gap-1.5 text-[13px] num">
           <Smartphone className={cx("size-4", u.devices > 0 ? "text-primary2" : "text-ink3")} />
           <span className={cx(u.ipLimit > 0 && u.devices > u.ipLimit && "text-bad")}>{n(u.devices)}</span>
-          <span className="text-ink3">/ {u.ipLimit > 0 ? n(u.ipLimit) : "∞"}</span>
+          <span className="text-ink3">{t("ofWord")} {u.ipLimit > 0 ? n(u.ipLimit) : "∞"}</span>
         </div>
-        <div className="hidden lg:block text-[12.5px] num text-ink2">{u.speedDown + u.speedUp > 0 ? <span className="text-ink">{speed(u.speedDown + u.speedUp, lang)}</span> : "—"}</div>
         <div className="hidden lg:flex items-center justify-end gap-0.5">
-          <IconButton label={t("copy")} onClick={onCopy}><Copy className="size-4" /></IconButton>
+          <Button size="sm" icon={<Copy className="size-4" />} onClick={onCopy}>{t("copyLink")}</Button>
           <IconButton label="QR" onClick={onQr}><QrCode className="size-4" /></IconButton>
           <IconButton label={t("edit")} onClick={() => navigate("users", String(u.id))}><Pencil className="size-4" /></IconButton>
         </div>
@@ -440,7 +440,7 @@ interface FormState {
   tags: string[];
 }
 
-function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boolean; onClose: () => void; onSaved: (u: User) => void; user?: User; tagSuggest?: string[] }) {
+function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boolean; onClose: () => void; onSaved: (u: User, all?: User[]) => void; user?: User; tagSuggest?: string[] }) {
   const { t, n } = useI18n();
   const toast = useToast();
   const { me } = useSession();
@@ -491,14 +491,18 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
     }
     if (!user) body.count = f.count;
     if (!user && planId) body.planId = planId;
-    const req = user ? api<User>(`users/${user.id}`, { method: "PUT", body }) : api<User[]>("users", { body }).then((list) => list[0]);
-    req.then((u) => { toast(t("saved")); onSaved(u); }).catch((e) => toast(e.message, "error")).finally(() => setBusy(false));
+    const req: Promise<[User, User[] | undefined]> = user
+      ? api<User>(`users/${user.id}`, { method: "PUT", body }).then((u) => [u, undefined])
+      : api<User[]>("users", { body }).then((list) => [list[0], list]);
+    req.then(([u, all]) => { toast(t("saved")); onSaved(u, all); }).catch((e) => toast(e.message, "error")).finally(() => setBusy(false));
   };
 
   return (
-    <Sheet open={open} onClose={onClose} title={user ? t("edit") : t("newUser")} sub={user ? <span dir="ltr">{user.name}</span> : undefined}
-      footer={<><Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} onClick={submit}>{user ? t("save") : t("create")}</Button></>}>
-      <div className="flex flex-col gap-5">
+    <Sheet open={open} onClose={onClose} wide title={user ? t("edit") : t("newUser")} sub={user ? <span dir="ltr">{user.name}</span> : undefined}
+      footer={<>
+        {!user && <span className="me-auto text-[12.5px] text-ink3 truncate"><bdi dir="ltr" className="text-ink">{f.name || "…"}</bdi> · {f.gb > 0 ? (f.gb >= 1024 ? `${n(f.gb / 1024)} ${t("tbUnit")}` : `${n(f.gb)} ${t("gb")}`) : t("unlimited")} · {f.days > 0 ? (f.days === 365 ? t("oneYear") : `${n(f.days)} ${t("days")}`) : t("never")}<span className="hidden sm:inline"> · <kbd className="mono">Ctrl ↵</kbd></span></span>}
+        <Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} onClick={submit}>{user ? t("save") : t("createShare")}</Button></>}>
+      <div className="flex flex-col gap-5" onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}>
         <FormSection title={t("general")}>
           <div className="grid grid-cols-[1fr_100px] gap-3">
             <label><Label>{t("name")}</Label><Input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="ali-phone" dir="ltr" autoFocus /></label>
@@ -527,16 +531,16 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
         )}
         {mustPlan && plans.length === 0 && <div className="rounded-2xl border border-warn/40 bg-warn/[.08] px-4 py-3 text-[13px]">{t("noPlans")}</div>}
 
-        {!chosen && <FormSection title={t("plan")}>
+        {!chosen && <FormSection title={t("volumeTime")}>
           <Label hint={f.gb > 0 ? `${n(f.gb)} ${t("gb")}` : t("unlimited")}>{t("dataLimit")}</Label>
-          <Segmented value={[10, 30, 50, 100, 200, 0].includes(f.gb) ? f.gb : -1} onChange={(v) => v >= 0 && set("gb", v)}
-            options={[10, 30, 50, 100, 200].map((g) => ({ value: g, label: `${n(g)} ${t("gb")}` })).concat([{ value: 0, label: t("unlimited") }])} />
+          <Segmented value={[10, 30, 50, 100, 200, 500, 1024, 0].includes(f.gb) ? f.gb : -1} onChange={(v) => v >= 0 && set("gb", v)}
+            options={[10, 30, 50, 100, 200, 500].map((g) => ({ value: g, label: `${n(g)} ${t("gb")}` })).concat([{ value: 1024, label: `${n(1)} ${t("tbUnit")}` }, { value: 0, label: t("unlimited") }])} />
           <Input type="number" min={0} step="0.5" value={f.gb} onChange={(e) => set("gb", Math.max(0, +e.target.value || 0))} className="num mt-2 max-w-40" aria-label={t("gb")} />
 
           <div className="mt-5">
             <Label hint={f.days > 0 ? `${n(f.days)} ${t("days")}` : t("never")}>{t("duration")}</Label>
-            <Segmented value={[7, 30, 60, 90, 180, 0].includes(f.days) ? f.days : -1} onChange={(v) => { if (v >= 0) { set("days", v); setDaysTouched(true); } }}
-              options={[7, 30, 60, 90, 180].map((d) => ({ value: d, label: `${n(d)} ${t("days")}` })).concat([{ value: 0, label: t("never") }])} />
+            <Segmented value={[7, 30, 60, 90, 180, 365, 0].includes(f.days) ? f.days : -1} onChange={(v) => { if (v >= 0) { set("days", v); setDaysTouched(true); } }}
+              options={[7, 30, 60, 90, 180].map((d) => ({ value: d, label: `${n(d)} ${t("days")}` })).concat([{ value: 365, label: t("oneYear") }, { value: 0, label: t("never") }])} />
             <Input type="number" min={0} value={f.days} onChange={(e) => { set("days", Math.max(0, +e.target.value || 0)); setDaysTouched(true); }} className="num mt-2 max-w-40" aria-label={t("days")} />
             {f.days > 0 && (!user || user.firstUseAt === 0) && (
               <div className="mt-3"><Toggle checked={f.startOnFirstUse} onChange={(v) => { set("startOnFirstUse", v); setDaysTouched(true); }} label={t("startOnFirst")} /></div>

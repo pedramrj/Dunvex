@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, Bell, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Cpu, Database, HardDrive, LayoutGrid,
-  Network, Server, ShieldAlert, Smartphone, Sparkles, UserCheck, UserX, Users as UsersIcon, Wifi, Zap,
+  Activity, AlertTriangle, ArrowDown, ArrowUp, Bell, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Cpu, Database, HardDrive, LayoutGrid,
+  Network, Server, Sparkles, Users as UsersIcon, Wifi, Zap,
 } from "lucide-react";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { api, type Group, type Overview } from "../lib/api";
@@ -13,6 +13,8 @@ import { NetworkMap } from "../components/NetworkMap";
 import { ConfigHealthPanel } from "../components/ConfigHealth";
 import { LiveChart, Spark, StackBar, UsageChart } from "../components/charts";
 import { NewUserButton, PageHead, can, eventMeta, navigate, useSession } from "../App";
+import { CoreErrors } from "../components/ErrText";
+import { Rack } from "../components/Rack";
 
 // the live map and its world data load only when the widget is on screen
 const EarthCard = lazy(() => import("../components/Earth").then((m) => ({ default: m.EarthCard })));
@@ -48,14 +50,6 @@ export function OverviewPage() {
   const coreErr = Object.entries(d.coreErrors ?? {});
   const problems = coreErr.length + (d.inboundErrs ?? 0);
   const pct = (a: number, b: number) => (b > 0 ? (a / b) * 100 : 0);
-  const statusParts = (["active", "pending", "paused", "limited", "expired", "disabled"] as const).map((s) => ({ value: d.statuses[s] ?? 0, color: statusMeta[s].color, label: t(statusMeta[s].key) }));
-  const activeSubs = (d.statuses.active ?? 0) + (d.statuses.pending ?? 0);
-  const endedSubs = (d.statuses.expired ?? 0) + (d.statuses.limited ?? 0);
-  const yesterday = yesterdayTotal(d.series);
-  const todayTotal = d.today.down + d.today.up;
-  const trend = yesterday > 0 ? ((todayTotal - yesterday) / yesterday) * 100 : null;
-  const coresUp = d.cores.filter((c) => c.running).length;
-  const coresNeeded = d.cores.filter((c) => !c.idle).length; // a core with nothing to serve is stopped on purpose
   const show = (w: Widget) => prefs.widgets.includes(w);
   const order = (w: Widget) => ({ order: prefs.widgets.indexOf(w) });
   // a row of widgets sits where its first visible widget is in the chosen order
@@ -86,7 +80,7 @@ export function OverviewPage() {
       />
 
       {coreErr.length > 0 && (
-        <div className="rise mb-5"><ErrorState message={coreErr.map(([k, v]) => `${k}: ${v}`).join(" · ")} /></div>
+        <div className="rise mb-5"><CoreErrors errors={coreErr} /></div>
       )}
 
       <div className="flex flex-col gap-[var(--gap)]">
@@ -128,35 +122,7 @@ export function OverviewPage() {
         </div>
 
         {show("kpis") && (
-          <div style={order("kpis")} className="stagger flex sm:grid gap-[var(--gap)] sm:grid-cols-2 xl:grid-cols-4 overflow-x-auto sm:overflow-visible snap-x snap-mandatory overscroll-x-contain [scrollbar-width:none] -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 sm:pb-0 [&>*]:shrink-0 [&>*]:w-[78%] [&>*]:snap-start sm:[&>*]:w-auto">
-            <StatCard icon={<UsersIcon className="size-[18px]" />} label={t("totalUsers")} value={<Num value={d.users} />} onClick={() => navigate("users")} tip={t("openUsers")}>
-              <StackBar parts={statusParts} />
-            </StatCard>
-            <StatCard icon={<Wifi className="size-[18px]" />} accent="var(--ok)" label={t("onlineNow")} value={<span className="text-online"><Num value={d.online} /></span>}
-              sub={<span className="inline-flex items-center gap-1"><Smartphone className="size-3.5" /><Num value={d.devices ?? 0} /> {t("devicesNow")}</span>} />
-            <StatCard icon={<UserCheck className="size-[18px]" />} accent="var(--cyan)" label={t("activeSubs")} value={<Num value={activeSubs} />}
-              sub={<span><Num value={d.statuses.pending ?? 0} /> {t("pending")}</span>} />
-            <StatCard icon={<UserX className="size-[18px]" />} accent="var(--bad)" label={t("endedSubs")} value={<Num value={endedSubs} />}
-              sub={<span><Num value={d.statuses.limited ?? 0} /> {t("limited")} · <Num value={d.statuses.expired ?? 0} /> {t("expired")}</span>} />
-            <StatCard icon={<Zap className="size-[18px]" />} accent="var(--warn)" label={t("today")} value={<Bytes value={todayTotal} />} trend={trend}
-              sub={<span>{t("vsYesterday")} · {bytes(yesterday, lang)}</span>}
-              foot={<Spark values={d.series.slice(-24).map((p) => p.up + p.down)} color="var(--warn)" height={34} />} />
-            <StatCard icon={<CalendarDays className="size-[18px]" />} accent="var(--color-violet)" label={t("thisMonth")} value={<Bytes value={d.month.down + d.month.up} />}
-              sub={<span>{t("lifetime")}: {bytes(d.lifetime, lang)}</span>}
-              foot={<Spark values={d.series.map((p) => p.up + p.down)} color="var(--color-violet)" height={34} />} />
-            <StatCard icon={<ArrowDownUp className="size-[18px]" />} accent="var(--cyan)" label={t("throughput")} value={<Bytes value={last.down + last.up} rate />}
-              sub={<span>↓ {speed(last.down, lang)} · ↑ {speed(last.up, lang)}</span>}
-              foot={<Spark values={live.map((s) => s.down + s.up)} color="var(--cyan)" height={34} />} />
-            <StatCard icon={<Server className="size-[18px]" />} accent="var(--ok)" label={t("nodes")} value={<span><Num value={1} /></span>} onClick={() => navigate("nodes")}
-              sub={<span className="inline-flex items-center gap-1.5"><Dot color={problems ? "var(--bad)" : "var(--ok)"} size={6} />{problems ? t("issues") : t("healthy")}</span>}
-              foot={<Spark values={hist.map((h) => h.cpu)} color="var(--ok)" height={34} />} />
-            <StatCard icon={<Network className="size-[18px]" />} accent="var(--color-cdn)" label={t("protocols")} value={<span><Num value={d.inboundsOn} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={d.inbounds} /></span></span>}
-              onClick={() => navigate("protocols")} sub={d.inboundErrs ? <span className="text-bad">{n(d.inboundErrs)} {t("error")}</span> : t("allGood")} />
-            <StatCard icon={<Bell className="size-[18px]" />} accent={problems ? "var(--bad)" : "var(--text2)"} label={t("openAlerts")} value={<Num value={problems} />} onClick={() => navigate("alerts")} />
-            <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={coresUp >= coresNeeded ? "var(--ok)" : "var(--warn)"} label={t("systemHealth")}
-              value={<span><Num value={coresUp} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={coresNeeded} /> {t("cores")}</span></span>} />
-            <StatCard icon={<Database className="size-[18px]" />} accent="var(--primary2)" label={t("activeSessions")} value={<Num value={d.devices ?? 0} />} sub={t("activeSessionsSub")} />
-          </div>
+          <div style={order("kpis")}><Rack d={d} server={server} /></div>
         )}
 
         {show("map") && (
@@ -222,11 +188,6 @@ export function OverviewPage() {
   );
 }
 
-function yesterdayTotal(series: { t: number; up: number; down: number }[]) {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() / 1000;
-  return series.filter((p) => p.t >= start - 86400 && p.t < start).reduce((s, p) => s + p.up + p.down, 0);
-}
 
 function CustomizeSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useI18n();
@@ -342,8 +303,7 @@ function ResellerOverview({ d, days, setDays }: { d: Overview; days: number; set
   const q = d.quota!;
   const usersPct = q.maxUsers > 0 ? (q.users / q.maxUsers) * 100 : 0;
   const dataPct = q.maxData > 0 ? (q.allocated / q.maxData) * 100 : 0;
-  const statusParts = (["active", "pending", "paused", "limited", "expired", "disabled"] as const).map((s) => ({ value: d.statuses[s] ?? 0, color: statusMeta[s].color, label: t(statusMeta[s].key) }));
-  const stats = useMemo(() => statusParts, [d.statuses]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stats = useMemo(() => (["active", "pending", "paused", "limited", "expired", "disabled"] as const).map((s) => ({ value: d.statuses[s] ?? 0, color: statusMeta[s].color, label: t(statusMeta[s].key) })), [d.statuses, t]);
   return (
     <div>
       <PageHead eyebrow={<span>{t("welcome")}{lang === "fa" ? "، " : ", "}<bdi dir="ltr">{me.admin.username}</bdi></span>} title={t("resellerDash")} action={<NewUserButton />} />

@@ -1,3 +1,5 @@
+import { readable, readableTail } from "./errors";
+
 // Panel events are stored in English by the server. This turns the known
 // messages into Persian for the Persian interface; anything unknown is shown
 // as it is, left to right.
@@ -22,7 +24,7 @@ const rules: Rule[] = [
   [/^(.+) deleted the API key "(.*)"$/, (m) => `${iso(m[1])} کلید API ${iso(m[2])} را حذف کرد`],
   [/^(.+) added the server (.+) \((.+)\)$/, (m) => `${iso(m[1])} سرور ${iso(m[2])} (${iso(m[3])}) را افزود`],
   [/^server (.+) was added and paired$/, (m) => `سرور ${iso(m[1])} اضافه و جفت شد`],
-  [/^server (.+) is not reachable: (.+)$/, (m) => `سرور ${iso(m[1])} در دسترس نیست: ${iso(m[2])}`],
+  [/^server (.+) is not reachable: (.+)$/, (m) => { const r = readable(m[2], "fa"); return `سرور ${iso(m[1])} در دسترس نیست: ${r.known ? r.text : iso(m[2])}`; }],
   [/^server (.+) is reachable again$/, (m) => `سرور ${iso(m[1])} دوباره در دسترس است`],
   [/^(.+) removed the server (.+) and its protocols$/, (m) => `${iso(m[1])} سرور ${iso(m[2])} و پروتکل‌هایش را حذف کرد`],
   [/^failed sign-in for "(.*)" from (.+) \((.+)\)$/, (m) => `ورود ناموفق ${iso(m[1])} از ${iso(m[2])} (${reasons[m[3]] ?? iso(m[3])})`],
@@ -86,5 +88,5 @@ export function eventText(message: string, lang: string): { text: string; dir: "
       if (m) return { text: fa(m), dir: "rtl" };
     }
   }
-  return { text: message, dir: "ltr" };
+  return { text: readableTail(message, "en"), dir: "ltr" };
 }

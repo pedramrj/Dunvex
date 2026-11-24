@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowDownUp, Bot, EyeOff, Layers, Palette, Sparkles, Cpu, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2,
-  UserCog, Users as UsersIcon, Waves, Webhook,
+  Search, UserCog, Users as UsersIcon, Waves, Webhook,
 } from "lucide-react";
 import { api, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
 import { GB, bytes, cx, date, duration } from "../lib/format";
@@ -16,6 +16,7 @@ import { TrialPanel } from "../components/Trial";
 import { SupportSettingsPanel } from "../components/SupportSettings";
 import { Logo } from "../components/Logo";
 import { IntegrationsTab } from "./Integrations";
+import { ErrText } from "../components/ErrText";
 
 type S = Record<string, string>;
 type Tricks = {
@@ -31,7 +32,6 @@ type Info = {
 type TabId = "appearance" | "server" | "sub" | "brand" | "panel" | "security" | "admins" | "telegram" | "integrations" | "cores" | "backup";
 
 const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
-  { id: "appearance", key: "appearance", icon: Palette, need: "reseller" },
   { id: "server", key: "serverAddress", icon: Globe, need: "owner" },
   { id: "sub", key: "subscription", icon: Link2, need: "owner" },
   { id: "brand", key: "brandStudio", icon: Sparkles, need: "owner" },
@@ -42,6 +42,8 @@ const tabs: { id: TabId; key: Key; icon: typeof Globe; need: Role }[] = [
   { id: "integrations", key: "integrations", icon: Webhook, need: "owner" },
   { id: "cores", key: "cores", icon: Cpu, need: "admin" },
   { id: "backup", key: "backup", icon: HardDriveDownload, need: "owner" },
+  // how this browser shows the panel: last, it is set once
+  { id: "appearance", key: "appearance", icon: Palette, need: "reseller" },
 ];
 
 /** The translation key of a settings tab, for the breadcrumb. */
@@ -53,22 +55,28 @@ export function SettingsPage({ arg }: { arg?: string }) {
   const role = me.admin.role;
   const mine = tabs.filter((x) => can(role, x.need));
   const [tab, setTab] = useState<TabId>(mine.some((x) => x.id === arg) ? (arg as TabId) : mine[0].id);
+  const [q, setQ] = useState("");
+  // the tab lives in the address, so the palette, links and Back all reach it
+  useEffect(() => { if (arg && mine.some((x) => x.id === arg)) setTab(arg as TabId); }, [arg]); // eslint-disable-line react-hooks/exhaustive-deps
+  const open = (id: TabId) => { setTab(id); navigate("settings", id); };
+  const shown = q.trim() ? mine.filter((x) => t(x.key).toLowerCase().includes(q.trim().toLowerCase()) || x.id.includes(q.trim().toLowerCase())) : mine;
   const owner = role === "owner";
 
   return (
     <div>
       <PageHead title={t("settings")} />
       <div className="lg:grid lg:grid-cols-[230px_1fr] gap-6 items-start">
-        <nav className="hidden lg:flex flex-col gap-1 glass rounded-[20px] p-2 sticky top-6">
-          {mine.map(({ id, key, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
+        <nav className="hidden lg:flex flex-col gap-1 mach rounded-[16px] p-2 sticky top-6">
+          <label className="field-recess flex items-center gap-2 h-9 px-2.5 mb-1"><Search className="size-4 text-ink3" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("settingsFind")} aria-label={t("settingsFind")} className="bg-transparent outline-none flex-1 min-w-0 text-[13px]" /></label>
+          {shown.map(({ id, key, icon: Icon }) => (
+            <button key={id} onClick={() => open(id)}
               className={cx("flex items-center gap-3 h-11 px-3.5 rounded-xl text-[13.5px] text-start transition-[background-color,color]", tab === id ? "bg-fg/[.08] text-ink font-semibold" : "text-ink2 hover:text-ink hover:bg-fg/[.04]")}>
               <Icon className={cx("size-[18px]", tab === id ? "text-primary2" : "text-ink3")} />
               {t(key)}
             </button>
           ))}
         </nav>
-        <Tabs className="lg:hidden mb-5" value={tab} onChange={setTab} items={mine.map((x) => ({ id: x.id, label: t(x.key) }))} />
+        <Tabs className="lg:hidden mb-5" value={tab} onChange={open} items={mine.map((x) => ({ id: x.id, label: t(x.key) }))} />
         <div className="min-w-0 max-w-4xl flex flex-col gap-4 rise" key={tab}>
           {owner && ["server", "sub", "panel", "telegram"].includes(tab) ? <OwnerSettings tab={tab} /> : null}
           {tab === "appearance" && <AppearanceTab />}
@@ -215,7 +223,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
     <>
     <Panel icon={<Bot className="size-4" />} title={t("telegram")} sub={t("botFeatures")}
       action={tg?.configured ? <Badge color={tg.running ? "var(--color-online)" : "var(--color-bad)"}><Dot color={tg.running ? "var(--color-online)" : "var(--color-bad)"} size={6} pulse={tg.running} />{tg.running ? (tg.username ? "@" + tg.username : t("botRunning")) : t("botStopped")}</Badge> : undefined}>
-      {tg?.error && <div className="mb-4 rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[12.5px] mono" dir="ltr">{tg.error}</div>}
+      {tg?.error && <div className="mb-4 rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2"><ErrText raw={tg.error} /></div>}
       <div className="grid sm:grid-cols-2 gap-4">
         <label className="sm:col-span-2"><Label hint={t("botTokenHint")}>{t("botToken")}</Label><Input dir="ltr" className="mono text-[12.5px]" value={s.tg_token ?? ""} placeholder="123456789:AA…" onChange={(e) => set("tg_token", e.target.value)} autoComplete="off" /></label>
         <label className="sm:col-span-2"><Label>{t("adminIds")}</Label><Input dir="ltr" className="mono" value={s.tg_admins ?? ""} placeholder="123456789, 987654321" onChange={(e) => set("tg_admins", e.target.value)} />
@@ -436,7 +444,7 @@ function CoresPanel() {
                   {c.running ? `${t("running")} · ${duration(c.uptime, lang)}` : c.idle ? t("notInUse") : c.installed ? t("stopped") : t("notInstalled")}
                   {c.name === "sing-box" && c.installed && <> · {t("perUserStats")}: {d.stats["sing-box"] ? "✓" : "✕"}</>}
                 </div>
-                {(d.errors[c.name] || c.error) && <div className="text-[12px] text-bad mt-1 break-all mono" dir="ltr">{d.errors[c.name] || c.error}</div>}
+                {(d.errors[c.name] || c.error) && <ErrText raw={d.errors[c.name] || c.error!} className="text-bad mt-1" />}
               </div>
               <div className="ms-auto flex gap-2">
                 <Button size="sm" variant="quiet" icon={<ScrollText className="size-4" />} onClick={() => api<string[]>(`cores/${c.name}/logs`).then((lines) => setLogs({ name: c.name, lines }))}>{t("logs")}</Button>

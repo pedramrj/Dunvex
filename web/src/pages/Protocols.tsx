@@ -7,6 +7,7 @@ import { useI18n } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, Empty, Input, Label, SectionTitle, Select, Sheet, Skeleton, Toggle, useToast } from "../components/ui";
 import { PageHead, navigate } from "../App";
 import { shortName } from "../components/NetworkMap";
+import { ErrText } from "../components/ErrText";
 
 /** the program that serves each engine, as shown on the cards */
 const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", trusttunnel: "TrustTunnel", dnstt: "dnstt", slipstream: "Slipstream", xray: "Xray" };
@@ -84,15 +85,16 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                     const p = byId[i.preset];
                     const state = !i.enabled ? "var(--color-ink3)" : i.error ? "var(--color-bad)" : color;
                     return (
-                      <article key={i.id} className={cx("glass edge rounded-[20px] overflow-hidden flex flex-col transition-[transform,border-color] duration-200 hover:-translate-y-0.5", !i.enabled && "opacity-70")}>
-                        <div className="h-1" style={{ background: i.enabled ? color : "var(--color-hair2)", boxShadow: i.enabled ? `0 0 18px ${color}` : undefined }} />
+                      <article key={i.id} className={cx("rack-mod border border-hair2 rounded-[14px] overflow-hidden flex flex-col", !i.enabled && "opacity-70")}>
+                        {/* a protocol is a module in the rack: its line's colour on top, its jack, its LED */}
+                        <div className="h-[3px]" style={{ background: i.enabled ? color : "var(--color-hair2)" }} />
                         <div className="p-4 flex flex-col gap-3 flex-1">
                           <div className="flex items-start gap-3">
                             <span className="grid place-items-center size-11 rounded-2xl shrink-0" style={{ background: `color-mix(in oklab, ${color} 14%, transparent)` }}>
                               <span className="size-4 rounded-full border-[4px] bg-ground" style={{ borderColor: state }} />
                             </span>
                             <a href={`#/protocols/${i.id}`} className="min-w-0 flex-1 group">
-                              <div className="font-semibold truncate group-hover:text-primary2" dir="ltr">{i.remark || shortName[i.preset] || i.name}</div>
+                              <div className="flex items-center gap-2 min-w-0"><span className={cx("led", !i.enabled ? "" : i.error ? "rd" : "on")} /><span className="font-semibold truncate group-hover:text-primary2" dir="ltr">{i.remark || shortName[i.preset] || i.name}</span></div>
                               <div className="text-[12px] text-ink3 truncate" dir="ltr">{p?.name}</div>
                             </a>
                             <Toggle checked={i.enabled} onChange={(v) => toggle(i, v)} />
@@ -110,12 +112,12 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                             {i.enabled && worst[i.id] && <HealthBadge r={worst[i.id]} />}
                           </div>
                           {i.enabled && !i.error && worst[i.id]?.status === "fail" && worst[i.id].error && (
-                            <p className="-mt-1 text-[11.5px] text-bad/90 line-clamp-2 [overflow-wrap:anywhere]" dir="ltr" title={worst[i.id].error}>{worst[i.id].error}</p>
+                            <ErrText raw={worst[i.id].error!} compact className="-mt-1 text-[12px] text-bad/90" />
                           )}
                           {i.error ? (
                             <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad">
                               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
-                              <bdi dir="ltr" className="min-w-0 [overflow-wrap:anywhere]">{i.error}</bdi>
+                              <ErrText raw={i.error} compact className="min-w-0 text-[12.5px]" />
                             </div>
                           ) : (
                             <div className="mt-auto grid grid-cols-2 gap-3 pt-3 border-t border-hair text-[12px]">
@@ -276,7 +278,7 @@ function EditSheet({ inbound, preset, nodes, onClose, onDone }: { inbound: Inbou
       <div className="flex flex-col gap-5">
         <p className="text-ink2 text-[13.5px] -mt-1">{lang === "fa" ? preset.descFa : preset.desc}</p>
         <PresetHelp id={preset.id} />
-        {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[13px]"><bdi dir="ltr" className="mono text-[12px] [overflow-wrap:anywhere]">{inbound.error}</bdi></div>}
+        {inbound.error && <div className="rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2"><ErrText raw={inbound.error} /></div>}
         {nodes.length > 0 && <div className="grid sm:grid-cols-2 gap-3"><ServerPick nodes={nodes} value={server} onChange={setServer} /></div>}
         <div className="grid grid-cols-2 gap-3">
           <label><Label>{t("port")}</Label><Input type="number" value={port} onChange={(e) => setPort(e.target.value)} className="num" /></label>
