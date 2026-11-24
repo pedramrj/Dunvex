@@ -879,6 +879,9 @@ func (s *Server) portBusy(nodeID int64, port int, p *protocol.Preset) bool {
 	if protocol.UsesPort(s.inboundsOn(0), port) {
 		return false
 	}
+	if protocol.HoldsNoPort(p) {
+		return false // xICMP reads pings: the number only appears in links
+	}
 	if protocol.DNSRouted(p) {
 		// a DNS tunnel takes only UDP, and port 53 only on the address facing the
 		// internet (systemd-resolved holds 127.0.0.53:53, which is no clash)
@@ -985,6 +988,14 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		if in.NodeID == 0 && !s.Mgr.TT.Installed() {
 			if _, err := coremgr.InstallTrustTunnel(s.Mgr.TT.BinDir); err != nil {
 				fail(w, 502, "could not download the TrustTunnel endpoint: "+err.Error())
+				return
+			}
+		}
+	}
+	if protocol.IsXICMP(p) {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has an xICMP; one per server, because it reads every ping the server gets")
 				return
 			}
 		}

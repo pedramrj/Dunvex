@@ -330,6 +330,7 @@ func (m *Manager) build() (b built, err error) {
 		}
 	}
 	muxed := dnsMuxed(dnsCount, dnsTunnel)
+	xicmpIn := int64(0) // the one ping tunnel of this server
 	var xin, sin []obj
 	var sTags, sUsers []string
 	seenUser := map[string]bool{}
@@ -463,6 +464,17 @@ func (m *Manager) build() (b built, err error) {
 			}
 			xin = append(xin, protocol.TunnelSocks(in, us, socks))
 		case "xray":
+			if protocol.IsXICMP(p) {
+				if xicmpIn != 0 {
+					b.errs[in.ID] = "only one xICMP can run on a server: it reads every ping the server gets"
+					continue
+				}
+				if e := xicmpReady(); e != nil {
+					b.errs[in.ID] = e.Error()
+					continue
+				}
+				xicmpIn = in.ID
+			}
 			ib, e := protocol.XrayInbound(p, in, us, env)
 			if e != nil {
 				b.errs[in.ID] = e.Error()

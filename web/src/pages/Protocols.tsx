@@ -127,7 +127,7 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
 /** Setup steps some protocols need before they work. */
 function PresetHelp({ id }: { id: string }) {
   const { t } = useI18n();
-  const key = id === "vless-xdns" ? "xdnsHelp" : id === "dnstt" || id === "slipstream" ? "dnsTunnelHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : null;
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "vless-xicmp" ? "xicmpHelp" : id === "dnstt" || id === "slipstream" ? "dnsTunnelHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : null;
   if (!key) return null;
   return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
 }

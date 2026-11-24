@@ -77,6 +77,9 @@ func PortConflict(list []*store.Inbound, panelPort, port int, except int64, p *P
 		if q == nil {
 			return fmt.Sprintf("port %d is already used", port)
 		}
+		if HoldsNoPort(p) || HoldsNoPort(q) {
+			continue // xICMP listens on no port: its number only appears in links
+		}
 		if p != nil && !sameNetwork(p, q) {
 			continue // TCP and UDP on one port number do not clash
 		}

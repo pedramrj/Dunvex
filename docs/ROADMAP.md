@@ -97,7 +97,7 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       while no UDP protocol holds it (v1.20)
 - [x] dnstt (inside Dunvex) and Slipstream DNS tunnels for SlipNet and DNSTT.XYZ, with per-user sign-in, sharing
       port 53 with XDNS by tunnel domain (v1.21). See [DNS-TUNNELS.md](DNS-TUNNELS.md)
-- [ ] xICMP
+- [x] xICMP ping tunnel, one per server, with a raw-socket check before Xray starts (v1.22). See [XICMP.md](XICMP.md)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)

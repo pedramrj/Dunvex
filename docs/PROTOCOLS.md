@@ -24,7 +24,7 @@ Status: ✅ = built into Dunvex (passes the core config test) · 🧪 = experime
 | SOCKS5 / HTTP | With authentication | ✅ | |
 | MASQUE | CONNECT-IP over HTTP/3 | 🗺 | New in Xray 26; few clients |
 | XDNS | DNS tunnel (FinalMask + mKCP) | ✅ | For shutdowns: VLESS over mKCP inside DNS queries (EDNS0 1232, server MTU 900). Needs a domain whose NS record points to the server; links dial a public resolver (8.8.8.8 by default) or the server directly, with the mask in the `fm` parameter. On port 53 Dunvex binds the outward address, beside systemd-resolved. Tested end to end with real Xray (direct mode) |
-| XICMP | ICMP tunnel | 🗺 | |
+| XICMP | Ping tunnel (FinalMask + mKCP) | ✅ | For networks where only ping works: VLESS over mKCP inside ICMP echo packets. No domain and no port (the server reads pings with a raw socket, so one per server). Links carry the mask in `fm`, with the apps' system ping sockets on by default (phones, macOS, Linux; off means raw pings, for Windows apps). Dunvex checks raw ICMP sockets before Xray starts, so a server without them only parks this protocol. Tested with real Xray in both ping modes (v1.22). See [XICMP.md](XICMP.md) |
 | Sudoku | FinalMask obfuscation, TCP/UDP | 🗺 | |
 | XDRIVE | Tunnel through cloud storage (S3/Drive) | 🗺 | Newest Xray feature (26.10) |
 

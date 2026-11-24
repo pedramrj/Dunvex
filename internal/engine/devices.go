@@ -32,7 +32,7 @@ func newDevices() *devices {
 }
 
 func (d *devices) see(user, ip string, at int64) {
-	if user == "" || ip == "" || ip == "127.0.0.1" || ip == "::1" {
+	if user == "" || ip == "" || ip == "127.0.0.1" || ip == "::1" || tunnelID(ip) {
 		return
 	}
 	d.mu.Lock()
@@ -45,6 +45,25 @@ func (d *devices) see(user, ip string, at int64) {
 	if at > m[ip] {
 		m[ip] = at
 	}
+}
+
+// tunnelID reports a stand-in address of a DNS or ping tunnel client (XDNS,
+// xICMP): Xray names each tunnel session fd00::/64 plus its random client ID,
+// a new one per connection, so it is no device and must not count as one.
+func tunnelID(ip string) bool {
+	a := net.ParseIP(ip)
+	if a == nil || a.To4() != nil {
+		return false
+	}
+	if a[0] != 0xfd {
+		return false
+	}
+	for _, b := range a[1:8] {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // list returns the user's addresses seen since `since`, newest first.

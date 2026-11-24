@@ -60,6 +60,9 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		case "xdns":
 			q.Set("type", "kcp")
 			q.Set("fm", xdnsMask(in, env))
+		case "xicmp":
+			q.Set("type", "kcp")
+			q.Set("fm", xicmpMask(in, env))
 		}
 	}
 	addSecurity := func() {

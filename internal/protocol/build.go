@@ -177,6 +177,12 @@ func XrayInbound(p *Preset, in *store.Inbound, users []*store.User, env Env) (ob
 		stream["kcpSettings"] = obj{"mtu": 900, "tti": 200, "uplinkCapacity": 5, "downlinkCapacity": 20}
 		// EDNS0 1232: answers carry ~930 bytes in TXT, which the MTU of 900 fits
 		stream["finalmask"] = obj{"udp": []obj{{"type": "xdns", "settings": obj{"domains": []obj{{"names": []string{dom}, "edns0": 1232}}}}}}
+	case "xicmp":
+		// mKCP inside ping packets (Xray finalmask). xICMP binds no port: it
+		// reads every echo request with a raw socket and answers with replies.
+		stream["network"] = "kcp"
+		stream["kcpSettings"] = obj{"mtu": 1350, "tti": 20, "uplinkCapacity": 12, "downlinkCapacity": 100}
+		stream["finalmask"] = obj{"udp": []obj{{"type": "xicmp", "settings": obj{}}}}
 	case "hysteria":
 		stream["network"] = "hysteria"
 		stream["hysteriaSettings"] = obj{"version": 2}

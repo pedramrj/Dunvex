@@ -77,6 +77,7 @@ var (
 	fSignIn    = Field{Key: "signIn", Label: "Sign-in", LabelFa: "ورود کاربران", Type: "select", Options: TunnelSignIns,
 		OptionLabels:   []string{"Each user's name and password (SlipNet; usage per user)", "Open, no password (any app, e.g. DNSTT.XYZ; usage not per user)"},
 		OptionLabelsFa: []string{"نام و رمز هر کاربر (SlipNet؛ مصرف هر کاربر جدا)", "باز، بدون رمز (هر برنامه‌ای، مثل DNSTT.XYZ؛ مصرف کاربران جدا نیست)"}}
+	fICMPDgram = Field{Key: "icmpDgram", Label: "Apps use the system's ping sockets (phones, macOS, Linux); off: raw pings, for Windows apps", LabelFa: "برنامه‌ها از سوکت پینگ سیستم استفاده کنند (گوشی، macOS، لینوکس)؛ خاموش: پینگ خام، برای برنامه‌های ویندوز", Type: "bool"}
 	fTunnelPub = Field{Key: "publicKey", Label: "Public key (the apps need it)", LabelFa: "کلید عمومی (برنامه‌ها لازمش دارند)", Type: "text"}
 	fFakeTLS   = Field{Key: "sni", Label: "Fake TLS domain (the proxy looks like this site)", LabelFa: "دامنهٔ پوششی TLS (پراکسی شبیه این سایت دیده می‌شود)", Type: "text"}
 	fAWGVer    = Field{Key: "version", Label: "Version (3.1: newest apps · 2.0: older apps)", LabelFa: "نسخه (۳٫۱: برنامه‌های جدید · ۲٫۰: برنامه‌های قدیمی‌تر)", Type: "select", Options: []string{"3.1", "2.0"}}
@@ -200,6 +201,11 @@ var presets = []*Preset{
 		Desc:   "For internet shutdowns: traffic hidden in ordinary DNS queries that go through public resolvers. Slow, but often the last thing that still works. Needs a domain whose NS record points to this server; Xray-based apps.",
 		DescFa: "برای قطعی اینترنت: ترافیک داخل درخواست‌های DNS معمولی پنهان می‌شود و از DNSهای عمومی رد می‌شود. کند است، اما اغلب آخرین چیزی است که هنوز کار می‌کند. یک دامنه لازم دارد که رکورد NS آن به این سرور اشاره کند؛ برای برنامه‌های مبتنی بر Xray.",
 		Fields: []Field{fXDNS, fResolver}},
+	{ID: "vless-xicmp", Name: "VLESS · xICMP (ping tunnel)", Engine: "xray", Group: "udp", Network: "udp", DefaultPort: 0,
+		Security: "none", Status: "beta", proto: "vless", transport: "xicmp",
+		Desc:   "For networks where only ping still works: traffic hidden in ordinary ICMP echo (ping) packets to this server. No domain and no port; slow. One per server; Xray-based apps with Xray 26.3 or newer.",
+		DescFa: "برای شبکه‌هایی که فقط پینگ هنوز کار می‌کند: ترافیک داخل بسته‌های معمولی پینگ (ICMP echo) به این سرور پنهان می‌شود. دامنه و پورت لازم ندارد؛ کند است. هر سرور یکی؛ برای برنامه‌های مبتنی بر Xray با هستهٔ ۲۶٫۳ یا جدیدتر.",
+		Fields: []Field{fICMPDgram}},
 	{ID: "dnstt", Name: "dnstt (DNS tunnel)", Engine: "dnstt", Group: "udp", Network: "udp", DefaultPort: 53,
 		Security: "none", Status: "beta", proto: "dnstt",
 		Desc:   "The best-known DNS tunnel, for internet shutdowns: traffic hidden in DNS queries through public resolvers, encrypted to this server's key. For SlipNet (Android) and DNSTT.XYZ (Android, desktop) and other dnstt apps. Needs its own tunnel domain whose NS record points to this server; it can share port 53 with XDNS and Slipstream.",
@@ -328,6 +334,8 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		set("congestion", "bbr")
 	case "vless-xdns":
 		set("resolver", "8.8.8.8")
+	case "vless-xicmp":
+		set("icmpDgram", true)
 	case "dnstt", "slipstream":
 		set("resolver", "8.8.8.8")
 		set("signIn", "user")

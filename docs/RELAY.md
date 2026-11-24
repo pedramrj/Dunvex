@@ -39,7 +39,7 @@ Hysteria2, TUIC, WireGuard, AmneziaWG, Mieru, TrustTunnel, the Telegram proxy an
 protocols change, the relay follows within seconds.
 
 Not forwarded: **NaiveProxy** (apps dial its domain, not an address), the **DNS tunnels** (XDNS, dnstt and
-Slipstream work through DNS records) and **CDN configs** (they already go through the CDN's address).
+Slipstream work through DNS records), the **ping tunnel** (xICMP has no port to forward) and **CDN configs** (they already go through the CDN's address).
 
 ## Options
 
