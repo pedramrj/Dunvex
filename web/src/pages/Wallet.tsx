@@ -47,9 +47,9 @@ export function WalletPage() {
   return (
     <>
       <PageHead title={t("wallet")} sub={w.enabled ? t("walletPageHint") : t("walletOff")} />
-      <div className="grid gap-[var(--gap)] sm:grid-cols-2 mb-[var(--gap)]">
-        <StatCard icon={<WalletIcon className="size-[18px]" />} label={t("balance")} value={<span className="num">{n(w.balance)} <span className="text-[13px] font-normal text-ink3">{w.currency}</span></span>} accent="var(--ok)" />
-        <StatCard icon={<Percent className="size-[18px]" />} label={t("yourDiscount")} value={<span className="num">{pc(w.discount, 0)}</span>} />
+      <div className="grid gap-[var(--gap)] grid-cols-2 mb-[var(--gap)]">
+        <StatCard dense icon={<WalletIcon className="size-[18px]" />} label={t("balance")} value={<span className="num">{n(w.balance)} <span className="text-[13px] font-normal text-ink3">{w.currency}</span></span>} accent="var(--ok)" />
+        <StatCard dense icon={<Percent className="size-[18px]" />} label={t("yourDiscount")} value={<span className="num">{pc(w.discount, 0)}</span>} />
       </div>
       {w.enabled && (
         <Panel title={t("topUp")} sub={t("topUpHint")} icon={<Plus className="size-4" />} className="mb-[var(--gap)]">

@@ -39,10 +39,10 @@ export function BillingPage() {
       <PageHead title={t("sales")} sub={sum.settings.shop ? <span className="text-ink3">{t("shopLink")}</span> : t("shopWebHint")}
         action={sum.settings.shop ? <Button icon={<ExternalLink className="size-4" />} onClick={() => window.open(sum.shopUrl, "_blank", "noopener")}>{t("openShop")}</Button> : undefined} />
       {sum.settings.shop && <CopyField value={sum.shopUrl} className="mb-5 max-w-xl" sensitive={false} />}
-      <div className="grid gap-[var(--gap)] sm:grid-cols-3 mb-[var(--gap)]">
-        <StatCard icon={<ShoppingBag className="size-[18px]" />} label={t("todaySales")} value={<span className="num">{n(s.todayTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.todayCount) + " " + t("orderUnit")} accent="var(--ok)" />
-        <StatCard icon={<CalendarDays className="size-[18px]" />} label={t("monthSales")} value={<span className="num">{n(s.monthTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.monthCount) + " " + t("orderUnit")} />
-        <StatCard icon={<Clock className="size-[18px]" />} label={t("waitingApproval")} value={<span className="num">{n(s.review)}</span>} accent={s.review ? "var(--color-violet)" : "var(--text3)"} onClick={() => setTab("orders")} />
+      <div className="grid gap-[var(--gap)] grid-cols-2 sm:grid-cols-3 mb-[var(--gap)]">
+        <StatCard dense icon={<ShoppingBag className="size-[18px]" />} label={t("todaySales")} value={<span className="num">{n(s.todayTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.todayCount) + " " + t("orderUnit")} accent="var(--ok)" />
+        <StatCard dense icon={<CalendarDays className="size-[18px]" />} label={t("monthSales")} value={<span className="num">{n(s.monthTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.monthCount) + " " + t("orderUnit")} />
+        <StatCard dense icon={<Clock className="size-[18px]" />} label={t("waitingApproval")} value={<span className="num">{n(s.review)}</span>} accent={s.review ? "var(--color-violet)" : "var(--text3)"} onClick={() => setTab("orders")} className="col-span-2 sm:col-span-1" />
       </div>
       <Tabs value={tab} onChange={setTab} className="mb-[var(--gap)]" items={[
         { id: "orders", label: t("ordersTab"), count: s.review || undefined },

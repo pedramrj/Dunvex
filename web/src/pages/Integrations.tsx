@@ -92,7 +92,7 @@ function WebhooksPanel() {
                   // the last delivery: a readable sentence for a failure, the time kept apart so it never runs into the text
                   <div className={cx("flex items-start gap-2 text-[12px] text-ink3", h.last.ok ? "ms-auto" : "w-full mt-1")}>
                     <span className={cx("led mt-[8px]", h.last.ok ? "on" : "rd")} />
-                    {h.last.ok ? <span className="leading-6 mono" dir="ltr">{h.last.status ?? ""}</span> : <ErrText raw={h.last.error ?? ""} className="flex-1 min-w-0 text-ink2 !text-[12.5px]" />}
+                    {h.last.ok ? <span className="leading-6 mono" dir="ltr">{h.last.status ?? ""}</span> : <ErrText raw={h.last.error ?? ""} about="webhook" className="flex-1 min-w-0 text-ink2 !text-[12.5px]" />}
                     <span className="ms-auto shrink-0 leading-6 whitespace-nowrap">{ago(h.last.at, lang)}</span>
                   </div>
                 )}

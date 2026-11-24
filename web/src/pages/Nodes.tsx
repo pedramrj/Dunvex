@@ -220,7 +220,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
       </div>
 
       {x.error && (
-        <div className="mb-4 rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2"><ErrText raw={x.error} /></div>
+        <div className="mb-4 rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2"><ErrText raw={x.error} about="server" /></div>
       )}
       {up && x.online && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary2/30 bg-primary2/[.07] px-3 py-2 text-[12.5px]">

@@ -463,8 +463,10 @@ export function Panel({ title, sub, icon, action, children, className, pad = tru
 
 /** KPI readout: an LED in the accent colour, the label, the value, a coloured sub-line, the icon in a recessed well,
  *  and an optional full-width spark along the bottom. */
-export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", children, foot, className, trend, onClick, tip }: {
+export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", children, foot, className, trend, onClick, tip, dense }: {
   icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; accent?: string; children?: ReactNode; foot?: ReactNode; className?: string; trend?: number | null; onClick?: () => void; tip?: string;
+  /** two to a row on phones: the icon gives its room to the label and the number there */
+  dense?: boolean;
 }) {
   const { pc } = useI18n();
   const Tag = onClick ? "button" : "div";
@@ -482,10 +484,10 @@ export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", 
               </span>
             )}
           </div>
-          <div className="mt-2.5 text-[23px] sm:text-[24px] leading-none font-semibold tracking-tight">{value}</div>
+          <div className="mt-2.5 text-[19px] min-[400px]:text-[21px] sm:text-[24px] leading-none font-semibold tracking-tight">{value}</div>
           {sub && <div className="kpi-sub mt-2 text-[12px] num truncate">{sub}</div>}
         </div>
-        <span className="kpi-icon grid place-items-center size-9 rounded-[10px] shrink-0">{icon}</span>
+        <span className={cx("kpi-icon grid place-items-center size-9 rounded-[10px] shrink-0", dense && "max-sm:hidden")}>{icon}</span>
       </div>
       {children && <div className="mt-auto w-full px-[calc(var(--pad)*.85)] pb-[calc(var(--pad)*.85)]">{children}</div>}
       {foot && <div className={cx("w-full", !children && "mt-auto")}>{foot}</div>}

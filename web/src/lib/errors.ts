@@ -9,7 +9,10 @@ export interface Readable {
   known: boolean;
 }
 
-type Rule = [RegExp, (m: RegExpExecArray) => { fa: string; en: string; faFix?: string; enFix?: string }];
+/** What the failed request was reaching, when it changes the advice. */
+export type ErrAbout = "server" | "webhook";
+
+type Rule = [RegExp, (m: RegExpExecArray, about?: ErrAbout) => { fa: string; en: string; faFix?: string; enFix?: string }];
 
 const iso = (s: string) => "⁨" + s + "⁩";
 
@@ -28,12 +31,17 @@ const rules: Rule[] = [
     fa: "تلگرام از این سرور در دسترس نیست", en: "Telegram cannot be reached from this server",
     faFix: "یک پروکسی برای API تلگرام در تنظیمات ربات بگذارید", enFix: "Set a proxy for the Telegram API in the bot settings",
   })],
-  [/actively refused|connection refused|ECONNREFUSED/i, (m) => {
+  [/actively refused|connection refused|ECONNREFUSED/i, (m, about) => {
     const h = target(m.input);
+    const fix = about === "server"
+      ? { faFix: "روشن بودن سرور و سرویس Dunvex روی آن را بررسی کنید", enFix: "Check the server is up and its Dunvex service is running" }
+      : about === "webhook"
+        ? { faFix: "روشن بودن سرویسی که این نشانی را می‌گیرد و درستی پورت نشانی را بررسی کنید", enFix: "Check the service at this address is running and the port in the address is right" }
+        : { faFix: "روشن بودن برنامه‌ای که باید روی آن پورت باشد را بررسی کنید", enFix: "Check the program that should listen on that port is running" };
     return {
       fa: h ? `${iso(h)} اتصال را رد کرد؛ برنامه روی آن پورت در حال اجرا نیست` : "اتصال رد شد؛ برنامه روی آن پورت در حال اجرا نیست",
       en: h ? `${h} refused the connection: nothing is listening on that port` : "The connection was refused: nothing is listening on that port",
-      faFix: "روشن بودن سرور و سرویس Dunvex روی آن را بررسی کنید", enFix: "Check the server is up and its Dunvex service is running",
+      ...fix,
     };
   }],
   [/i\/o timeout|deadline exceeded|Client\.Timeout|timed out/i, (m) => {
@@ -54,12 +62,12 @@ const rules: Rule[] = [
 ];
 
 /** A raw error as a readable sentence for lang. */
-export function readable(raw: string, lang: "fa" | "en"): Readable {
+export function readable(raw: string, lang: "fa" | "en", about?: ErrAbout): Readable {
   const s = (raw ?? "").trim();
   for (const [re, f] of rules) {
     const m = re.exec(s);
     if (m) {
-      const r = f(m);
+      const r = f(m, about);
       return { text: lang === "fa" ? r.fa : r.en, fix: lang === "fa" ? r.faFix : r.enFix, raw: s, known: true };
     }
   }

@@ -28,11 +28,11 @@ export function SecurityPage() {
     <div>
       <PageHead title={t("security")} sub={t("securitySub")} />
       <div className="grid gap-[var(--gap)] grid-cols-2 lg:grid-cols-4 mb-[var(--gap)]">
-        <StatCard icon={me.admin.totp ? <ShieldCheck className="size-[18px]" /> : <ShieldX className="size-[18px]" />} accent={me.admin.totp ? "var(--ok)" : "var(--warn)"}
+        <StatCard dense icon={me.admin.totp ? <ShieldCheck className="size-[18px]" /> : <ShieldX className="size-[18px]" />} accent={me.admin.totp ? "var(--ok)" : "var(--warn)"}
           label={t("twoFactor")} value={<span className="text-[20px]">{me.admin.totp ? t("on") : t("off")}</span>} onClick={() => navigate("settings", "security")} sub={t("yourAccount")} />
-        <StatCard icon={<LogIn className="size-[18px]" />} label={t("signIns")} value={<Num value={signins.length} />} sub={signins[0] ? ago(signins[0].at, lang) : "—"} />
-        <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={failed24 ? "var(--bad)" : "var(--text2)"} label={t("failedLogins24")} value={<Num value={failed24} />} sub={t("throttleNote")} />
-        <StatCard icon={<UsersIcon className="size-[18px]" />} accent={without2fa ? "var(--warn)" : "var(--text2)"} label={t("adminsWithout2fa")} value={without2fa === null ? "—" : <Num value={without2fa} />} />
+        <StatCard dense icon={<LogIn className="size-[18px]" />} label={t("signIns")} value={<Num value={signins.length} />} sub={signins[0] ? ago(signins[0].at, lang) : "—"} />
+        <StatCard dense icon={<ShieldAlert className="size-[18px]" />} accent={failed24 ? "var(--bad)" : "var(--text2)"} label={t("failedLogins24")} value={<Num value={failed24} />} sub={t("throttleNote")} />
+        <StatCard dense icon={<UsersIcon className="size-[18px]" />} accent={without2fa ? "var(--warn)" : "var(--text2)"} label={t("adminsWithout2fa")} value={without2fa === null ? "—" : <Num value={without2fa} />} />
       </div>
       <div className="grid gap-[var(--gap)] xl:grid-cols-12">
         <Panel className="xl:col-span-7" icon={<KeyRound className="size-4" />} title={t("loginHistory")}>

@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { readable } from "../lib/errors";
+import { readable, type ErrAbout } from "../lib/errors";
 import { useI18n } from "../lib/i18n";
 import { cx } from "../lib/format";
 
 /** A raw server error as a sentence with its fix; the original stays one click away. */
-export function ErrText({ raw, className, compact }: { raw: string; className?: string; compact?: boolean }) {
+export function ErrText({ raw, className, compact, about }: { raw: string; className?: string; compact?: boolean; about?: ErrAbout }) {
   const { lang, t } = useI18n();
   const [open, setOpen] = useState(false);
-  const r = readable(raw, lang);
+  const r = readable(raw, lang, about);
   return (
     <div className={cx("text-[13px] leading-6", className)}>
       {r.known ? <span>{r.text}{r.fix && <span className="text-ink2">. {r.fix}</span>}</span> : <bdi dir="ltr" className="mono text-[12px] [overflow-wrap:anywhere]">{r.raw}</bdi>}
