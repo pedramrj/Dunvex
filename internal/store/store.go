@@ -130,7 +130,7 @@ var addedColumns = []struct{ table, column, def string }{
 }
 
 func (s *Store) migrate() error {
-	for _, m := range append(append(append(append(append(migrations, accessTables...), nodeTables...), billingTables...), trialTables...), supportTables...) {
+	for _, m := range append(append(append(append(append(append(migrations, accessTables...), nodeTables...), billingTables...), trialTables...), supportTables...), passkeyTables...) {
 		if _, err := s.DB.Exec(m); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
@@ -348,6 +348,7 @@ func (s *Store) DeleteAdmin(id int64) error {
 	tx.Exec(`UPDATE users SET owner_id=0 WHERE owner_id=?`, id)
 	tx.Exec(`DELETE FROM sessions WHERE admin_id=?`, id)
 	tx.Exec(`DELETE FROM api_keys WHERE admin_id=?`, id)
+	tx.Exec(`DELETE FROM passkeys WHERE admin_id=?`, id)
 	tx.Exec(`DELETE FROM admins WHERE id=?`, id)
 	return tx.Commit()
 }

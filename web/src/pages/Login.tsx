@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Languages, Lock, ShieldCheck, Sparkles, Terminal, User } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, Fingerprint, KeyRound, Languages, Lock, ShieldCheck, Sparkles, Terminal, User } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { Button, Input, Label } from "../components/ui";
 import { Logo } from "../components/Logo";
+import { passkeyErrorKey, passkeysPossible, signInWithPasskey } from "../lib/passkey";
 
 /** The sign-in and setup cards: a console module, not a floating glass sheet. */
 const cardCls = "rise mach w-full max-w-[400px] mx-auto rounded-[18px] p-6 sm:p-7";
@@ -43,7 +44,21 @@ export function Login({ onDone }: { onDone: () => void }) {
   const [need2fa, setNeed2fa] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pkBusy, setPkBusy] = useState(false);
   const Arrow = lang === "fa" ? ArrowLeft : ArrowRight;
+  const canPasskey = passkeysPossible();
+
+  const passkey = () => {
+    setPkBusy(true);
+    setErr("");
+    signInWithPasskey()
+      .then(onDone)
+      .catch((e: ApiError) => {
+        const k = passkeyErrorKey(e);
+        setErr(k ? t(k) : e.status === 401 ? t("pkWrongSite") : e.message);
+      })
+      .finally(() => setPkBusy(false));
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,6 +129,14 @@ export function Login({ onDone }: { onDone: () => void }) {
             </Button>
             {need2fa && (
               <button type="button" onClick={() => { setNeed2fa(false); setErr(""); }} className="mt-4 text-ink3 hover:text-ink text-[13px] w-full">{t("back")}</button>
+            )}
+            {!need2fa && canPasskey && (
+              <>
+                <div className="flex items-center gap-3 my-4 text-ink3 text-[12px]" aria-hidden><span className="h-px flex-1 bg-hair" />{t("pkOr")}<span className="h-px flex-1 bg-hair" /></div>
+                <Button variant="soft" size="lg" className="w-full" loading={pkBusy} disabled={busy} onClick={passkey} icon={<Fingerprint className="size-4" />}>
+                  {t("pkSignIn")}
+                </Button>
+              </>
             )}
           </form>
           )}

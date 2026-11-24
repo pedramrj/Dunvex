@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { domainsEn, domainsFa } from "./i18n-domains";
+import { passkeysEn, passkeysFa } from "./i18n-passkeys";
 
 export type Lang = "fa" | "en";
 
 const fa = {
   ...domainsFa,
+  ...passkeysFa,
   brand: "دانوکس",
   overview: "نمای کلی",
   users: "کاربران",
@@ -1187,6 +1189,7 @@ const fa = {
 type Dict = typeof fa;
 const en: Dict = {
   ...domainsEn,
+  ...passkeysEn,
   brand: "Dunvex",
   overview: "Overview",
   users: "Users",

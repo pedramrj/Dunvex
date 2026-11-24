@@ -33,6 +33,8 @@ func (s *Server) apiMux() http.Handler {
 	h := func(pattern, role string, fn handler) { mux.Handle(pattern, s.need(role, fn)) }
 
 	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("POST /login/passkey/begin", s.beginPasskeyLogin)
+	mux.HandleFunc("POST /login/passkey/finish", s.finishPasskeyLogin)
 	mux.HandleFunc("GET /setup-state", s.setupState)
 	mux.HandleFunc("POST /setup", s.firstSetup)
 	h("POST /logout", R, s.logout)
@@ -41,6 +43,10 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /account/2fa/setup", R, s.totpSetup)
 	h("POST /account/2fa/enable", R, s.totpEnable)
 	h("POST /account/2fa/disable", R, s.totpDisable)
+	h("GET /account/passkeys", R, s.listPasskeys)
+	h("POST /account/passkeys/begin", R, s.beginPasskeyRegistration)
+	h("POST /account/passkeys/finish", R, s.finishPasskeyRegistration)
+	h("DELETE /account/passkeys/{id}", R, s.deletePasskey)
 	h("GET /account/sessions", R, s.listSessions)
 	h("DELETE /account/sessions/{id}", R, s.endSession)
 	h("POST /account/sessions/others", R, s.endOtherSessions)

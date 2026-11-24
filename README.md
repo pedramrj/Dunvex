@@ -60,7 +60,8 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Users**: data limit, expiry, start-on-first-connection, daily/weekly/monthly reset, per-protocol access, bulk actions.
 - **Live changes**: adding, limiting or renewing a user reaches Xray at once, without disconnecting anyone else.
 - **Device limit**: set how many devices may connect at once; the panel shows each user's connected addresses.
-- **Admins**: owner, admin and reseller roles (resellers manage only their own users, within a user and data quota), two-step login (TOTP).
+- **Admins**: owner, admin and reseller roles (resellers manage only their own users, within a user and data quota), two-step login (TOTP) and **passkeys** (a fingerprint, face, phone or security key
+  instead of a password; the panel opened by a domain on HTTPS).
 - **Sessions and API keys**: see every signed-in browser and sign it out from anywhere; API keys (read-only or full,
   with expiry) for scripts and bots. See [docs/API.md](docs/API.md).
 - **Telegram bot**: status, users, one-line new user, renew, backup, alerts and a daily report; users get usage warnings.
@@ -196,7 +197,8 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **کاربران**: حجم، تاریخ انقضا، شروع از اولین اتصال، صفر شدن دوره‌ای، محدودیت پروتکل، عملیات گروهی.
 - **تغییر زنده**: ساختن، محدود کردن یا تمدید کاربر بدون قطع شدن بقیه اعمال می‌شود.
 - **محدودیت دستگاه**: تعداد دستگاه هم‌زمان هر کاربر، با نمایش IPهای متصل.
-- **مدیران**: نقش مالک، مدیر و نماینده فروش (با سقف کاربر و حجم) و ورود دو مرحله‌ای.
+- **مدیران**: نقش مالک، مدیر و نماینده فروش (با سقف کاربر و حجم)، ورود دو مرحله‌ای و **کلید عبور (Passkey)**: ورود با اثر انگشت،
+  چهره، گوشی یا کلید سخت‌افزاری به‌جای رمز (وقتی پنل با دامنه روی HTTPS باز شود).
 - **نشست‌ها و کلید API**: همهٔ مرورگرهای واردشده را ببینید و از هر جا ببندید؛ کلید API (فقط خواندنی یا کامل، با تاریخ انقضا)
   برای اسکریپت و ربات. راهنما: [docs/API.md](docs/API.md).
 - **ربات تلگرام**: وضعیت سرور، مدیریت کاربران، پشتیبان، هشدار و گزارش روزانه؛ کاربران هم هشدار مصرف می‌گیرند.

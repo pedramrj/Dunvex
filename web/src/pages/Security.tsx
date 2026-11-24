@@ -6,6 +6,7 @@ import { useI18n } from "../lib/i18n";
 import { Avatar, Badge, Button, EventMsg, Panel, StatCard, Num } from "../components/ui";
 import { PageHead, navigate, roleColor, roleKey, useSession } from "../App";
 import { ApiKeysPanel, SessionsPanel } from "./Access";
+import { PasskeysPanel } from "../components/Passkeys";
 
 /** Security centre: sign-ins, failures, two-step login and roles, from real events. */
 export function SecurityPage() {
@@ -51,6 +52,7 @@ export function SecurityPage() {
           </ul>
         </Panel>
         <div className="xl:col-span-5 flex flex-col gap-[var(--gap)]">
+          <PasskeysPanel />
           <Panel icon={<Lock className="size-4" />} title={t("protections")}>
             <ul className="flex flex-col gap-3 text-[13px]">
               {[t("protSession"), t("protThrottle"), t("protCsrf"), t("protDecoy"), t("protRoles")].map((x) => (

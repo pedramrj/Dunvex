@@ -35,7 +35,7 @@ export async function api<T = unknown>(path: string, opts: { method?: string; bo
     body = JSON.stringify(opts.body);
   }
   const res = await fetch(BASE + path, { method, headers, body, credentials: "same-origin" });
-  if (res.status === 401 && path !== "login") onUnauthorized();
+  if (res.status === 401 && !path.startsWith("login")) onUnauthorized(); // a refused sign-in is no lost session
   const text = await res.text();
   let data: any = null;
   try {
