@@ -11,82 +11,120 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/cdn"
+	"github.com/pedramrj/dunvex/internal/domains"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
 )
 
 // ---------------------------------------------------------------- links
 
-// cdnVariant is a CDN protocol as users reach it through the CDN.
+// cdnVariant is another way users reach an inbound: through a CDN name (or
+// one of its clean addresses), or at another direct name of this server.
 type cdnVariant struct {
 	in   *store.Inbound
 	name string
 	env  protocol.Env
-	via  string // "cdn" (the proxied name) or a clean address
+	via  string // "cdn" (a CDN name), a clean address, or "domain" (another name of this server)
 }
 
-// cdnLinks is what the CDN settings mean for the links of this server.
-type cdnLinks struct {
-	set     cdn.Settings
-	domain  string        // the proxied name
+// cdnName is a CDN name that carries configs.
+type cdnName struct {
+	d       domains.Domain
 	ech     *protocol.ECH // the CDN's ECH for configs through it (nil = none)
 	echFrom string        // the name it was published under
-	split   string        // how XHTTP through the CDN sends its downloads (protocol.Split*)
+}
+
+// cdnLinks is what the domain list means for the links of this server.
+type cdnLinks struct {
+	list    domains.List
+	cdns    []cdnName              // the CDN names with configs, in order
+	mirrors []domains.Domain       // the other direct names with configs
+	domain  string                 // the first CDN name ("" = none)
+	enabled bool                   // the first CDN name carries configs
+	split   string                 // how XHTTP through the CDN sends its downloads (protocol.Split*)
+	covers  func(name string) bool // this server's certificate is for the name
 }
 
 func (s *Server) cdnLinks(local protocol.Env) cdnLinks {
-	set := cdn.Load(s.St)
-	c := cdnLinks{set: set, domain: set.DomainFor(local.Domain), split: s.split()}
-	if set.Enabled && c.domain != "" && s.setting(echCDNSetting, "false") == "true" {
-		c.ech, c.echFrom = cdnECH(c.domain)
+	l := domains.Load(s.St)
+	c := cdnLinks{list: l, split: s.split(), mirrors: l.Mirrors(), covers: func(string) bool { return false }}
+	if len(c.mirrors) > 0 && !local.SelfSigned {
+		if info := s.certInfo(local.CertFile); info != nil {
+			c.covers = info.Covers
+		}
+	}
+	if f := l.FirstCDN(); f != nil {
+		c.domain, c.enabled = f.Name, f.Configs
+	}
+	ech := s.setting(echCDNSetting, "false") == "true"
+	for _, d := range l.CDNs() {
+		n := cdnName{d: d}
+		if ech {
+			n.ech, n.echFrom = cdnECH(d.Name)
+		}
+		c.cdns = append(c.cdns, n)
 	}
 	return c
 }
 
+// first is the first CDN name with configs (nil = none).
+func (c cdnLinks) first() *cdnName {
+	if len(c.cdns) == 0 {
+		return nil
+	}
+	return &c.cdns[0]
+}
+
 // on reports whether an inbound's users reach it through the CDN.
 func (c cdnLinks) on(in *store.Inbound, p *protocol.Preset) bool {
-	return c.set.Enabled && c.domain != "" && p.Group == "cdn" && in.NodeID == 0
+	return len(c.cdns) > 0 && p.Group == "cdn" && in.NodeID == 0
 }
 
 // direct reports whether users also get the config straight to the server.
 func (c cdnLinks) direct(in *store.Inbound, p *protocol.Preset) bool {
-	return !c.on(in, p) || c.set.Direct
+	return !c.on(in, p) || c.list.CDNDirect
 }
 
-// variants are the configs of a CDN protocol through the CDN: the proxied
-// name (or the inbound's own link address), then each clean address. Clients
-// check the CDN's certificate, never this server's, and carry the CDN's ECH,
-// never this server's (the CDN ends their TLS). With the XHTTP split, an XHTTP
+// variants are the other configs of an inbound: through each CDN name (the
+// name itself, or the inbound's own link address, then each clean address)
+// and at each other direct name of this server. Through a CDN, clients check
+// the CDN's certificate, never this server's, and carry the CDN's ECH, never
+// this server's (the CDN ends their TLS). With the XHTTP split, an XHTTP
 // config sends its downloads (or its uploads) straight to the server instead.
 func (c cdnLinks) variants(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env) []cdnVariant {
-	if !c.on(in, p) {
-		return nil
-	}
-	out := c.throughCDN(in, p, title, env)
-	if c.split == protocol.SplitOff || !protocol.Splittable(p, in) {
-		return out
-	}
-	direct := directEnv(in, env)
-	for i, v := range out {
-		cdnRoute := &protocol.Route{In: v.in, Env: v.env}
-		if c.split == protocol.SplitDown {
-			// uploads through the CDN, downloads straight from the server
-			out[i].env.Download = &protocol.Route{In: in, Env: direct}
-		} else {
-			// uploads straight to the server, downloads through the CDN
-			e := direct
-			e.Download = cdnRoute
-			out[i].in, out[i].env = in, e
+	var out []cdnVariant
+	if c.on(in, p) {
+		for i, n := range c.cdns {
+			out = append(out, c.throughCDN(in, p, title, env, n, i == 0)...)
 		}
+		if c.split != protocol.SplitOff && protocol.Splittable(p, in) {
+			direct := directEnv(in, env)
+			for i, v := range out {
+				cdnRoute := &protocol.Route{In: v.in, Env: v.env}
+				if c.split == protocol.SplitDown {
+					// uploads through the CDN, downloads straight from the server
+					out[i].env.Download = &protocol.Route{In: in, Env: direct}
+				} else {
+					// uploads straight to the server, downloads through the CDN
+					e := direct
+					e.Download = cdnRoute
+					out[i].in, out[i].env = in, e
+				}
+			}
+		}
+	}
+	if c.direct(in, p) {
+		out = append(out, c.atMirrors(in, p, title, env)...)
 	}
 	return out
 }
 
-// throughCDN are the variants as plain CDN copies.
-func (c cdnLinks) throughCDN(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env) []cdnVariant {
+// throughCDN are the copies of an inbound through one CDN name. The first
+// name's configs keep the "CDN" label they always had.
+func (c cdnLinks) throughCDN(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env, n cdnName, first bool) []cdnVariant {
 	env.SelfSigned, env.CertSHA256 = false, ""
-	env.Domain, env.Host = c.domain, c.domain
-	env.ECH, env.Download = c.ech, nil
+	env.Domain, env.Host = n.d.Name, n.d.Name
+	env.ECH, env.Download = n.ech, nil
 	name := in.Remark
 	if name == "" {
 		name = p.Name
@@ -97,15 +135,69 @@ func (c cdnLinks) throughCDN(in *store.Inbound, p *protocol.Preset, title string
 		}
 		return l + " · " + name
 	}
-	main := strings.TrimSpace(in.Str("address"))
-	if main == "" {
-		main = c.domain
+	main := n.d.Name
+	if a := strings.TrimSpace(in.Str("address")); a != "" && first {
+		main = a
 	}
-	out := []cdnVariant{{cdnCopy(in, main, c.domain), label("CDN"), env, "cdn"}}
-	for _, a := range c.set.Addresses {
-		out = append(out, cdnVariant{cdnCopy(in, a.Address, c.domain), label(a.Label()), env, a.Address})
+	head := "CDN"
+	if !first || n.d.Label != "" {
+		head = n.d.Title()
+	}
+	out := []cdnVariant{{cdnCopy(in, main, n.d.Name), label(head), env, "cdn"}}
+	for _, a := range n.d.Addresses {
+		out = append(out, cdnVariant{cdnCopy(in, a.Address, n.d.Name), label(a.Label()), env, a.Address})
 	}
 	return out
+}
+
+// atMirrors are the copies of an inbound of this server at its other direct
+// names: the TLS protocols (whose name users' apps send), or every protocol
+// for a name with All. An inbound with its own link address keeps it.
+func (c cdnLinks) atMirrors(in *store.Inbound, p *protocol.Preset, title string, env protocol.Env) []cdnVariant {
+	if len(c.mirrors) == 0 || in.NodeID != 0 || strings.TrimSpace(in.Str("address")) != "" {
+		return nil
+	}
+	tls := p.Security == "tls"
+	name := in.Remark
+	if name == "" {
+		name = p.Name
+	}
+	// the SNI follows the name unless the protocol has one of its own (a new
+	// TLS protocol starts with the main domain's)
+	own := strings.TrimSpace(in.Str("sni"))
+	follows := tls && (own == "" || own == c.list.MainName())
+	var out []cdnVariant
+	for _, m := range c.mirrors {
+		if !tls && !m.All {
+			continue
+		}
+		e := directEnv(in, env)
+		e.Host = m.Name
+		at := in
+		if follows && (env.SelfSigned || c.covers(m.Name)) {
+			// the app asks for this name: a real certificate must cover it
+			// (until it does, the config keeps the main name as its SNI)
+			e.Domain = m.Name
+			at = withParam(in, "sni", m.Name)
+		}
+		label := m.Title() + " · " + name
+		if title != "" {
+			label = title + " · " + label
+		}
+		out = append(out, cdnVariant{at, label, e, "domain"})
+	}
+	return out
+}
+
+// withParam is a copy of an inbound with one parameter changed.
+func withParam(in *store.Inbound, k string, v any) *store.Inbound {
+	c := *in
+	c.Params = make(map[string]any, len(in.Params)+1)
+	for x, y := range in.Params {
+		c.Params[x] = y
+	}
+	c.Params[k] = v
+	return &c
 }
 
 // cdnCopy is an inbound as reached at address, with the proxied name as its
@@ -148,18 +240,35 @@ type cdnView struct {
 	Inbounds    []cdnInboundView `json:"inbounds"`
 }
 
-func (s *Server) cdnState() cdnView {
+func (s *Server) cdnState() cdnView { return s.cdnStateFor("") }
+
+// cdnStateFor is the CDN view of one CDN name ("" = the first one; with
+// none, the panel's domain, as before there was a list of domains).
+func (s *Server) cdnStateFor(name string) cdnView {
 	env := s.Env()
-	set := cdn.Load(s.St)
+	l := domains.Load(s.St)
+	set := cdn.Settings{Direct: l.CDNDirect, Addresses: []cdn.Address{}}
+	d := l.FirstCDN()
+	if name != "" {
+		if f := l.Find(name); f != nil && f.Role == domains.CDN {
+			d = f
+		}
+	}
+	if d != nil {
+		set.Enabled, set.Domain = d.Configs, d.Name
+		if d.Addresses != nil {
+			set.Addresses = d.Addresses
+		}
+	}
 	v := cdnView{Settings: set, Domain: set.DomainFor(env.Domain), PanelDomain: env.Domain, SelfSigned: env.SelfSigned, Inbounds: []cdnInboundView{}}
+	if name != "" && d == nil {
+		v.Domain = domains.Normalize(name)
+	}
 	// the address set in Settings (the one users' links use), else the detected one
 	if h := net.ParseIP(strings.TrimSpace(s.St.GetSetting("host", ""))); h != nil && h.To4() != nil {
 		v.ServerIP = h.String()
 	} else if s.Sys != nil {
 		v.ServerIP = s.Sys.PublicIP()
-	}
-	if v.Settings.Addresses == nil {
-		v.Settings.Addresses = []cdn.Address{}
 	}
 	ins, _ := s.St.Inbounds()
 	for _, in := range ins {
@@ -179,9 +288,11 @@ func (s *Server) cdnState() cdnView {
 }
 
 func (s *Server) getCDN(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, s.cdnState())
+	writeJSON(w, 200, s.cdnStateFor(r.URL.Query().Get("name")))
 }
 
+// putCDN saves the CDN settings of the API before the list of domains: they
+// become the first CDN name (an empty name means the panel's own domain).
 func (s *Server) putCDN(w http.ResponseWriter, r *http.Request) {
 	var in cdn.Settings
 	if err := readJSON(r, &in); err != nil {
@@ -196,12 +307,15 @@ func (s *Server) putCDN(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "set the CDN domain first (or your domain in Settings)")
 		return
 	}
-	if _, err := cdn.Save(s.St, in); err != nil {
-		fail(w, 500, err.Error())
+	l := domains.Load(s.St)
+	l.TakeCDN(in)
+	if _, err := domains.Save(s.St, l); err != nil {
+		fail(w, 400, err.Error())
 		return
 	}
 	s.St.Log("settings", "%s changed the CDN settings", adminOf(r).Username)
-	writeJSON(w, 200, s.cdnState())
+	s.afterDomains()
+	writeJSON(w, 200, s.cdnStateFor(in.Domain))
 }
 
 // ---------------------------------------------------------------- check
@@ -238,7 +352,13 @@ type cdnCheck struct {
 // address. What users in another country see can differ (filtering), so this
 // shows whether the setup itself works.
 func (s *Server) checkCDN(w http.ResponseWriter, r *http.Request) {
-	v := s.cdnState()
+	var q struct {
+		Name string `json:"name"`
+	}
+	if r.ContentLength > 0 {
+		readJSON(r, &q)
+	}
+	v := s.cdnStateFor(q.Name)
 	if v.Domain == "" {
 		fail(w, 400, "set the CDN domain first (or your domain in Settings)")
 		return
@@ -355,12 +475,7 @@ func (s *Server) setupCloudflare(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "bad request")
 		return
 	}
-	in.Token = strings.TrimSpace(in.Token)
-	if in.Token == "" {
-		fail(w, 400, "paste your Cloudflare API token")
-		return
-	}
-	v := s.cdnState()
+	v := s.cdnStateFor(in.Domain)
 	set := v.Settings
 	set.Domain = in.Domain
 	if err := set.Clean(); err != nil {
@@ -381,9 +496,14 @@ func (s *Server) setupCloudflare(w http.ResponseWriter, r *http.Request) {
 	for _, iv := range v.Inbounds {
 		port443 = port443 || iv.Port443
 	}
+	token := s.cfToken(in.Token)
+	if token == "" {
+		fail(w, 400, "paste your Cloudflare API token")
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	cf := &cdn.Cloudflare{Base: s.CloudflareAPI, Token: in.Token}
+	cf := &cdn.Cloudflare{Base: s.CloudflareAPI, Token: token}
 	res, err := cf.Setup(ctx, cdn.SetupOptions{Domain: domain, IP: ip, Replace: in.Replace, SSL: in.SSL, SelfSigned: v.SelfSigned, WebSockets: in.WebSockets}, port443)
 	if err != nil {
 		fail(w, 502, err.Error())
@@ -391,13 +511,22 @@ func (s *Server) setupCloudflare(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Done {
 		set.Enabled = true
-		if _, err := cdn.Save(s.St, set); err != nil {
+		l := domains.Load(s.St)
+		if d := l.Find(domain); d != nil && d.Role == domains.CDN {
+			d.Configs = true
+		} else if d == nil {
+			l.Domains = append(l.Domains, domains.Domain{Name: domain, Role: domains.CDN, Configs: true})
+		} else {
+			l.TakeCDN(set)
+		}
+		if _, err := domains.Save(s.St, l); err != nil {
 			fail(w, 500, err.Error())
 			return
 		}
 		s.St.Log("settings", "%s put %s behind Cloudflare", adminOf(r).Username, domain)
+		s.afterDomains()
 	}
-	writeJSON(w, 200, map[string]any{"result": res, "state": s.cdnState()})
+	writeJSON(w, 200, map[string]any{"result": res, "state": s.cdnStateFor(domain)})
 }
 
 // cdnPorts are the ports a new CDN protocol tries after its default, in

@@ -59,9 +59,13 @@ func Renew(certDir, domain, email string) (cert, key string, renewed bool, err e
 // change, so a renewed certificate is used without a restart.
 type Reloader struct {
 	Cert, Key string
+	// Paths, when set, says where the files are now (the Domains page may
+	// move the certificate); Cert and Key are then ignored.
+	Paths func() (cert, key string)
 
 	mu   sync.Mutex
 	mod  time.Time
+	from string
 	have *tls.Certificate
 }
 
@@ -69,22 +73,28 @@ type Reloader struct {
 func (r *Reloader) GetCertificate(*tls.ClientHelloInfo) (*tls.Certificate, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	fi, err := os.Stat(r.Cert)
+	certPath, keyPath := r.Cert, r.Key
+	if r.Paths != nil {
+		if c, k := r.Paths(); c != "" && k != "" {
+			certPath, keyPath = c, k
+		}
+	}
+	fi, err := os.Stat(certPath)
 	if err != nil {
 		if r.have != nil {
 			return r.have, nil
 		}
 		return nil, err
 	}
-	if r.have == nil || !fi.ModTime().Equal(r.mod) {
-		c, err := tls.LoadX509KeyPair(r.Cert, r.Key)
+	if r.have == nil || !fi.ModTime().Equal(r.mod) || r.from != certPath {
+		c, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			if r.have != nil {
 				return r.have, nil // a half-written renewal: keep serving the old one
 			}
 			return nil, err
 		}
-		r.have, r.mod = &c, fi.ModTime()
+		r.have, r.mod, r.from = &c, fi.ModTime(), certPath
 	}
 	return r.have, nil
 }

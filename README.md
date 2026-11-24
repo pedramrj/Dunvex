@@ -103,6 +103,12 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
   on different ways** through the CDN. The fragment now reaches Hiddify and sing-box apps too, and Reality configs
   get it in a form Reality takes. Each goes only into the apps that read it. See
   [docs/ANTI-CENSORSHIP.md](docs/ANTI-CENSORSHIP.md).
+- **Domains**: every name of the panel on one page, in order: direct names (the first is the main domain), CDN names
+  and subscription-only names. Each name's DNS is checked (A, AAAA, CNAME, name servers, Cloudflare proxy on or off)
+  with a one-click fix through Cloudflare; one Let's Encrypt certificate covers them all, validated over HTTP or
+  through Cloudflare's DNS, renewed by itself, each failing name left out with its reason; a server without a domain
+  can certify its IP. Warnings before a certificate or a domain registration ends, a second direct name can carry a
+  copy of the configs, and several CDN names each carry the CDN protocols. See [docs/DOMAINS.md](docs/DOMAINS.md).
 - **CDN helper (v1.17)**: put the CDN protocols behind Cloudflare. Their configs go through the CDN name plus one per
   clean address (labelled, for example by operator); a check tries the DNS, each protocol through the CDN and straight
   to the server, and each clean address, explaining Cloudflare's errors; and one click with your own API token (never
@@ -233,6 +239,11 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
   از راه CDN. Fragment حالا به Hiddify و برنامه‌های sing-box هم می‌رسد و کانفیگ‌های Reality آن را به شکلی می‌گیرند که
   Reality می‌پذیرد. هرکدام فقط به برنامه‌هایی می‌رسد که آن را می‌خوانند. راهنما:
   [docs/ANTI-CENSORSHIP.md](docs/ANTI-CENSORSHIP.md).
+- **دامنه‌ها**: همهٔ نام‌های پنل در یک صفحه و به ترتیب: نام‌های مستقیم (اولی دامنهٔ اصلی است)، نام‌های CDN و نام‌های فقط
+  اشتراک. DNS هر نام بررسی می‌شود (A، AAAA، CNAME، nameserverها، روشن یا خاموش بودن پروکسی کلادفلر) و با یک کلیک از راه
+  کلادفلر درست می‌شود؛ یک گواهی Let's Encrypt همه را پوشش می‌دهد، با تأیید HTTP یا DNS کلادفلر و تمدید خودکار، و هر نام
+  ناموفق با دلیلش بیرون می‌ماند؛ سرور بدون دامنه برای آی‌پی خودش گواهی می‌گیرد. هشدار پیش از پایان گواهی و ثبت دامنه، نسخهٔ
+  کانفیگ‌ها با نام مستقیم دوم، و چند نام CDN. راهنما: [docs/DOMAINS.md](docs/DOMAINS.md).
 - **دستیار CDN (نسخهٔ ۱.۱۷)**: پروتکل‌های CDN پشت کلادفلر؛ کانفیگ‌ها از راه نام CDN و یکی هم برای هر آی‌پی تمیز (با
   برچسب، مثلاً نام اپراتور)؛ بررسی DNS، هر پروتکل از راه CDN و مستقیم و هر آی‌پی تمیز با توضیح خطاهای کلادفلر؛ و با یک
   کلیک و توکن API خودتان (که ذخیره نمی‌شود) رکورد DNS پروکسی ساخته و SSL/TLS و WebSockets درست می‌شود. راهنما:

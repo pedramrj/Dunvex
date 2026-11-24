@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { domainsEn, domainsFa } from "./i18n-domains";
 
 export type Lang = "fa" | "en";
 
 const fa = {
+  ...domainsFa,
   brand: "دانوکس",
   overview: "نمای کلی",
   users: "کاربران",
@@ -1154,6 +1156,7 @@ const fa = {
 
 type Dict = typeof fa;
 const en: Dict = {
+  ...domainsEn,
   brand: "Dunvex",
   overview: "Overview",
   users: "Users",

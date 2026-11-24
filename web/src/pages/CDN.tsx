@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Activity, CircleCheck, CircleX, Cloud, CloudCog, Globe, KeyRound, Plus, Radar, Server, Trash2, TriangleAlert } from "lucide-react";
+import { Activity, CircleCheck, CircleX, Cloud, Globe, KeyRound, Plus, Radar, Server, TriangleAlert } from "lucide-react";
 import { api } from "../lib/api";
 import { useI18n, type Key } from "../lib/i18n";
-import { Badge, Button, Empty, ErrorState, IconButton, Input, Label, Panel, Skeleton, Toggle, useToast } from "../components/ui";
-import { navigate, PageHead } from "../App";
+import { Badge, Button, Empty, ErrorState, Input, Label, SectionTitle, Skeleton, Toggle, useToast } from "../components/ui";
+import { navigate } from "../App";
 
-interface Address { address: string; name: string }
+export interface Address { address: string; name: string }
 interface Settings { enabled: boolean; domain: string; addresses: Address[]; direct: boolean }
 interface CDNInbound { id: number; name: string; port: number; transport: string; tls: boolean; enabled: boolean; portOK: boolean; host?: string }
 interface CDNState { settings: Settings; domain: string; panelDomain: string; serverIP: string; selfSigned: boolean; inbounds: CDNInbound[] }
@@ -23,143 +23,92 @@ interface Setup { zone: string; steps: Step[]; conflicts?: Record[]; done: boole
 
 const transportName: { [k: string]: string } = { ws: "WebSocket", httpupgrade: "HTTPUpgrade", grpc: "gRPC", xhttp: "XHTTP" };
 
-/** The CDN helper: links through the CDN, clean addresses, a check and the Cloudflare setup (owner only). */
-export function CDNPage() {
+/** The CDN assistant of one CDN name (inside its Domains sheet): the CDN
+ * protocols and their ports, a check of every leg, and the Cloudflare setup.
+ * The name's own settings (links through it, clean addresses) are the sheet's. */
+export function CDNAssistant({ name, tokenKept, onChanged }: { name: string; tokenKept: boolean; onChanged: () => void }) {
   const { t } = useI18n();
   const toast = useToast();
   const [st, setSt] = useState<CDNState | null>(null);
   const [err, setErr] = useState("");
-  const [s, setS] = useState<Settings | null>(null);
   const [busy, setBusy] = useState("");
   const [check, setCheck] = useState<Check | null>(null);
-  const [cf, setCf] = useState({ token: "", domain: "", ssl: true, websockets: true });
+  const [cf, setCf] = useState({ token: "", ssl: true, websockets: true });
   const [setup, setSetup] = useState<Setup | null>(null);
 
-  const take = useCallback((x: CDNState) => {
-    setSt(x);
-    setS({ ...x.settings, addresses: x.settings.addresses.length ? x.settings.addresses : [] });
-    setCf((c) => ({ ...c, domain: c.domain || x.settings.domain || (x.panelDomain ? "cdn." + x.panelDomain : "") }));
-  }, []);
-  const load = useCallback(() => { api<CDNState>("cdn").then(take).catch((e) => setErr(e.message)); }, [take]);
+  const load = useCallback(() => { api<CDNState>("cdn?name=" + encodeURIComponent(name)).then(setSt).catch((e) => setErr(e.message)); }, [name]);
   useEffect(load, [load]);
-  if (!st || !s) return err ? <ErrorState message={err} onRetry={load} /> : <Skeleton className="h-96" />;
+  if (!st) return err ? <ErrorState message={err} onRetry={load} /> : <Skeleton className="h-40" />;
 
-  const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS({ ...s, [k]: v });
-  const setAddr = (i: number, a: Partial<Address>) => set("addresses", s.addresses.map((x, j) => (j === i ? { ...x, ...a } : x)));
-  const save = () => {
-    setBusy("save");
-    api<CDNState>("cdn", { method: "PUT", body: { ...s, addresses: s.addresses.filter((a) => a.address.trim()) } })
-      .then((x) => { take(x); toast(t("saved")); }).catch((e) => toast(e.message, "error")).finally(() => setBusy(""));
-  };
   const runCheck = () => {
     setBusy("check");
     setCheck(null);
-    api<Check>("cdn/check", { method: "POST" }).then(setCheck).catch((e) => toast(e.message, "error")).finally(() => setBusy(""));
+    api<Check>("cdn/check", { method: "POST", body: { name } }).then(setCheck).catch((e) => toast(e.message, "error")).finally(() => setBusy(""));
   };
   const runSetup = (replace: boolean) => {
     setBusy("cf");
-    api<{ result: Setup; state: CDNState }>("cdn/cloudflare", { method: "POST", body: { ...cf, replace } })
+    api<{ result: Setup; state: CDNState }>("cdn/cloudflare", { method: "POST", body: { ...cf, domain: name, replace } })
       .then((x) => {
         setSetup(x.result);
-        take(x.state);
+        setSt(x.state);
         if (x.result.done) {
           setCf((c) => ({ ...c, token: "" }));
           toast(t("cfDone"));
+          onChanged();
         }
       })
       .catch((e) => toast(e.message, "error")).finally(() => setBusy(""));
   };
-  const domain = s.domain || st.panelDomain;
   const live = st.inbounds.filter((i) => i.enabled);
 
   return (
-    <>
-      <PageHead title={t("cdn")} sub={t("cdnSub")} />
-      <div className="grid gap-[var(--gap)] xl:grid-cols-2 items-start">
-        <div className="flex flex-col gap-[var(--gap)]">
-          <Panel icon={<Cloud className="size-4" />} title={t("cdnLinksTitle")}
-            action={<Badge color={st.settings.enabled ? "var(--ok)" : "var(--text3)"}>{st.settings.enabled ? t("cdnOn") : t("cdnOff")}</Badge>}>
-            <div className="flex flex-col gap-5">
-              <Toggle checked={s.enabled} onChange={(v) => set("enabled", v)} label={t("cdnEnabled")} hint={t("cdnEnabledHint")} />
-              <label>
-                <Label>{t("cdnDomain")}</Label>
-                <Input dir="ltr" className="mono" placeholder={st.panelDomain || "cdn.example.com"} value={s.domain} onChange={(e) => set("domain", e.target.value)} />
-                <Hint>{t("cdnDomainHint")}</Hint>
-              </label>
-              <Toggle checked={s.direct} onChange={(v) => set("direct", v)} label={t("cdnDirect")} hint={t("cdnDirectHint")} />
-              <div>
-                <Label>{t("cdnAddresses")}</Label>
-                <p className="text-[12.5px] text-ink3 leading-6 mb-2.5">{t("cdnAddressesHint")}</p>
-                <div className="flex flex-col gap-2">
-                  {s.addresses.map((a, i) => (
-                    <div key={i} className="flex gap-2 items-center">
-                      <Input dir="ltr" className="mono flex-[3] min-w-0" placeholder={t("cdnAddressPh")} value={a.address} onChange={(e) => setAddr(i, { address: e.target.value })} />
-                      <Input className="flex-[2] min-w-0" placeholder={t("cdnAddressName")} value={a.name} onChange={(e) => setAddr(i, { name: e.target.value })} />
-                      <IconButton label={t("delete")} tone="danger" onClick={() => set("addresses", s.addresses.filter((_, j) => j !== i))}><Trash2 className="size-4" /></IconButton>
-                    </div>
-                  ))}
-                  <div><Button size="sm" variant="soft" icon={<Plus className="size-4" />} disabled={s.addresses.length >= 30}
-                    onClick={() => set("addresses", [...s.addresses, { address: "", name: "" }])}>{t("cdnAddAddress")}</Button></div>
+    <div className="flex flex-col gap-6">
+      <section>
+        <SectionTitle>{t("cdnProtocols")}</SectionTitle>
+        {st.inbounds.length === 0 ? (
+          <Empty icon={<Radar className="size-7" />} title={t("cdnNoProtocols")} hint={t("cdnNoProtocolsHint")}
+            action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add-cdn")}>{t("addProtocol")}</Button>} />
+        ) : (
+          <div className="flex flex-col gap-2">
+            {st.inbounds.map((i) => (
+              <div key={i.id} className="rounded-2xl border border-hair px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[13.5px] font-medium">{i.name}</span>
+                  <Badge color="var(--color-cdn)">{transportName[i.transport] ?? i.transport}{i.tls ? " · TLS" : ""}</Badge>
+                  <Badge><bdi dir="ltr" className="mono">:{i.port}</bdi></Badge>
+                  {!i.enabled && <Badge>{t("disabled")}</Badge>}
                 </div>
+                {!i.portOK && <Note>{t(i.tls ? "cdnPortBadTLS" : "cdnPortBadHTTP")}</Note>}
+                {i.transport === "grpc" && i.port !== 443 && <Note soft>{t("cdnGrpcPort")}</Note>}
+                {i.host && i.host !== name && <Note>{t("cdnHostSet")} <bdi dir="ltr" className="mono">{i.host}</bdi></Note>}
               </div>
-              <div className="flex justify-end"><Button variant="primary" loading={busy === "save"} onClick={save}>{t("save")}</Button></div>
-            </div>
-          </Panel>
+            ))}
+          </div>
+        )}
+      </section>
 
-          <Panel icon={<CloudCog className="size-4" />} title={t("cfTitle")}>
-            <div className="flex flex-col gap-4">
-              <p className="text-[13px] text-ink2 leading-7">{t("cfHint")}</p>
-              <label>
-                <Label>{t("cdnDomain")}</Label>
-                <Input dir="ltr" className="mono" placeholder="cdn.example.com" value={cf.domain} onChange={(e) => setCf({ ...cf, domain: e.target.value })} />
-              </label>
-              <label>
-                <Label>{t("cfToken")}</Label>
-                <Input dir="ltr" className="mono" type="password" autoComplete="off" spellCheck={false} value={cf.token} onChange={(e) => setCf({ ...cf, token: e.target.value })} />
-                <Hint>{t("cfTokenHow")}</Hint>
-              </label>
-              <Toggle checked={cf.ssl} onChange={(v) => setCf({ ...cf, ssl: v })} label={t("cfSSL")} hint={t("cfSSLHint")} />
-              <Toggle checked={cf.websockets} onChange={(v) => setCf({ ...cf, websockets: v })} label={t("cfWS")} />
-              <div><Button variant="primary" icon={<KeyRound className="size-4" />} loading={busy === "cf"} disabled={!cf.token.trim() || !cf.domain.trim()}
-                onClick={() => runSetup(false)}>{t("cfRun")}</Button></div>
-              {setup && <SetupResult setup={setup} domain={cf.domain} busy={busy === "cf"} onReplace={() => runSetup(true)} />}
-              <p className="text-[12.5px] text-ink3">{t("cfGrpc")}</p>
-            </div>
-          </Panel>
-        </div>
+      <section>
+        <SectionTitle action={<Button size="sm" variant="soft" icon={<Activity className="size-4" />} loading={busy === "check"} onClick={runCheck}>{t("cdnCheck")}</Button>}>{t("cdnCheckTitle")}</SectionTitle>
+        <p className="text-[12.5px] text-ink3 mb-4">{t("cdnCheckHint")}</p>
+        {check ? <CheckView check={check} inbounds={live} /> : <p className="text-[13px] text-ink2">{t("cdnCheckIdle")}</p>}
+      </section>
 
-        <div className="flex flex-col gap-[var(--gap)]">
-          <Panel icon={<Radar className="size-4" />} title={t("cdnProtocols")}>
-            {st.inbounds.length === 0 ? (
-              <Empty icon={<Radar className="size-7" />} title={t("cdnNoProtocols")} hint={t("cdnNoProtocolsHint")}
-                action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add-cdn")}>{t("addProtocol")}</Button>} />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {st.inbounds.map((i) => (
-                  <div key={i.id} className="rounded-2xl border border-hair px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13.5px] font-medium">{i.name}</span>
-                      <Badge color="var(--color-cdn)">{transportName[i.transport] ?? i.transport}{i.tls ? " · TLS" : ""}</Badge>
-                      <Badge><bdi dir="ltr" className="mono">:{i.port}</bdi></Badge>
-                      {!i.enabled && <Badge>{t("disabled")}</Badge>}
-                    </div>
-                    {!i.portOK && <Note>{t(i.tls ? "cdnPortBadTLS" : "cdnPortBadHTTP")}</Note>}
-                    {i.transport === "grpc" && i.port !== 443 && <Note soft>{t("cdnGrpcPort")}</Note>}
-                    {i.host && i.host !== domain && <Note>{t("cdnHostSet")} <bdi dir="ltr" className="mono">{i.host}</bdi></Note>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel icon={<Activity className="size-4" />} title={t("cdnCheckTitle")}
-            action={<Button size="sm" variant="soft" icon={<Activity className="size-4" />} loading={busy === "check"} disabled={!domain} onClick={runCheck}>{t("cdnCheck")}</Button>}>
-            <p className="text-[12.5px] text-ink3 mb-4">{t("cdnCheckHint")}</p>
-            {check ? <CheckView check={check} inbounds={live} /> : <p className="text-[13px] text-ink2">{domain ? t("cdnCheckIdle") : t("cdnNeedDomain")}</p>}
-          </Panel>
-        </div>
-      </div>
-    </>
+      <section className="flex flex-col gap-4">
+        <SectionTitle>{t("cfTitle")}</SectionTitle>
+        <p className="text-[13px] text-ink2 leading-7 -mt-2">{tokenKept ? t("cfHintKept") : t("cfHint")}</p>
+        <label>
+          <Label hint={tokenKept ? t("dmCFSaved") : undefined}>{t("cfToken")}</Label>
+          <Input dir="ltr" className="mono" type="password" autoComplete="off" spellCheck={false} value={cf.token} onChange={(e) => setCf({ ...cf, token: e.target.value })} />
+          {!tokenKept && <Hint>{t("cfTokenHow")}</Hint>}
+        </label>
+        <Toggle checked={cf.ssl} onChange={(v) => setCf({ ...cf, ssl: v })} label={t("cfSSL")} hint={t("cfSSLHint")} />
+        <Toggle checked={cf.websockets} onChange={(v) => setCf({ ...cf, websockets: v })} label={t("cfWS")} />
+        <div><Button variant="primary" icon={<KeyRound className="size-4" />} loading={busy === "cf"} disabled={!cf.token.trim() && !tokenKept}
+          onClick={() => runSetup(false)}>{t("cfRun")}</Button></div>
+        {setup && <SetupResult setup={setup} domain={name} busy={busy === "cf"} onReplace={() => runSetup(true)} />}
+        <p className="text-[12.5px] text-ink3">{t("cfGrpc")}</p>
+      </section>
+    </div>
   );
 }
 

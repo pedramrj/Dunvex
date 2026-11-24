@@ -9,7 +9,7 @@ import { useI18n, type Key } from "../lib/i18n";
 import {
   Avatar, Badge, Button, ConfirmButton, Dot, Empty, IconButton, Input, Label, Panel, Segmented, Select, Sheet, Skeleton, Tabs, Toggle, useToast,
 } from "../components/ui";
-import { PageHead, can, roleColor, roleKey, useSession } from "../App";
+import { PageHead, can, navigate, roleColor, roleKey, useSession } from "../App";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
 import { BackupsTab } from "../components/Backups";
 import { TrialPanel } from "../components/Trial";
@@ -126,7 +126,14 @@ function OwnerSettings({ tab }: { tab: TabId }) {
       <>
         <Panel icon={<Globe className="size-4" />} title={t("serverAddress")} sub={<span className="mono" dir="ltr">{info.publicIp}</span>}>
           <div className="grid sm:grid-cols-2 gap-4">
-            <label><Label>{t("domain")}</Label><Input dir="ltr" value={s.domain ?? ""} placeholder="vpn.example.com" onChange={(e) => set("domain", e.target.value)} /></label>
+            <div>
+              <Label>{t("domain")}</Label>
+              <button type="button" onClick={() => navigate("domains")}
+                className="w-full h-11 rounded-xl bg-rail border border-hair px-3.5 flex items-center justify-between gap-3 text-start hover:border-hair2 transition-colors">
+                {s.domain ? <bdi dir="ltr" className="mono truncate">{s.domain}</bdi> : <span className="text-ink3 truncate">{t("dmNoMain")}</span>}
+                <span className="text-[12.5px] text-primary2 shrink-0">{t("domains")}</span>
+              </button>
+            </div>
             <label><Label hint={<span className="mono">{info.effectiveHost}</span>}>{t("host")}</Label><Input dir="ltr" value={s.host ?? ""} placeholder={info.publicIp} onChange={(e) => set("host", e.target.value)} /></label>
           </div>
           <div className="mt-5 flex flex-col gap-4">
@@ -138,35 +145,15 @@ function OwnerSettings({ tab }: { tab: TabId }) {
               <span className="block mt-1.5 text-[12px] text-ink3 leading-relaxed">{t("healthEveryHint")}</span>
             </label>
           </div>
-          <SaveBar keys={["domain", "host", "ip_pause_minutes", "health_hours"]} />
+          <SaveBar keys={["host", "ip_pause_minutes", "health_hours"]} />
         </Panel>
-        <Panel icon={<ShieldCheck className="size-4" />} title={t("certificate")}
+        <Panel icon={<ShieldCheck className="size-4" />} title={t("dmMovedTitle")}
           action={<Badge color={info.selfSigned ? "var(--color-ink2)" : "var(--color-online)"}>{info.selfSigned ? (lang === "fa" ? "خودامضا" : "Self-signed") : "TLS ✓"}</Badge>}>
           <p className="text-[13.5px] text-ink2 mb-4">
-            {info.selfSigned ? (lang === "fa" ? "کلاینت‌ها با پین گواهی وصل می‌شوند." : "Clients pin the certificate.") : "Let's Encrypt / custom"}
+            {t("dmMovedBody")}
             {info.certExpiry ? <> · <span className="num">{date(info.certExpiry, lang)}</span></> : null}
           </p>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <label><Label>Email (ACME)</Label><Input dir="ltr" value={s.acme_email ?? ""} onChange={(e) => set("acme_email", e.target.value)} /></label>
-            <label><Label>{lang === "fa" ? "نوع گواهی" : "Certificate type"}</Label><Select value={s.cert_mode || "self"} onChange={(v) => set("cert_mode", v)} options={[{ value: "self", label: lang === "fa" ? "خودامضا" : "Self-signed" }, { value: "acme", label: "Let's Encrypt" }, { value: "custom", label: lang === "fa" ? "فایل دلخواه" : "Custom files" }]} /></label>
-          </div>
-          {s.cert_mode === "custom" && (
-            <div className="grid sm:grid-cols-2 gap-4 mt-4">
-              <label><Label>Certificate (.pem)</Label><Input dir="ltr" value={s.cert_file ?? ""} placeholder="/root/cert/fullchain.pem" onChange={(e) => set("cert_file", e.target.value)} /></label>
-              <label><Label>Key (.pem)</Label><Input dir="ltr" value={s.key_file ?? ""} placeholder="/root/cert/privkey.pem" onChange={(e) => set("key_file", e.target.value)} /></label>
-            </div>
-          )}
-          <div className="flex flex-wrap justify-end gap-2 pt-5">
-            <Button onClick={() => save(["acme_email", "cert_mode", "cert_file", "key_file"])}>{t("save")}</Button>
-            <Button variant="primary" disabled={!s.domain} loading={busy} onClick={() => {
-              setBusy(true);
-              api("settings", { method: "PUT", body: { acme_email: s.acme_email ?? "" } })
-                .then(() => api("settings/cert", { method: "POST", body: {} }))
-                .then(() => { toast(t("saved")); load(); })
-                .catch((e) => toast(e.message, "error"))
-                .finally(() => setBusy(false));
-            }}>{t("getCert")}</Button>
-          </div>
+          <div className="flex justify-end"><Button variant="primary" icon={<Globe className="size-4" />} onClick={() => navigate("domains")}>{t("dmOpen")}</Button></div>
         </Panel>
       </>
     );

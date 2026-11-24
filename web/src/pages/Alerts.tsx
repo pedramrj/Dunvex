@@ -8,10 +8,11 @@ import { Badge, Button, Empty, EventMsg, Panel, Segmented, Toggle } from "../com
 import { PageHead, eventMeta } from "../App";
 
 const kinds: { id: string; key: Key }[] = [
-  { id: "limit", key: "catLimit" }, { id: "core", key: "catCore" }, { id: "auth", key: "catAuth" }, { id: "user", key: "catUser" }, { id: "health", key: "catHealth" }, { id: "backup", key: "catBackup" }, { id: "support", key: "catSupport" }, { id: "settings", key: "catSettings" },
+  { id: "limit", key: "catLimit" }, { id: "core", key: "catCore" }, { id: "auth", key: "catAuth" }, { id: "user", key: "catUser" }, { id: "health", key: "catHealth" }, { id: "backup", key: "catBackup" }, { id: "support", key: "catSupport" }, { id: "tls", key: "catTLS" }, { id: "settings", key: "catSettings" },
 ];
 const severity = (e: Event): "high" | "medium" | "low" =>
-  e.kind === "core" || /fail|error|busy/i.test(e.message) ? "high" : e.kind === "limit" || e.kind === "auth" ? "medium" : "low";
+  e.kind === "core" || /fail|error|busy|has expired|no certificate for|^domain .+: /i.test(e.message) ? "high"
+    : e.kind === "limit" || e.kind === "auth" || (e.kind === "tls" && /expires/.test(e.message)) ? "medium" : "low";
 const sevColor = { high: "var(--bad)", medium: "var(--warn)", low: "var(--text3)" };
 
 /** Notification centre: every panel event, grouped by day, with read state. */

@@ -930,10 +930,18 @@ func dur(sec int64, lang string) string {
 
 // ---------------------------------------------------------------- alerts and reports
 
+// tlsWarning reports whether a certificate or domain event needs the owner:
+// an end coming, a failed certificate, a name that stopped pointing here.
+func tlsWarning(msg string) bool {
+	return strings.Contains(msg, "expire") || strings.HasPrefix(msg, "no certificate for ") ||
+		strings.Contains(msg, "could not be") || strings.HasPrefix(msg, "domain ")
+}
+
 // onEvent forwards important events to the admins.
 func (b *Bot) onEvent(kind, msg string) {
 	important := kind == "limit" || kind == "core" || kind == "auth" || kind == "health" || kind == "backup" ||
-		(kind == "user" && (strings.Contains(msg, " is now ") || strings.Contains(msg, "first time")))
+		(kind == "user" && (strings.Contains(msg, " is now ") || strings.Contains(msg, "first time"))) ||
+		(kind == "tls" && tlsWarning(msg))
 	if !important {
 		return
 	}
@@ -957,7 +965,7 @@ func (b *Bot) onEvent(kind, msg string) {
 	b.sent = append(b.sent, now)
 	admins := b.adminList()
 	b.mu.Unlock()
-	icon := map[string]string{"limit": "📱", "core": "⚙️", "auth": "🔐", "user": "👤"}[kind]
+	icon := map[string]string{"limit": "📱", "core": "⚙️", "auth": "🔐", "user": "👤", "tls": "🔏"}[kind]
 	go func() {
 		for _, id := range admins {
 			b.send(id, icon+" "+esc(msg), nil)

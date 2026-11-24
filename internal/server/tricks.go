@@ -262,10 +262,11 @@ func (s *Server) trickInfo() map[string]any {
 	}
 	if s.setting(echCDNSetting, "false") == "true" {
 		cl := s.cdnLinks(s.Env())
-		v := map[string]any{"domain": cl.domain, "on": cl.set.Enabled}
-		if cl.ech != nil {
-			v["publicName"], _ = protocol.ECHPublicName(cl.ech.Config)
-			v["source"] = cl.echFrom
+		v := map[string]any{"domain": cl.domain, "on": cl.enabled}
+		if f := cl.first(); f != nil && f.ech != nil {
+			v["domain"] = f.d.Name
+			v["publicName"], _ = protocol.ECHPublicName(f.ech.Config)
+			v["source"] = f.echFrom
 		}
 		info["echCdn"] = v
 	}

@@ -145,3 +145,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       with upload and download on different ways through the CDN; the fragment for Hiddify and sing-box apps, and in
       TCP pieces for Reality. Mixed-case SNI and TLS padding stay out: no current app applies them (v1.31). See
       [ANTI-CENSORSHIP.md](ANTI-CENSORSHIP.md)
+- [x] Domains: every name of the panel on one page in order (direct names, the first being the main domain; CDN
+      names; subscription-only names), each with its DNS check and a one-click Cloudflare fix; one Let's Encrypt
+      certificate for all of them over HTTP or Cloudflare DNS, each failing name left out with its reason and tried
+      again by itself; an IP certificate for a server without a domain; warnings before a certificate or a domain
+      registration ends; copies of the configs at a second direct name and several CDN names; the CDN helper inside
+      each CDN name. See [DOMAINS.md](DOMAINS.md)

@@ -1,8 +1,12 @@
 # CDN helper (v1.17)
 
+> The CDN helper is now part of the **Domains** page: add a name with the **CDN** role (or open one) and the clean
+> addresses, the check and the Cloudflare setup are in its panel. Several CDN names can each carry the CDN protocols.
+> See [DOMAINS.md](DOMAINS.md); what follows still describes each piece.
+
 The CDN protocols (VLESS over XHTTP, WebSocket, HTTPUpgrade or gRPC, Trojan and VMess over WebSocket) can sit behind
 a CDN such as Cloudflare: users connect to the CDN, and the CDN carries their traffic to this server. Filtering then
-sees the CDN, not your server. The **CDN** page (owner only) puts it together:
+sees the CDN, not your server. The CDN helper puts it together:
 
 - **Links through the CDN**: the CDN protocols' configs use the CDN name, and one more config per **clean address**.
 - **Check**: the name's DNS, each protocol through the CDN and straight to the server, and each clean address,
@@ -30,7 +34,8 @@ working. Only the CDN name is **Proxied** (orange cloud). A first-level name (`c
 
 In Cloudflare: **My Profile › API Tokens › Create Token**, the **Edit zone DNS** template. Add the permission
 **Zone · Zone Settings · Edit** (for the SSL/TLS mode and WebSockets) and pick your domain under **Zone Resources**.
-The token is sent to Cloudflare for that one setup and is never saved, logged or shown again.
+The token is sent to Cloudflare for that one setup and is never saved, logged or shown again (unless you choose to
+keep one on the Domains page, for one-click records and DNS validation of certificates).
 
 The setup:
 

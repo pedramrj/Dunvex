@@ -387,7 +387,7 @@ export interface HealthResult {
   preset: string;
   name: string; // as in the users' apps
   server?: string; // node name; empty = this server
-  via?: "cdn" | "relay";
+  via?: "cdn" | "relay" | "domain";
   status: "ok" | "fail" | "skip";
   ms?: number;
   error?: string; // why it failed, or why it was not tested

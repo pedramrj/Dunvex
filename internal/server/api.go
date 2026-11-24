@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/backup"
 	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/coremgr"
+	"github.com/pedramrj/dunvex/internal/domains"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -107,6 +109,13 @@ func (s *Server) apiMux() http.Handler {
 	h("GET /settings", O, s.getSettings)
 	h("PUT /settings", O, s.putSettings)
 	h("POST /settings/cert", O, s.obtainCert)
+	h("GET /domains", O, s.getDomains)
+	h("PUT /domains", O, s.putDomains)
+	h("POST /domains/check", O, s.checkDomains)
+	h("GET /domains/cert", O, s.getCert)
+	h("POST /domains/cert", O, s.postCert)
+	h("PUT /domains/cloudflare", O, s.putCloudflare)
+	h("POST /domains/point", O, s.pointDomain)
 	h("POST /settings/telegram/test", O, s.telegramTest)
 	h("GET /trial", O, s.getTrial)
 	h("PUT /trial", O, s.putTrial)
@@ -1312,7 +1321,7 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, err.Error())
 		return
 	}
-	needRestart := false
+	needRestart, domainChanged := false, false
 	for k, v := range in {
 		if !allowed[k] {
 			continue
@@ -1369,7 +1378,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case "domain":
-			v = strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(v, "https://"), "http://"), "/"))
+			// the main domain of the Domains page (the list follows it below)
+			v = domains.Normalize(v)
+			domainChanged = domainChanged || v != s.St.GetSetting("domain", "")
 		case "cert_file", "key_file":
 			if v != "" && !util.FileExists(v) {
 				fail(w, 400, "file not found: "+v)
@@ -1381,6 +1392,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	if in["panel_path"] != "" && normPath(in["panel_path"]) == s.SubPath() {
 		fail(w, 400, "panel path and subscription path must differ")
 		return
+	}
+	if domainChanged {
+		l := domains.Load(s.St) // it takes the new main domain over
+		var stored domains.List
+		json.Unmarshal([]byte(s.St.GetSetting(domains.Setting, "")), &stored)
+		domains.Save(s.St, l)
+		s.followMain(stored.Mirror.Domain, l.MainName())
+		s.kickCert()
 	}
 	if tricksChanged {
 		s.afterTricks() // this server's ECH keys, when they are new
@@ -1399,25 +1418,6 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		go func() { time.Sleep(time.Second); s.Restart() }()
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "restarting": needRestart})
-}
-
-func (s *Server) obtainCert(w http.ResponseWriter, r *http.Request) {
-	domain := strings.TrimSpace(s.St.GetSetting("domain", ""))
-	if domain == "" {
-		fail(w, 400, "set a domain first")
-		return
-	}
-	cert, key, err := tlsmgr.Obtain(s.CertDir(), domain, s.St.GetSetting("acme_email", ""))
-	if err != nil {
-		fail(w, 400, err.Error())
-		return
-	}
-	s.St.SetSetting("cert_file", cert)
-	s.St.SetSetting("key_file", key)
-	s.St.SetSetting("cert_mode", "acme")
-	s.St.Log("tls", "certificate issued for %s", domain)
-	s.Mgr.Apply()
-	writeJSON(w, 200, map[string]string{"cert": cert, "key": key})
 }
 
 // ---------------------------------------------------------------- cores

@@ -93,7 +93,8 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET | `/health` | A | The last config health report; see [CONFIG-HEALTH.md](CONFIG-HEALTH.md) |
 | POST | `/health/check` | A | Start a config health check now (it runs in the background) |
 | GET / POST | `/webhooks` | O | Webhooks; editing, tests and deliveries are in [INTEGRATIONS.md](INTEGRATIONS.md) |
-| GET / PUT | `/cdn` | O | Links through the CDN and clean addresses; `POST /cdn/check` and `POST /cdn/cloudflare` are in [CDN.md](CDN.md) |
+| GET / PUT | `/domains` | O | Every name, its DNS check, the certificate; the rest (`/domains/check`, `/domains/cert`, `/domains/cloudflare`, `/domains/point`) is in [DOMAINS.md](DOMAINS.md) |
+| GET / PUT | `/cdn` | O | The first CDN name (or `?name=` another): links through it and its clean addresses; `POST /cdn/check` and `POST /cdn/cloudflare` are in [CDN.md](CDN.md) |
 | GET | `/billing/plans` · `/billing/orders` · `/wallet` | R | Plans, orders and your wallet; the rest is in [BILLING.md](BILLING.md) |
 
 Signed-in panel only (not API keys): `/me`, `/account`, `/account/2fa/*`, `/account/sessions` (list,

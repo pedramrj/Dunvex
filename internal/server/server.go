@@ -22,6 +22,7 @@ import (
 
 	"github.com/pedramrj/dunvex/internal/backup"
 	"github.com/pedramrj/dunvex/internal/billing"
+	"github.com/pedramrj/dunvex/internal/domains"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
 	"github.com/pedramrj/dunvex/internal/health"
@@ -29,6 +30,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/sysinfo"
+	"github.com/pedramrj/dunvex/internal/tlsmgr"
 	"github.com/pedramrj/dunvex/internal/util"
 	"github.com/pedramrj/dunvex/internal/webhook"
 )
@@ -79,6 +81,8 @@ type Server struct {
 	Backups    *backup.Service // automatic backups (made on first use when nil; see backups.go)
 	backupOnce sync.Once
 
+	dom domainRuntime // the Domains page: certificate job, HTTP validation, checks (see domains.go)
+
 	HealthRunner  *health.Runner // the config check (nil = the real cores; see health.go)
 	HealthRetry   time.Duration  // the wait before a failed config is tried again (0 = 8s)
 	healthMu      sync.Mutex
@@ -126,25 +130,59 @@ func (s *Server) Env() protocol.Env {
 		host = "127.0.0.1"
 	}
 	env := protocol.Env{Host: host, Domain: domain, Listen: os.Getenv("DUNVEX_LISTEN")}
-	cert, key := s.St.GetSetting("cert_file", ""), s.St.GetSetting("key_file", "")
-	if cert != "" && util.FileExists(cert) && util.FileExists(key) {
-		env.CertFile, env.KeyFile = cert, key
-		env.SelfSigned = s.St.GetSetting("cert_mode", "self") == "self"
-	} else {
-		cn := host
-		if domain != "" {
-			cn = domain
-		}
-		if c, k, err := util.SelfSignedCert(s.CertDir(), cn); err == nil {
-			env.CertFile, env.KeyFile, env.SelfSigned = c, k, true
-		}
-	}
+	env.CertFile, env.KeyFile, env.SelfSigned = s.certFiles(domain, host)
 	if env.SelfSigned && env.CertFile != "" {
 		env.CertSHA256 = util.CertSHA256(env.CertFile)
 	}
 	env.Fragment = s.fragment()
 	env.Mux, env.Noise, env.ECH = s.mux(), s.noise(), s.ownECH()
 	return env
+}
+
+// certFiles is the certificate the protocols and the panel use: the one set
+// in settings, else (or when that one expired) a self-signed one. selfSigned
+// says that links pin it rather than check it.
+func (s *Server) certFiles(domain, host string) (cert, key string, selfSigned bool) {
+	cf, kf := s.St.GetSetting("cert_file", ""), s.St.GetSetting("key_file", "")
+	mode := s.St.GetSetting("cert_mode", "self")
+	if cf != "" && util.FileExists(cf) && util.FileExists(kf) {
+		info := s.certInfo(cf)
+		// an expired Let's Encrypt one (its renewal kept failing) gives way to
+		// the self-signed one below
+		if mode != "acme" || info == nil || time.Now().Before(info.NotAfter) {
+			// one that is not for the name links ask for (a name not validated
+			// yet, the IP after the domain was removed) is pinned like a
+			// self-signed one, so links keep working
+			name := domain
+			if name == "" {
+				name = host
+			}
+			return cf, kf, mode == "self" || (mode == "acme" && info != nil && (info.SelfSigned || !info.Covers(name)))
+		}
+	}
+	cn := host
+	if domain != "" {
+		cn = domain
+	}
+	if c, k, err := util.SelfSignedCert(s.CertDir(), cn); err == nil {
+		return c, k, true
+	}
+	return "", "", false
+}
+
+// CertPaths are the panel's certificate files now (they move when the
+// Domains page issues a certificate).
+func (s *Server) CertPaths() (cert, key string) {
+	domain := strings.TrimSpace(s.St.GetSetting("domain", ""))
+	host := strings.TrimSpace(s.St.GetSetting("host", ""))
+	if host == "" {
+		host = domain
+	}
+	if host == "" && s.Sys != nil {
+		host = s.Sys.PublicIP()
+	}
+	cert, key, _ = s.certFiles(domain, host)
+	return cert, key
 }
 
 // Fragment settings (see protocol.Fragment).
@@ -180,6 +218,18 @@ func (s *Server) fragment() *protocol.Fragment {
 func (s *Server) PublicBase(r *http.Request) string {
 	if b := strings.TrimRight(s.St.GetSetting("sub_base_url", ""), "/"); b != "" {
 		return b
+	}
+	if sub := domains.Load(s.St).SubName(); sub != "" {
+		// the subscription name of the Domains page, on the panel's port
+		tls := s.St.GetSetting("panel_tls", "false") == "true"
+		scheme, port := "http", s.St.GetSetting("panel_port", "2096")
+		if tls {
+			scheme = "https"
+		}
+		if (tls && port == "443") || (!tls && port == "80") {
+			return scheme + "://" + sub
+		}
+		return scheme + "://" + net.JoinHostPort(sub, port)
 	}
 	scheme := "http"
 	if (r != nil && r.TLS != nil) || (r == nil && s.St.GetSetting("panel_tls", "false") == "true") {
@@ -233,6 +283,8 @@ func (s *Server) Handler() http.Handler {
 			s.serveShop(w, r, strings.TrimPrefix(p, sub+"shop/"))
 		case strings.HasPrefix(p, sub) && len(p) > len(sub):
 			s.serveSub(w, r, strings.TrimPrefix(p, sub))
+		case strings.HasPrefix(p, tlsmgr.Prefix) && s.http01().Answer(w, r):
+			// Let's Encrypt's HTTP validation, when the panel itself holds port 80
 		default:
 			decoy(w)
 		}

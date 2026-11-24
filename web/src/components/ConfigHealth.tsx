@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { CircleCheck, CircleSlash, CircleX, Cloud, HeartPulse, RefreshCw, Repeat2, Server } from "lucide-react";
+import { CircleCheck, CircleSlash, CircleX, Cloud, Globe2, HeartPulse, RefreshCw, Repeat2, Server } from "lucide-react";
 import type { HealthReport, HealthResult } from "../lib/api";
 import { ago, cx, until } from "../lib/format";
 import { msColor, sortResults, useHealth } from "../lib/health";
@@ -135,6 +135,7 @@ function Tile({ r, name }: { r: HealthResult; name: string }) {
             {r.server && <Badge className="h-5 text-[10.5px] px-2" color="var(--color-cyan)" icon={<Server className="size-2.5" />}><bdi dir="ltr">{r.server}</bdi></Badge>}
             {r.via === "cdn" && <Badge className="h-5 text-[10.5px] px-2" color="var(--color-cdn)" icon={<Cloud className="size-2.5" />}>{t("viaCdn")}</Badge>}
             {r.via === "relay" && <Badge className="h-5 text-[10.5px] px-2" color="var(--color-violet)" icon={<Repeat2 className="size-2.5" />}>{t("viaRelay")}</Badge>}
+            {r.via === "domain" && <Badge className="h-5 text-[10.5px] px-2" color="var(--cyan)" icon={<Globe2 className="size-2.5" />}>{t("viaDomain")}</Badge>}
           </div>
         )}
         {failed && r.error && <p className="mt-1.5 text-[11.5px] text-bad/90 line-clamp-2 [overflow-wrap:anywhere]" dir="ltr" title={r.error}>{r.error}</p>}

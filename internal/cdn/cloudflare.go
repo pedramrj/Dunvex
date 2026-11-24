@@ -295,3 +295,151 @@ func (c *Cloudflare) Setup(ctx context.Context, o SetupOptions, port443 bool) (*
 	}
 	return res, nil
 }
+
+// ---------------------------------------------------------------- tokens, records and challenges
+
+// Verify checks that the token works and is active.
+func (c *Cloudflare) Verify(ctx context.Context) error {
+	var v struct {
+		Status string `json:"status"`
+	}
+	if err := c.call(ctx, "GET", "/user/tokens/verify", nil, &v); err != nil {
+		return err
+	}
+	if v.Status != "" && v.Status != "active" {
+		return &APIError{Message: "the token is " + v.Status}
+	}
+	return nil
+}
+
+// Zones are the domains the token can see.
+func (c *Cloudflare) Zones(ctx context.Context) ([]Zone, error) {
+	var zs []Zone
+	err := c.call(ctx, "GET", "/zones?per_page=50", nil, &zs)
+	return zs, err
+}
+
+// PointOptions say where a name should point (DNS only, or proxied).
+type PointOptions struct {
+	Domain  string
+	IPv4    string
+	IPv6    string // "" = no AAAA record (one that points elsewhere is removed)
+	Proxied bool
+	Replace bool // records that point elsewhere are replaced; without it they are reported
+}
+
+// Point makes the name's A (and AAAA) records point at this server, proxied
+// or DNS only. Records that point elsewhere change only with Replace.
+func (c *Cloudflare) Point(ctx context.Context, o PointOptions) (*SetupResult, error) {
+	res := &SetupResult{}
+	z, err := c.FindZone(ctx, o.Domain)
+	if err != nil {
+		return nil, err
+	}
+	res.Zone = z.Name
+	zs := Step{ID: "zone", OK: true, Detail: z.Name}
+	if z.Status != "" && z.Status != "active" {
+		zs.Warn = "pending"
+	}
+	res.Steps = append(res.Steps, zs)
+	rs, err := c.Records(ctx, z.ID, o.Domain)
+	if err != nil {
+		return nil, err
+	}
+	want := map[string]string{"A": o.IPv4}
+	if o.IPv6 != "" {
+		want["AAAA"] = o.IPv6
+	}
+	mine := map[string]*Record{}
+	var others []Record
+	for i := range rs {
+		r := rs[i]
+		switch {
+		case (r.Type == "A" || r.Type == "AAAA") && want[r.Type] == r.Content && mine[r.Type] == nil:
+			mine[r.Type] = &rs[i]
+		case r.Type == "A" || r.Type == "AAAA" || r.Type == "CNAME":
+			others = append(others, r)
+		}
+	}
+	if len(others) > 0 && !o.Replace {
+		res.Conflicts = others
+		return res, nil
+	}
+	rec := Step{ID: "record", Detail: o.Domain + " → " + o.IPv4}
+	if o.IPv6 != "" {
+		rec.Detail += ", " + o.IPv6
+	}
+	err = func() error {
+		for _, r := range others {
+			if want[r.Type] != "" && mine[r.Type] == nil {
+				// repoint the first record of a wanted type
+				rec.Changed = true
+				if err := c.call(ctx, "PATCH", "/zones/"+z.ID+"/dns_records/"+r.ID, map[string]any{"content": want[r.Type], "proxied": o.Proxied}, nil); err != nil {
+					return err
+				}
+				r.Content, r.Proxied = want[r.Type], o.Proxied
+				mine[r.Type] = &r
+				continue
+			}
+			rec.Changed = true
+			if err := c.call(ctx, "DELETE", "/zones/"+z.ID+"/dns_records/"+r.ID, nil, nil); err != nil {
+				return err
+			}
+		}
+		for _, t := range []string{"A", "AAAA"} {
+			if want[t] == "" {
+				continue
+			}
+			switch m := mine[t]; {
+			case m == nil:
+				rec.Changed = true
+				if err := c.call(ctx, "POST", "/zones/"+z.ID+"/dns_records", Record{Type: t, Name: o.Domain, Content: want[t], Proxied: o.Proxied, TTL: 1, Comment: "Dunvex"}, nil); err != nil {
+					return err
+				}
+			case m.Proxied != o.Proxied:
+				rec.Changed = true
+				if err := c.call(ctx, "PATCH", "/zones/"+z.ID+"/dns_records/"+m.ID, map[string]any{"proxied": o.Proxied}, nil); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}()
+	if err != nil {
+		rec.Error = err.Error()
+		res.Steps = append(res.Steps, rec)
+		return res, nil
+	}
+	rec.OK, res.Done = true, true
+	res.Steps = append(res.Steps, rec)
+	return res, nil
+}
+
+// Present makes the TXT record of a dns-01 challenge (for ACME).
+func (c *Cloudflare) Present(ctx context.Context, fqdn, value string) error {
+	z, err := c.FindZone(ctx, strings.TrimPrefix(fqdn, "_acme-challenge."))
+	if err != nil {
+		return err
+	}
+	return c.call(ctx, "POST", "/zones/"+z.ID+"/dns_records", Record{Type: "TXT", Name: fqdn, Content: value, TTL: 60, Comment: "Dunvex certificate"}, nil)
+}
+
+// CleanUp removes the TXT record of a dns-01 challenge.
+func (c *Cloudflare) CleanUp(ctx context.Context, fqdn, value string) error {
+	z, err := c.FindZone(ctx, strings.TrimPrefix(fqdn, "_acme-challenge."))
+	if err != nil {
+		return err
+	}
+	rs, err := c.Records(ctx, z.ID, fqdn)
+	if err != nil {
+		return err
+	}
+	for _, r := range rs {
+		if r.Type == "TXT" && strings.Trim(r.Content, `"`) == value {
+			if err := c.call(ctx, "DELETE", "/zones/"+z.ID+"/dns_records/"+r.ID, nil, nil); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

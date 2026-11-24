@@ -310,6 +310,7 @@ func serve(home string) error {
 	if err != nil {
 		return fmt.Errorf("panel port %d: %w", panelPort, err)
 	}
+	srv.InitDomains() // the older domain settings become the Domains page's list (once)
 	env := srv.Env()
 	cert, key := env.CertFile, env.KeyFile
 	useTLS := st.GetSetting("panel_tls", "false") == "true" && util.FileExists(cert) && util.FileExists(key)
@@ -355,7 +356,8 @@ func serve(home string) error {
 		log.Printf("Dunvex %s panel on %s%s (tls=%v, shared with Reality by SNI)", Version, addr, st.GetSetting("panel_path", "/"), useTLS)
 		if useTLS {
 			// read again when the files change, so a renewed certificate needs no restart
-			hs.TLSConfig = &tls.Config{GetCertificate: (&tlsmgr.Reloader{Cert: cert, Key: key}).GetCertificate}
+			// (and follow it when the Domains page issues one at another place)
+			hs.TLSConfig = &tls.Config{GetCertificate: (&tlsmgr.Reloader{Cert: cert, Key: key, Paths: srv.CertPaths}).GetCertificate}
 			err = hs.ServeTLS(router.PanelListener(), "", "")
 		} else {
 			err = hs.Serve(router.PanelListener())

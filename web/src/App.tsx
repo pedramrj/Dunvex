@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, Bell, BellOff, ChartArea, ChevronDown, Cloud, ChevronsLeft, ChevronsRight, Command, Cpu, Eye, EyeOff, Focus, Globe2, KeyRound, Languages,
+  Activity, Bell, BellOff, ChartArea, ChevronDown, ChevronsLeft, ChevronsRight, Command, Cpu, Eye, EyeOff, Focus, Globe2, GlobeLock, KeyRound, Languages,
   LayoutDashboard, LogOut, Maximize2, Monitor, Moon, Network, Plus, Route as RouteIcon, ScrollText, Search, Server, Settings as SettingsIcon, ShieldCheck,
   ShoppingBag, Star, Sun, UserPlus, Users as UsersIcon, Wallet, Waypoints, X, Zap,
   HeartPulse,
@@ -34,16 +34,17 @@ import { MissionControl } from "./pages/Mission";
 import { BillingPage } from "./pages/Billing";
 import { WalletPage } from "./pages/Wallet";
 import { RoutingPage } from "./pages/Routing";
-import { CDNPage } from "./pages/CDN";
+import { DomainsPage } from "./pages/Domains";
 
 // ================================================================= routes
 
-export type Page = "overview" | "users" | "map" | "broadcast" | "support" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
+export type Page = "overview" | "users" | "map" | "broadcast" | "support" | "protocols" | "routing" | "domains" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
 export type Route = { page: Page; arg?: string };
-const pages: Page[] = ["overview", "users", "map", "broadcast", "support", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
+const pages: Page[] = ["overview", "users", "map", "broadcast", "support", "protocols", "routing", "domains", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
 
 function parseHash(): Route {
   const [page, arg] = window.location.hash.replace(/^#\/?/, "").split("/");
+  if (page === "cdn") return { page: "domains", arg: "cdn" }; // the CDN helper lives in Domains now
   if (pages.includes(page as Page)) return { page: page as Page, arg };
   return { page: "overview" };
 }
@@ -65,7 +66,7 @@ export const navItems: NavItem[] = [
   { page: "nodes", key: "nodes", icon: Server, need: "admin", group: "network" },
   { page: "network", key: "networkCenter", icon: Network, need: "admin", group: "network" },
   { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "network" },
-  { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "network" },
+  { page: "domains", key: "domains", icon: GlobeLock, need: "owner", group: "network" },
   { page: "sales", key: "sales", icon: ShoppingBag, need: "admin", group: "sales" },
   { page: "wallet", key: "wallet", icon: Wallet, need: "reseller", group: "sales" },
   { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "sales" },
@@ -231,7 +232,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
               {page === "settings" && <SettingsPage arg={route.arg} />}
               {page === "routing" && <RoutingPage />}
               {page === "map" && <MapPage />}
-              {page === "cdn" && <CDNPage />}
+              {page === "domains" && <DomainsPage arg={route.arg} />}
               {page === "sales" && <BillingPage />}
               {page === "wallet" && <WalletPage />}
             </div>
