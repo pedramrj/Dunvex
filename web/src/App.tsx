@@ -22,6 +22,7 @@ import { UsersPage } from "./pages/Users";
 import { ProtocolsPage } from "./pages/Protocols";
 import { SettingsPage, settingsTabKey } from "./pages/Settings";
 import { NetworkPage } from "./pages/Network";
+import { MapPage } from "./pages/Map";
 import { AnalyticsPage } from "./pages/Analytics";
 import { LogsPage } from "./pages/Logs";
 import { AlertsPage } from "./pages/Alerts";
@@ -37,9 +38,9 @@ import { CDNPage } from "./pages/CDN";
 
 // ================================================================= routes
 
-export type Page = "overview" | "users" | "broadcast" | "support" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
+export type Page = "overview" | "users" | "map" | "broadcast" | "support" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
 export type Route = { page: Page; arg?: string };
-const pages: Page[] = ["overview", "users", "broadcast", "support", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
+const pages: Page[] = ["overview", "users", "map", "broadcast", "support", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
 
 function parseHash(): Route {
   const [page, arg] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -51,22 +52,26 @@ export function navigate(page: Page, arg?: string) {
   window.location.hash = "/" + page + (arg ? "/" + arg : "");
 }
 
-interface NavItem { page: Page; key: Key; icon: typeof Monitor; need: Role; group: "main" | "monitor" | "admin" }
+type NavGroup = "daily" | "network" | "sales" | "reports" | "admin";
+interface NavItem { page: Page; key: Key; icon: typeof Monitor; need: Role; group: NavGroup }
+// grouped by what the owner does: the daily work first, then the network, selling and
+// messages, reports, and administration
 export const navItems: NavItem[] = [
-  { page: "overview", key: "overview", icon: LayoutDashboard, need: "reseller", group: "main" },
-  { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "main" },
-  { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "main" },
-  { page: "support", key: "support", icon: RadioTower, need: "reseller", group: "main" },
-  { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "main" },
-  { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "main" },
-  { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "main" },
-  { page: "sales", key: "sales", icon: ShoppingBag, need: "admin", group: "main" },
-  { page: "wallet", key: "wallet", icon: Wallet, need: "reseller", group: "main" },
-  { page: "network", key: "networkCenter", icon: Network, need: "admin", group: "monitor" },
-  { page: "nodes", key: "nodes", icon: Server, need: "admin", group: "monitor" },
-  { page: "analytics", key: "analytics", icon: ChartArea, need: "admin", group: "monitor" },
-  { page: "logs", key: "logs", icon: ScrollText, need: "admin", group: "monitor" },
-  { page: "alerts", key: "alerts", icon: Bell, need: "admin", group: "admin" },
+  { page: "overview", key: "overview", icon: LayoutDashboard, need: "reseller", group: "daily" },
+  { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "daily" },
+  { page: "map", key: "liveMap", icon: Globe2, need: "reseller", group: "daily" },
+  { page: "support", key: "support", icon: RadioTower, need: "reseller", group: "daily" },
+  { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "network" },
+  { page: "nodes", key: "nodes", icon: Server, need: "admin", group: "network" },
+  { page: "network", key: "networkCenter", icon: Network, need: "admin", group: "network" },
+  { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "network" },
+  { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "network" },
+  { page: "sales", key: "sales", icon: ShoppingBag, need: "admin", group: "sales" },
+  { page: "wallet", key: "wallet", icon: Wallet, need: "reseller", group: "sales" },
+  { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "sales" },
+  { page: "analytics", key: "analytics", icon: ChartArea, need: "admin", group: "reports" },
+  { page: "logs", key: "logs", icon: ScrollText, need: "admin", group: "reports" },
+  { page: "alerts", key: "alerts", icon: Bell, need: "admin", group: "reports" },
   { page: "security", key: "security", icon: ShieldCheck, need: "admin", group: "admin" },
   { page: "settings", key: "settings", icon: SettingsIcon, need: "reseller", group: "admin" },
 ];
@@ -225,6 +230,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
               {page === "security" && <SecurityPage />}
               {page === "settings" && <SettingsPage arg={route.arg} />}
               {page === "routing" && <RoutingPage />}
+              {page === "map" && <MapPage />}
               {page === "cdn" && <CDNPage />}
               {page === "sales" && <BillingPage />}
               {page === "wallet" && <WalletPage />}
@@ -272,7 +278,7 @@ function Sidebar({ items, page, me, status, unread, supportUnread, onLogout }: {
   const role = me.admin.role;
   const shown = items.filter((x) => !q || t(x.key).toLowerCase().includes(q.toLowerCase()));
   const favs = items.filter((x) => prefs.favorites.includes(x.page));
-  const groups: { id: NavItem["group"]; key: Key }[] = [{ id: "main", key: "navMain" }, { id: "monitor", key: "navMonitor" }, { id: "admin", key: "navAdmin" }];
+  const groups: { id: NavItem["group"]; key: Key }[] = [{ id: "daily", key: "navDaily" }, { id: "network", key: "navNetwork" }, { id: "sales", key: "navSales" }, { id: "reports", key: "navReports" }, { id: "admin", key: "navAdmin" }];
   const healthy = status ? status.cores.every((c) => c.running || !c.installed) && status.problems === 0 : null;
   const counter = (p: Page) => (p === "alerts" ? unread : p === "users" ? status?.online ?? 0 : p === "support" ? supportUnread : 0);
 

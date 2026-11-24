@@ -67,6 +67,12 @@ type Server struct {
 	geoOnce sync.Once
 	geo2    *geoip.Loader // offline country data (see geoData)
 
+	cityOnce sync.Once
+	city     *geoip.CityLoader // optional city and network data (see cityData)
+	srvMu    sync.Mutex
+	srvCache []mapServer // servers with their places, for a short while
+	srvAt    time.Time
+
 	nodeOnce sync.Once
 	nodes    *nodeHub // other servers (see hub)
 
@@ -253,7 +259,8 @@ func (s *Server) serveBrand(w http.ResponseWriter, name string) {
 }
 
 func (s *Server) serveFont(w http.ResponseWriter, name string) {
-	prefix := map[string]string{"fa.woff2": "Estedad-Variable", "en.woff2": "Geist-Variable", "en-bold.woff2": "Geist-Variable"}[name]
+	prefix := map[string]string{"fa.woff2": "Estedad-Variable", "en.woff2": "Geist-Variable", "en-bold.woff2": "Geist-Variable",
+		"text.woff2": "Vazirmatn-Variable", "mono.woff2": "JetBrainsMono-Variable"}[name]
 	if prefix == "" || s.UI == nil {
 		decoy(w)
 		return

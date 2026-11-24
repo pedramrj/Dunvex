@@ -10,16 +10,18 @@ import (
 
 // Device is one address a user connected from.
 type Device struct {
-	IP       string `json:"ip"`
-	LastSeen int64  `json:"lastSeen"`
+	IP       string  `json:"ip"`
+	LastSeen int64   `json:"lastSeen"`
+	Via      []int64 `json:"via"` // servers it reached in the window: 0 is this server, others are node ids
 }
 
 // devices remembers which addresses each user connects from. Xray reports
 // them through its stats API; sing-box through its connection log.
 type devices struct {
 	mu    sync.Mutex
-	seen  map[string]map[string]int64 // user → ip → last seen
-	conn  map[string]string           // sing-box connection id → client ip
+	seen  map[string]map[string]int64           // user → ip → last seen
+	via   map[string]map[string]map[int64]int64 // user → ip → server (0 = this one) → last seen
+	conn  map[string]string                     // sing-box connection id → client ip
 	order []string
 
 	// resolve turns a loopback address the edge router dialed from into the
@@ -28,10 +30,13 @@ type devices struct {
 }
 
 func newDevices() *devices {
-	return &devices{seen: map[string]map[string]int64{}, conn: map[string]string{}}
+	return &devices{seen: map[string]map[string]int64{}, via: map[string]map[string]map[int64]int64{}, conn: map[string]string{}}
 }
 
-func (d *devices) see(user, ip string, at int64) {
+func (d *devices) see(user, ip string, at int64) { d.seeVia(user, ip, at, 0) }
+
+// seeVia records an address with the server that saw it (0 is this server).
+func (d *devices) seeVia(user, ip string, at, server int64) {
 	if user == "" || user == HealthName || ip == "" || ip == "127.0.0.1" || ip == "::1" || tunnelID(ip) {
 		return
 	}
@@ -45,6 +50,32 @@ func (d *devices) see(user, ip string, at int64) {
 	if at > m[ip] {
 		m[ip] = at
 	}
+	vu := d.via[user]
+	if vu == nil {
+		vu = map[string]map[int64]int64{}
+		d.via[user] = vu
+	}
+	vs := vu[ip]
+	if vs == nil {
+		vs = map[int64]int64{}
+		vu[ip] = vs
+	}
+	if at > vs[server] {
+		vs[server] = at
+	}
+}
+
+// servers lists the servers that saw user at ip since `since`, this one first.
+// The caller holds d.mu.
+func (d *devices) servers(user, ip string, since int64) []int64 {
+	out := []int64{}
+	for s, t := range d.via[user][ip] {
+		if t >= since {
+			out = append(out, s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // tunnelID reports a stand-in address of a DNS or ping tunnel client (XDNS,
@@ -73,7 +104,7 @@ func (d *devices) list(user string, since int64) []Device {
 	out := []Device{}
 	for ip, t := range d.seen[user] {
 		if t >= since {
-			out = append(out, Device{IP: ip, LastSeen: t})
+			out = append(out, Device{IP: ip, LastSeen: t, Via: d.servers(user, ip, since)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].LastSeen > out[j].LastSeen })
@@ -101,10 +132,22 @@ func (d *devices) prune(before int64) {
 		for ip, t := range m {
 			if t < before {
 				delete(m, ip)
+				delete(d.via[u], ip)
+			}
+		}
+		for ip, vs := range d.via[u] {
+			for s, t := range vs {
+				if t < before {
+					delete(vs, s)
+				}
+			}
+			if len(vs) == 0 {
+				delete(d.via[u], ip)
 			}
 		}
 		if len(m) == 0 {
 			delete(d.seen, u)
+			delete(d.via, u)
 		}
 	}
 }
@@ -159,6 +202,7 @@ type Seen struct {
 	User     string
 	IP       string
 	LastSeen int64
+	Via      []int64 `json:",omitempty"` // filled by the main server; nodes send their own addresses without it
 }
 
 // all returns every user's addresses seen since `since`.
@@ -169,7 +213,7 @@ func (d *devices) all(since int64) []Seen {
 	for u, m := range d.seen {
 		for ip, t := range m {
 			if t >= since {
-				out = append(out, Seen{u, ip, t})
+				out = append(out, Seen{User: u, IP: ip, LastSeen: t, Via: d.servers(u, ip, since)})
 			}
 		}
 	}

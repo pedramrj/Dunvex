@@ -64,6 +64,7 @@ rm -rf "$src"
 # 5. offline country data for the network map (DB-IP Country Lite, CC BY 4.0).
 #    A failed download only skips the file: servers keep the copy they have.
 (cd "$ROOT" && go run ./scripts/geoipgen -out "$OUT/geoip-country.bin.gz") || echo "GeoIP data skipped"
+(cd "$ROOT" && go run ./scripts/geocitygen -out "$OUT/geoip-city.bin.gz") || echo "GeoIP city data skipped"
 
 (cd "$OUT" && for f in *.gz; do sha256sum "$f" > "$f.sha256"; done)
 echo "sing-box: $SINGBOX_TAG"

@@ -1,116 +1,107 @@
 ---
-name: Dunvex Obsidian Navy
+name: Dunvex Signal Console
 mode: operate
-themes: [navy, oled, light, system]
+themes: [console, oled, light, system]
 colors:
-  bg: "#080c13"
-  bg-secondary: "#0d1420"
-  surface: "#111c30"
-  surface-elevated: "#172238"
-  primary: "#397bff"
-  electric: "#4f8cff"
-  cyan: "#24cfd2"
-  text: "#f4f7ff"
-  text-secondary: "#9aaac2"
-  border: "#26344a"
-  success: "#25c99a"
-  warning: "#f0b85b"
-  danger: "#f06b78"
-  line-reality: "#f0656f"
-  line-cdn: "#4f8cff"
-  line-udp: "#f0b85b"
-  line-classic: "#25c99a"
-  paused: "#a48bff"
+  bg: "#08090b"
+  rail: "#060708"
+  surface: "#121317"
+  surface-2: "#17191d"
+  surface-3: "#1d2025"
+  border: "#22252b"
+  border-2: "#2d3138"
+  text: "#ece9e2"
+  text-2: "#aaa69c"
+  text-3: "#8a867d"
+  action: "#2f6af0"
+  led-blue: "#3d8bff"
+  ok: "#3ad48a"
+  warn: "#ffb23f"
+  bad: "#ff4f5e"
+  line-reality: "#ff5a66"
+  line-cdn: "#3d8bff"
+  line-udp: "#ffb23f"
+  line-classic: "#3ad48a"
+  server-pins: ["#3d8bff", "#24cfd2", "#a48bff", "#3ad48a", "#ff8fb1", "#f2c94c"]
 type:
-  persian: "Estedad (default) or Vazirmatn, variable, SIL OFL"
-  latin: "Geist, variable, SIL OFL"
-  mono: "JetBrains Mono, for ports, addresses, keys, versions and logs"
+  persian: "Vazirmatn for text and labels; Estedad for page titles"
+  latin: "Geist"
+  mono: "JetBrains Mono: printed labels (caps, 0.14em), ports, addresses, keys"
   base: 14px
-  persian-line-height: 1.8
-  figures: tabular, Persian digits in the Persian interface
-radius: { control: 12px, card: 20px, sheet-edge: 0, pill: 999px }
-motion: { micro: 100-160ms, popover: 150-250ms, sheet: 300-350ms, ease: "cubic-bezier(.23,1,.32,1)" }
+  persian-min: 13px
+  figures: Persian digits in Persian; tabular only in columns, never on the decimal sign
+radius: { control: 10px, panel: 16px, pill: 999px }
+motion: { micro: 120-160ms, panel: 200-250ms, map-draw: 1.4s once, ease: "cubic-bezier(.23,1,.32,1)" }
 ---
 
-# Dunvex design: Obsidian Navy
+# Dunvex design: Signal Console
 
-The identity comes from the owner's logo: a brushed-platinum **DV** with an electric-blue glow and
-"DUNVEX · Powered by Pedram" (`assets/branding/dunvex-logo.png`). The panel is a quiet, deep navy
-control room around it. One thing is allowed to be loud: the network map. Everything else stays calm,
-precise and readable for hours.
+A VPN is signal routing, so the panel is drawn like a high-end studio console or a synth rack:
+black anodized ground, machined panels with a lit top edge, labels printed in small mono capitals,
+LEDs and segment meters for state, and one action blue. The owner's brushed-platinum DV logo sits
+on it unchanged. "Luxury hacker" here means precision and finish, never costume: every control is a
+standard web control (buttons, tabs, inputs, tables); the console lends only palette, type, density
+and the signature moves below. No glitch, no scanline wallpaper, no fake terminal noise.
+
+Hiddify is a reference for which jobs a screen does, never for how it looks, its layout, components
+or wording.
 
 ## Themes
-- **Navy** (default): the palette above.
-- **OLED**: pure black ground for OLED screens and night shifts.
-- **Light**: `#f3f6fb` ground; text, status and line colours are deepened so every label passes WCAG AA.
-- **System** follows the operating system. The choice is per browser and also sets the browser's theme colour.
+- **Console** (default, the `navy` id in stored preferences): the palette above.
+- **OLED**: pure black ground. **Light**: the same structure with deepened state colours. **System** follows the OS.
+- All colours are CSS variables per `html[data-theme]`, mapped to Tailwind tokens; no component carries a raw hex.
 
-All colours are CSS variables per `html[data-theme]`, mapped to Tailwind tokens (`text-ink`, `bg-fg/[.04]`,
-`border-hair`…), so no component carries a raw hex.
+## Surfaces
+- `.mach`: the machined panel (two-stop vertical gradient, 1px border, a 1px light along the top, a soft drop).
+  Glass and blur only for overlays (menus, sheets). No tiled grid backgrounds, no drifting halos, no grain.
+- `.field-recess`: inputs and search sit slightly sunk into the panel.
+- `.ss`: printed label, mono caps with tracking, Latin only (Persian is never letter-spaced).
+- `.led` (on, am, rd, bl, live): state lights; state is always said in words too.
+- `.segbar`: a segment meter (lit cells), used for shares and remaining data.
 
 ## Type
-- Persian uses **Estedad** by default; **Vazirmatn** is one click away in Settings › Appearance.
-- Latin and numbers use **Geist**; technical values use **JetBrains Mono** and stay left to right.
-- Numbers are tabular; the Persian interface shows Persian digits and the Persian percent sign.
-- Animated numbers roll digit by digit and work with both digit sets (`Num`, `Bytes`).
-- Headings use balanced wrapping; no all-caps labels.
+- Persian text and labels in Vazirmatn (clearer than Estedad at small sizes); page titles may use Estedad.
+- Latin in Geist; technical values (ports, addresses, AS numbers, keys) in JetBrains Mono, left to right.
+- Persian text never below 13px. Persian digits and the Persian decimal sign; tabular figures only in
+  table columns, never applied to the decimal sign (it widens to a digit's width: «۱۶ , ۹»).
 
-## Shell
-- **Sidebar**: logo, page search, favourites, groups (Main, Monitor, Admin) with live counters,
-  a health line and the account card. It collapses to icons (`Ctrl+B`).
-- **Top bar**: breadcrumb, command palette (`Ctrl/Cmd+K`), quick add, notifications, presentation toggle,
-  language, theme and the account menu.
-- **Phone**: a compact top bar, a five-item bottom bar and a "More" sheet with every page.
-- **Overlays** (menus, dialogs, sheets) stack; `Escape` closes only the one on top. Destructive
-  confirmations open with Cancel focused.
-- A skip link leads to the main content.
+## Navigation
+Grouped by what the owner does: **Daily** (overview, users, live map, support), **Network** (protocols,
+servers, network centre, routing, CDN), **Sales & messages** (sales, wallet, broadcast), **Reports**
+(analytics, logs, alerts), **Admin** (security, settings). Phones keep the bottom bar and a More sheet.
 
-## Pages
-Overview (customisable widgets, KPIs with trends, time range), Users (sortable list, context menu,
-drawer with overview, configs, devices, usage and activity), Support (the bot's inbox: conversations on one side,
-the thread with the person's subscription beside it, receipts and a reply box; on phones the list and the thread are
-two screens), Protocols, Network centre (topology,
-world map with the server's real location, inspector, recent events), Servers, Analytics (zoomable
-charts with legend toggles and CSV export), Logs (Xray, sing-box and panel events, live tail,
-filters, export), Alerts (categories, severity, read state, quiet mode), Security (sign-in history,
-protections, admins without 2FA), Settings (appearance, brand studio, server, subscription, panel,
-security, admins, Telegram, cores, backup) and Mission control (a full-screen wall).
+## Signature: the live map
+A real Earth (Natural Earth 1:50m coastlines and borders, Natural Earth projection, Antarctica left
+out, 270 KB loaded only with the map). Every server and node is a diamond pin in its own colour
+(relays dashed, offline grey); every place users connect from is an amber light sized by its devices;
+an arc runs from each place to each server its devices reach, colour of that server, and a white
+packet rides each arc. Places are cities from the server's own offline data (DB-IP City and ASN Lite,
+CC BY 4.0, `geoip-city.bin.gz`, fetched with the country data), never a third-party service or tiles.
+Users behind a relay are counted as relayed, since their own place is behind it.
 
-Servers shows this server and every node as cards of the same shape (rings for CPU, memory and disk, uptime,
-last contact, speed, cores), so a fleet reads at a glance; a node's state is one word in its colour (connected,
-waiting to pair, not reachable, turned off). Adding a server is two steps in one dialog: the command to run on it,
-then its token. On Protocols every card names its server once there is more than one.
+The map page lists everything by **country → city → users**, by **server**, and by **network operator**
+(well-known Iranian networks by their everyday names: ایرانسل، همراه اول، مخابرات…), with a user search
+that lights that user's places and arcs. Wheel or buttons zoom, drag moves, labels keep their size.
+Resellers see only their own users. The overview carries a small live map; the user drawer has a
+**Connections** tab with that user's own map and each address (city, country, operator and AS number,
+server or relay, last seen).
 
-Before any of that, Login. On a fresh install it shows the first-run card instead: the one-time setup link
-opens a form where the owner chooses the username and password (show/hide, strength meter, confirm). There is
-never a random password to copy. Without the link the card says to run `dunvex info` on the server.
-
-## Signature
-The **network map**: the server is the interchange, each protocol family a coloured line and each
-inbound a station. Packets travel faster with more traffic. The topology view is the neon version:
-glowing icon nodes (shield for Reality, cloud for CDN, bolt for UDP/QUIC, cable for classic), curved
-links with flowing packets, light pillars under live stations, labelled hubs and a pulsing server core.
-Every label is placed where it touches no other label or node, and the view zooms to what is drawn.
-The world map draws flight-path arcs from each country users connect from to the server pin, violet at the
-origin fading into the brand blue, one packet travelling home along each; markers grow with devices, labels
-keep their screen size while zooming and step aside rather than overlap. Hovering a country in the side list
-dims every other arc. On phones both become lists.
-
-## Data components
-- **KPI card**: glowing icon tile, value, a sub-line in the card's colour, a thin light along the top edge
-  and, where real history exists, a full-width sparkline along the bottom. On phones the cards swipe.
-- **Arc gauge**: half circle with ticks; the arc runs cyan → blue → amber → rose as load rises.
-- **Timeline**: events as glowing nodes joined by a fading line, with a category tag.
-
-## Data honesty
-Every number comes from the server. Features the backend does not have yet (billing, more than one
-server) are shown as such, never with sample data.
+## The user's own page
+Signal Console too: remaining data and days as large figures over a 20-segment meter, Persian digits
+and Persian (Jalali) dates, connect steps for the visitor's own system (detected; iPhone, Android or
+desktop) with the recommended app first, the last 7 days of use with a forecast of when the data runs
+out at that pace, and **the user's own connected devices** (city, country, operator, server, the
+address shortened to its network). Only that user's devices; nothing about anyone else.
 
 ## Motion
-An intro plays once per session (GSAP): particles, the emblem rising, a light sweep, the wordmark and the
-credit. Any key or click skips it; it can be turned off. In the panel motion only answers the user or
-shows live state: sheet slides, menu pops, the rolling digits, the map packets and the online pulse.
-`prefers-reduced-motion` and the in-app "reduce motion" switch stop all of it.
+Motion shows state or answers the user: the map's arcs draw once, packets ride them, live pins and the
+online LED breathe, segment meters fill cell by cell, drawers slide. `prefers-reduced-motion` and the
+in-app "reduce motion" switch stop all of it. GSAP stays for the intro only.
+
+## Data honesty
+Every number and place comes from the server. Places are as precise as the offline data allows (a city,
+or a country centre when the city file is missing, which the map says). Nothing is sampled or invented
+in release builds; sample connections exist only in builds made with `-tags devseed`.
 
 ## Presentation mode
-Blurs every secret on screen (subscription links, UUIDs, QR codes, the server address) for screen sharing.
+Blurs every secret on screen (subscription links, UUIDs, QR codes, addresses) for screen sharing.

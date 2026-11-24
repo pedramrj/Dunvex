@@ -463,6 +463,7 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	if u.PausedUntil > now {
 		data["Paused"] = time.Unix(u.PausedUntil, 0).Format("15:04")
 	}
+	s.pageFacts(data, u, time.Unix(now, 0))
 	if billing.LoadSettings(s.St).Shop {
 		if plans, _ := s.St.Plans(true); len(plans) > 0 {
 			data["Renew"] = s.ShopPath() + "?renew=" + u.SubToken

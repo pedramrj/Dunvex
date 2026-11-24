@@ -140,6 +140,9 @@ func NewManager(st *store.Store, binDir, runDir string, env func() protocol.Env)
 		}
 		return ""
 	}
+	if devSeed != nil { // only in builds made with -tags devseed (screenshots, demos)
+		go devSeed(m)
+	}
 	return m
 }
 

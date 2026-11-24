@@ -13,7 +13,7 @@ import (
 func (m *Manager) AddRemote(nodeID, seq int64, users map[string]store.Traffic, inbounds map[int64]store.Traffic, devices []Seen) (bool, error) {
 	now := time.Now()
 	for _, d := range devices {
-		m.dev.see(d.User, d.IP, d.LastSeen)
+		m.dev.seeVia(d.User, d.IP, d.LastSeen, nodeID)
 	}
 	list, err := m.Store.Users()
 	if err != nil {

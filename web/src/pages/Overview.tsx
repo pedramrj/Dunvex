@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertTriangle, ArrowDown, ArrowDownUp, ArrowUp, Bell, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Cpu, Database, HardDrive, LayoutGrid,
   Network, Server, ShieldAlert, Smartphone, Sparkles, UserCheck, UserX, Users as UsersIcon, Wifi, Zap,
@@ -14,7 +14,10 @@ import { ConfigHealthPanel } from "../components/ConfigHealth";
 import { LiveChart, Spark, StackBar, UsageChart } from "../components/charts";
 import { NewUserButton, PageHead, can, eventMeta, navigate, useSession } from "../App";
 
-const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", network: "network", configs: "configHealth", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
+// the live map and its world data load only when the widget is on screen
+const EarthCard = lazy(() => import("../components/Earth").then((m) => ({ default: m.EarthCard })));
+
+const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", map: "liveMap", network: "network", configs: "configHealth", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
 
 export function OverviewPage() {
   const { t, lang, n, pc } = useI18n();
@@ -153,6 +156,12 @@ export function OverviewPage() {
             <StatCard icon={<ShieldAlert className="size-[18px]" />} accent={coresUp >= coresNeeded ? "var(--ok)" : "var(--warn)"} label={t("systemHealth")}
               value={<span><Num value={coresUp} /><span className="text-[14px] text-ink3 font-normal"> / <Num value={coresNeeded} /> {t("cores")}</span></span>} />
             <StatCard icon={<Database className="size-[18px]" />} accent="var(--primary2)" label={t("activeSessions")} value={<Num value={d.devices ?? 0} />} sub={t("activeSessionsSub")} />
+          </div>
+        )}
+
+        {show("map") && (
+          <div style={order("map")}>
+            <Suspense fallback={<Skeleton className="h-[340px]" />}><EarthCard /></Suspense>
           </div>
         )}
 

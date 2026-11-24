@@ -82,7 +82,8 @@ export interface User {
   ownerId: number;
   devices: number;
   owner?: string;
-  deviceList?: { ip: string; lastSeen: number }[];
+  deviceList?: DeviceInfo[];
+  loc?: { city?: string; cc?: string; places: number; org?: string }; // where the user is now (the list)
   tags: string[]; // the owner's labels
 }
 
@@ -689,3 +690,22 @@ export interface WalletInfo {
 
 /** 150000 → "150,000" (Latin digits, as on the shop) */
 export const money = (v: number) => Math.round(v).toLocaleString("en-US");
+
+/** A place from the server's offline data. */
+export interface GeoPlace { city?: string; region?: string; cc: string; lat: number; lon: number }
+/** One address a user is connected from, with where it is and what it reached (user detail). */
+export interface DeviceInfo {
+  ip: string;
+  lastSeen: number;
+  via: number[]; // 0 is this server, others node ids
+  place?: GeoPlace;
+  net?: { asn: number; org: string };
+  precise?: boolean;
+  relay?: number;
+  servers: string[];
+}
+/** GET /network/users: servers and the places users connect from, never addresses. */
+export interface MapServer { id: number; name: string; role: string; target?: number; online: boolean; place?: GeoPlace; network?: string }
+export interface MapDevice { user: string; uid: number; via: number[]; last: number; asn?: number; org?: string }
+export interface MapPlace extends GeoPlace { precise: boolean; devices: MapDevice[] }
+export interface UserMap { servers: MapServer[]; places: MapPlace[]; devices: number; users: number; relayed: number; unplaced: number; city: boolean; source?: string; window: number }

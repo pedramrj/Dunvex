@@ -51,6 +51,7 @@ func (s *Server) apiMux() http.Handler {
 	h("GET /events", A, s.events)
 	h("GET /network/geo", A, s.geo)
 	h("GET /network/clients", A, s.clients)
+	h("GET /network/users", R, s.usersMap)
 
 	h("GET /nodes", A, s.listNodes)
 	h("POST /nodes", O, s.createNode)
@@ -332,15 +333,16 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 
 type userView struct {
 	*store.User
-	Status   string `json:"status"`
-	Online   bool   `json:"online"`
-	Used     int64  `json:"used"`
-	SubURL   string `json:"subUrl"`
-	SpeedUp  int64  `json:"speedUp"`
-	SpeedDn  int64  `json:"speedDown"`
-	DaysLeft *int   `json:"daysLeft"`
-	Devices  int    `json:"devices"`
-	Owner    string `json:"owner,omitempty"`
+	Status   string   `json:"status"`
+	Online   bool     `json:"online"`
+	Used     int64    `json:"used"`
+	SubURL   string   `json:"subUrl"`
+	SpeedUp  int64    `json:"speedUp"`
+	SpeedDn  int64    `json:"speedDown"`
+	DaysLeft *int     `json:"daysLeft"`
+	Devices  int      `json:"devices"`
+	Owner    string   `json:"owner,omitempty"`
+	Loc      *userLoc `json:"loc,omitempty"` // where the user is now (the list only)
 }
 
 func (s *Server) view(r *http.Request, u *store.User, online map[int64]bool) userView {
@@ -392,9 +394,11 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	out := []userView{}
+	locs := s.userLocs()
 	for i := len(users) - 1; i >= 0; i-- {
 		v := s.view(r, users[i], online)
 		v.Owner = owners[users[i].OwnerID]
+		v.Loc = locs[users[i].Name]
 		if q != "" && !strings.Contains(strings.ToLower(v.Name+" "+v.Note), q) {
 			continue
 		}
@@ -613,8 +617,8 @@ func (s *Server) getUser(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, struct {
 		userView
-		DeviceList []engine.Device `json:"deviceList"`
-	}{s.view(r, u, s.Mgr.OnlineUsers(60)), s.Mgr.Devices(u.Name)})
+		DeviceList []deviceView `json:"deviceList"`
+	}{s.view(r, u, s.Mgr.OnlineUsers(60)), s.deviceViews(u)})
 }
 
 func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {

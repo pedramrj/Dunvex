@@ -659,7 +659,9 @@ func geoipCmd(home string, args []string) error {
 func keepGeoIP(home string, stop <-chan struct{}) {
 	for {
 		st, err := os.Stat(filepath.Join(home, coremgr.GeoIPFile))
-		if err != nil || time.Since(st.ModTime()) > 40*24*time.Hour {
+		_, cityErr := os.Stat(filepath.Join(home, coremgr.GeoCityFile))
+		// the city file is newer than some releases: ask again for it at most daily
+		if err != nil || time.Since(st.ModTime()) > 40*24*time.Hour || (cityErr != nil && time.Since(st.ModTime()) > 24*time.Hour) {
 			if src, err := coremgr.InstallGeoIP(home); err != nil {
 				log.Printf("GeoIP data: %v", err)
 			} else {

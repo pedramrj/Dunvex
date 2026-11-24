@@ -361,9 +361,41 @@ func InstallGeoIP(dir string) (string, error) {
 		if err := os.Rename(tmp, filepath.Join(dir, GeoIPFile)); err != nil {
 			return "", err
 		}
-		return db.Source, nil
+		src := db.Source
+		if city, err := installGeoCity(r, dir); err == nil && city != "" {
+			src += "; " + city
+		}
+		return src, nil
 	}
 	return "", fmt.Errorf("%s is not published with %s yet", GeoIPFile, r.Tag)
+}
+
+// GeoCityFile is the optional city and network data (cities on the world map,
+// the network each user connects from), kept next to the country data.
+const GeoCityFile = "geoip-city.bin.gz"
+
+// installGeoCity downloads the city data when the release publishes it. It is
+// optional: older releases do not have it and the map then shows countries.
+func installGeoCity(r *release, dir string) (string, error) {
+	for _, a := range r.Assets {
+		if a.Name != GeoCityFile {
+			continue
+		}
+		data, err := download(a)
+		if err != nil {
+			return "", err
+		}
+		db, err := geoip.ReadCity(bytes.NewReader(data))
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", a.Name, err)
+		}
+		tmp := filepath.Join(dir, GeoCityFile+".new")
+		if err := os.WriteFile(tmp, data, 0o644); err != nil {
+			return "", err
+		}
+		return db.Source, os.Rename(tmp, filepath.Join(dir, GeoCityFile))
+	}
+	return "", nil
 }
 
 // InstallMTG downloads the latest mtg (MTProto proxy for Telegram, by

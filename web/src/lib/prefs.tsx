@@ -6,8 +6,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type Theme = "navy" | "oled" | "light" | "system";
 export type Density = "compact" | "comfortable" | "spacious";
 export type FaFont = "estedad" | "vazirmatn";
-export type Widget = "live" | "health" | "kpis" | "network" | "configs" | "usage" | "top" | "cores" | "events";
-export const allWidgets: Widget[] = ["kpis", "live", "health", "network", "configs", "usage", "top", "cores", "events"];
+export type Widget = "live" | "health" | "kpis" | "map" | "network" | "configs" | "usage" | "top" | "cores" | "events";
+export const allWidgets: Widget[] = ["kpis", "live", "health", "map", "network", "configs", "usage", "top", "cores", "events"];
 /** the widgets before the list was remembered: any other one is new to a saved layout */
 const firstWidgets: Widget[] = ["kpis", "live", "health", "network", "usage", "top", "cores", "events"];
 

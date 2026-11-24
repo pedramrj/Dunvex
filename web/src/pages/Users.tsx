@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock, CalendarPlus, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
-  Users as UsersIcon, Wifi, Megaphone, Tags, Hourglass, Unplug, Infinity as InfinityIcon, FilterX, UserCog, ListFilter,
+  Users as UsersIcon, Megaphone, Tags, Hourglass, Unplug, Infinity as InfinityIcon, FilterX, UserCog, ListFilter,
 } from "lucide-react";
-import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type TagCount, type User, type WalletInfo } from "../lib/api";
+import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type DeviceInfo, type Plan, type Status, type TagCount, type User, type UserMap, type WalletInfo } from "../lib/api";
 import { TagChip, TagInput, TagList, hasTag, normalizeTag, sameTag } from "../components/Tags";
-import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
+import { GB, ago, bytes, copyText, cx, date, regionName, speed } from "../lib/format";
+import { operatorName } from "../lib/operators";
 import { useI18n } from "../lib/i18n";
 import {  Avatar, Badge, Button, Chip, ChipSelect, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
   Skeleton, StatusBadge, Tabs, Toggle, useToast, ContextMenu, useConfirm, type MenuItem, EventMsg } from "../components/ui";
@@ -378,6 +379,15 @@ function UserRow({ u, checked, onCheck, onQr, onCopy, onTag, activeTags }: {
                 {u.note || (u.online ? <span className="text-online">{t("online")}</span> : ago(u.lastOnlineAt, lang))}
                 {u.owner && <span className="text-violet"> · {u.owner}</span>}
               </span>
+              {u.loc && (u.loc.city || u.loc.cc) && (
+                <span className="flex items-center gap-1.5 text-[12px] text-ink2 truncate">
+                  <span className="led on" style={{ width: 5, height: 5 }} />
+                  <bdi className="truncate">{u.loc.city || regionName(u.loc.cc!, lang)}</bdi>
+                  {u.loc.org && <bdi className="text-ink3 truncate">{operatorName(undefined, u.loc.org, lang)}</bdi>}
+                  {/* no "·" before a count: beside a Persian digit it reads as a zero */}
+                  {u.loc.places > 1 && <bdi className="text-warn shrink-0">{t("connPlaces").replace("{n}", n(u.loc.places))}</bdi>}
+                </span>
+              )}
             </span>
           </a>
           {(u.tags?.length ?? 0) > 0 && <div className="mt-1.5 ps-[50px]"><TagList tags={u.tags} onPick={onTag} active={activeTags} /></div>}
@@ -635,7 +645,77 @@ function FormSection({ title, children }: { title: string; children: React.React
 // ---------------------------------------------------------------- detail
 
 interface Detail extends User {
-  deviceList: { ip: string; lastSeen: number }[];
+  deviceList: DeviceInfo[];
+}
+
+// the small map of one user's places loads with the map's world data, only when shown
+const EarthLazy = lazy(() => import("../components/Earth").then((m) => ({ default: m.Earth })));
+
+/** Daily average of the last 7 days and, with a data limit, when it runs out at that pace. */
+function pace(series: { t: number; up: number; down: number }[], u: User): { avg: number; days: number | null; soon: boolean } {
+  const now = Date.now() / 1000, from = now - 7 * 86400;
+  let sum = 0;
+  for (const p of series) {
+    const at = p.t < 1e8 ? p.t * 3600 : p.t; // hours or seconds
+    if (at >= from) sum += p.up + p.down;
+  }
+  const avg = sum / 7;
+  if (!avg || u.dataLimit <= 0) return { avg, days: null, soon: false };
+  const left = u.dataLimit - u.used;
+  if (left <= 0) return { avg, days: null, soon: false };
+  const days = Math.ceil(left / avg);
+  return { avg, days, soon: u.daysLeft != null && days < u.daysLeft };
+}
+
+/** Where a user is connected from: a small map, then each address with its city, network and server. */
+function Connections({ u, det }: { u: User; det: Detail | null }) {
+  const { t, lang, n } = useI18n();
+  const [map, setMap] = useState<UserMap | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api<UserMap>("network/users").then((r) => alive && setMap(r)).catch(() => {});
+    load();
+    const id = setInterval(load, 15000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  const list = det?.deviceList ?? [];
+  const places = new Set(list.map((d) => (d.place ? d.place.cc + "|" + (d.place.city ?? "") : "?"))).size;
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="mach rounded-2xl overflow-hidden">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+          <h4 className="font-semibold text-[15px]">{t("connNow")}</h4>
+          <span className="ss">LIVE</span>{list.length > 0 && <span className="led on live" />}
+          <span className="ms-auto text-[12.5px] text-ink2">{n(list.length)} {t("mapStatDevices")} · {t("connPlaces").replace("{n}", n(places))}{u.ipLimit > 0 ? ` · ${t("deviceLimit")}: ${n(u.ipLimit)}` : ""}</span>
+        </div>
+        <Suspense fallback={<Skeleton className="h-[240px] rounded-none" />}>
+          <EarthLazy data={map} focusUser={u.id} height={240} compact />
+        </Suspense>
+      </div>
+      {!det ? <Skeleton className="h-12" /> : list.length === 0 ? (
+        <div className="text-ink3 text-[13.5px] py-2">{t("connNone")}</div>
+      ) : (
+        <ul className="mach rounded-2xl divide-y divide-[var(--border)]">
+          {list.map((d) => (
+            <li key={d.ip} className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+              <span className="led on" />
+              <div className="min-w-0">
+                <div className="font-semibold truncate"><bdi>{d.place?.city || (d.relay ? t("mapRelay") : t("connUnknown"))}</bdi>{d.place && <span className="text-ink3 font-normal"> · {regionName(d.place.cc, lang)}</span>}</div>
+                <div className="text-[12.5px] text-ink3 truncate">
+                  {d.net && <span>{operatorName(d.net.asn, d.net.org, lang)} <span className="mono" dir="ltr">AS{d.net.asn}</span></span>}
+                  {d.servers.length > 0 && <span>{d.net ? " · " : ""}{d.relay ? t("connRelay").replace("{name}", d.servers[d.servers.length - 1]) : `${t("connServer")}: `}<bdi dir="ltr">{(d.relay ? d.servers.slice(0, -1) : d.servers).join(" · ")}</bdi></span>}
+                </div>
+              </div>
+              <div className="text-end">
+                <div className="text-[12px] text-ink2">{ago(d.lastSeen, lang)}</div>
+                <bdi dir="ltr" className="mono text-[11.5px] text-ink3 sensitive">{d.ip}</bdi>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: () => void; onChanged: () => void; tagSuggest: string[] }) {
@@ -704,7 +784,7 @@ function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: (
         <Tabs value={tab} onChange={setTab} items={[
           { id: "overview", label: t("overview") },
           { id: "configs", label: t("configs"), count: cfg?.configs.length },
-          { id: "devices", label: t("devices"), count: det?.deviceList.length },
+          { id: "devices", label: t("connTab"), count: det?.deviceList.length },
           { id: "usage", label: t("usage") },
           ...(can(me.admin.role, "admin") ? [{ id: "activity" as const, label: t("activity") }] : []),
         ]} />
@@ -729,6 +809,9 @@ function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: (
             <KV label={t("speedNow")}><span className="num">↓ {speed(cur.speedDown, lang)} · ↑ {speed(cur.speedUp, lang)}</span></KV>
             <KV label={t("lastOnline")}>{cur.online ? <span className="text-online inline-flex items-center gap-1.5"><Dot color="var(--color-online)" pulse size={7} />{t("online")}</span> : ago(cur.lastOnlineAt, lang)}</KV>
             <KV label={t("devices")}><span className="num">{n(det?.deviceList?.length ?? cur.devices)} / {cur.ipLimit > 0 ? n(cur.ipLimit) : "∞"}</span></KV>
+            {(() => { const p = pace(series, cur); return p.avg > 0 ? (
+              <KV label={t("connAvg")}><span className="num">{bytes(p.avg, lang)}</span>{p.days != null && <span className={cx("block text-[12px]", p.soon ? "text-warn" : "text-ink3")}>{t("connForecast").replace("{d}", n(p.days))}{p.soon ? t("connForecastSoon") : ""}</span>}</KV>
+            ) : null; })()}
             <KV label={t("lifetime")}><span className="num">{bytes(cur.lifetimeUsed, lang)}</span></KV>
           </div>
         </div>
@@ -757,21 +840,7 @@ function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: (
         </div>
         </>}
 
-        {tab === "devices" && <Panel icon={<Wifi className="size-4" />} title={t("devices")} sub={cur.ipLimit > 0 ? `${t("deviceLimit")}: ${n(cur.ipLimit)}` : undefined} className="!rounded-2xl">
-          {!det ? <Skeleton className="h-12" /> : det.deviceList.length === 0 ? (
-            <div className="text-ink3 text-[13px] py-2">{t("noDevices")}</div>
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {det.deviceList.map((d) => (
-                <li key={d.ip} className="flex items-center gap-3 h-11 px-3 rounded-xl bg-fg/[.03] border border-hair">
-                  <Smartphone className="size-4 text-primary2" />
-                  <bdi dir="ltr" className="mono text-[12.5px]">{d.ip}</bdi>
-                  <span className="ms-auto text-[12px] text-ink3">{ago(d.lastSeen, lang)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>}
+        {tab === "devices" && <Connections u={cur} det={det} />}
 
         {tab === "configs" && <Panel icon={<Gauge className="size-4" />} title={t("configs")} sub={cfg ? n(cfg.configs.length) : ""} className="!rounded-2xl">
           {!cfg ? <Skeleton className="h-24" /> : (
