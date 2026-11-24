@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"rsc.io/qr"
 
+	"github.com/pedramrj/dunvex/internal/backup"
 	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/coremgr"
 	"github.com/pedramrj/dunvex/internal/engine"
@@ -139,6 +139,13 @@ func (s *Server) apiMux() http.Handler {
 
 	h("GET /backup", O, s.backup)
 	h("POST /restore", O, s.restore)
+	h("GET /backups", O, s.getBackups)
+	h("POST /backups", O, s.makeBackup)
+	h("PUT /backups/settings", O, s.putBackupSettings)
+	h("POST /backups/check-bucket", O, s.checkBucket)
+	h("GET /backups/{name}", O, s.downloadBackup)
+	h("DELETE /backups/{name}", O, s.deleteBackup)
+	h("POST /backups/{name}/restore", O, s.restoreStored)
 	h("GET /update", O, s.checkUpdate)
 	h("POST /update", O, s.selfUpdate)
 	return mux
@@ -1566,41 +1573,6 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, p)
 }
 
-func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 512<<20)
-	f, _, err := r.FormFile("file")
-	if err != nil {
-		fail(w, 400, "upload a .db backup file")
-		return
-	}
-	defer f.Close()
-	ensureDir(s.BackupDir())
-	tmp := filepath.Join(s.BackupDir(), "restore-upload.db")
-	out, err := os.Create(tmp)
-	if err != nil {
-		fail(w, 500, err.Error())
-		return
-	}
-	head := make([]byte, 16)
-	n, _ := io.ReadFull(f, head)
-	if n < 16 || string(head[:15]) != "SQLite format 3" {
-		out.Close()
-		os.Remove(tmp)
-		fail(w, 400, "this is not a Dunvex backup")
-		return
-	}
-	out.Write(head[:n])
-	io.Copy(out, f)
-	out.Close()
-	// keep a safety copy of the current database, then swap on restart
-	s.St.Backup(filepath.Join(s.BackupDir(), "before-restore-"+time.Now().Format("20060102-150405")+".db"))
-	os.WriteFile(filepath.Join(s.Home, "restore.pending"), []byte(tmp), 0o600)
-	writeJSON(w, 200, map[string]bool{"ok": true})
-	if s.Restart != nil {
-		go func() { time.Sleep(time.Second); s.Restart() }()
-	}
-}
-
 func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
 	latest, err := coremgr.LatestDunvex()
 	xr, _ := coremgr.LatestVersion("xray")
@@ -1613,6 +1585,11 @@ func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) selfUpdate(w http.ResponseWriter, r *http.Request) {
+	// a backup first, kept here: an update that goes wrong can be rolled back
+	if run := s.backups().Make(backup.ReasonUpdate, false); run.Error != "" {
+		fail(w, 500, "no update: the backup before it failed: "+run.Error)
+		return
+	}
 	tag, err := coremgr.UpdateSelf()
 	if err != nil {
 		fail(w, 500, err.Error())

@@ -126,3 +126,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Broadcast through the Telegram bot: audiences (everyone, active, running out, ended, picked users), placeholders,
       Telegram HTML checked before sending, a test to the bot's admins, paced sending with Stop, history, blocked users
       unlinked, resellers limited to their users; from the panel and from the bot (v1.26). See [BROADCAST.md](BROADCAST.md)
+- [x] Automatic backups: scheduled and before updates, rotated, sent to Telegram and an S3-compatible bucket, optional
+      passphrase encryption, restore from the list or an uploaded .db/.gz/.enc file, failures as alerts (v1.27). See
+      [BACKUP.md](BACKUP.md)

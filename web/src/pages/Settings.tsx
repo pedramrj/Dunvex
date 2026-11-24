@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Bot, Palette, Sparkles, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
+  Bot, Palette, Sparkles, Cpu, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2,
   UserCog, Users as UsersIcon, Webhook,
 } from "lucide-react";
-import { api, BASE, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
+import { api, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
 import { GB, bytes, cx, date, duration } from "../lib/format";
 import { useI18n, type Key } from "../lib/i18n";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../components/ui";
 import { PageHead, can, roleColor, roleKey, useSession } from "../App";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
+import { BackupsTab } from "../components/Backups";
 import { Logo } from "../components/Logo";
 import { IntegrationsTab } from "./Integrations";
 
@@ -64,7 +65,7 @@ export function SettingsPage({ arg }: { arg?: string }) {
           {tab === "security" && <SecurityTab />}
           {tab === "admins" && <AdminsTab />}
           {tab === "cores" && <CoresPanel />}
-          {tab === "backup" && <BackupPanel />}
+          {tab === "backup" && <BackupsTab />}
           {tab === "integrations" && <IntegrationsTab />}
         </div>
       </div>
@@ -460,28 +461,6 @@ function CoresPanel() {
   );
 }
 
-function BackupPanel() {
-  const { t } = useI18n();
-  const toast = useToast();
-  const file = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  return (
-    <Panel icon={<HardDriveDownload className="size-4" />} title={t("backup")}>
-      <div className="flex flex-wrap gap-3">
-        <a href={BASE + "backup"} download><Button variant="primary" icon={<Download className="size-4" />}>{t("downloadBackup")}</Button></a>
-        <Button icon={<Upload className="size-4" />} loading={busy} onClick={() => file.current?.click()}>{t("restore")}</Button>
-        <input ref={file} type="file" accept=".db" className="hidden" onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (!f) return;
-          const form = new FormData();
-          form.append("file", f);
-          setBusy(true);
-          api("restore", { form }).then(() => toast(t("restartPanel"))).catch((err) => toast(err.message, "error")).finally(() => setBusy(false));
-        }} />
-      </div>
-    </Panel>
-  );
-}
 
 
 

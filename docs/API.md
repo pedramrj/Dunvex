@@ -73,6 +73,12 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | POST | `/broadcasts` | R | Send a message to users through the Telegram bot (or a test to the bot's admins) |
 | POST | `/broadcasts/count` | R | How many of the picked users the bot can reach |
 | POST | `/broadcasts/{id}/cancel` | R | Stop the running broadcast |
+| GET | `/backups` | O | Backup settings, the backups on the server and recent runs; see [BACKUP.md](BACKUP.md) |
+| PUT | `/backups/settings` | O | Schedule, rotation, Telegram, passphrase, S3 bucket |
+| POST | `/backups` | O | Make a backup now (`{"offsite": true}` sends it to Telegram and the bucket) |
+| POST | `/backups/check-bucket` | O | Write a test file to an S3-compatible bucket |
+| GET / DELETE | `/backups/{name}` | O | Download or delete a stored backup |
+| POST | `/backups/{name}/restore` | O | Restore a stored backup (the panel restarts) |
 | GET | `/backup` | O | Download the database |
 | GET / POST | `/update` | O | Check for, or install, a new Dunvex version |
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |

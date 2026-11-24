@@ -8,8 +8,8 @@ Every Dunvex event goes to the addresses you add: users created, renewed, limite
 and back, core errors, sign-ins and API keys, orders and payments, certificates, updates. These are the same
 events as the **Alerts** page.
 Each webhook follows all events or the kinds you pick: `user`, `limit`, `auth`, `billing`, `node`, `core`, `tls`,
-`inbound`, `health` (configs that stop working or work again; see [CONFIG-HEALTH.md](CONFIG-HEALTH.md)), `settings`,
-`update`.
+`inbound`, `health` (configs that stop working or work again; see [CONFIG-HEALTH.md](CONFIG-HEALTH.md)), `backup`
+(a backup that failed or did not leave the server; see [BACKUP.md](BACKUP.md)), `settings`, `update`.
 
 Formats:
 

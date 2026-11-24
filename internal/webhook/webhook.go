@@ -32,7 +32,7 @@ const Setting = "webhooks"
 const Max = 20
 
 // Kinds are the event kinds a webhook can follow.
-var Kinds = []string{"user", "limit", "auth", "billing", "node", "core", "tls", "inbound", "health", "settings", "update"}
+var Kinds = []string{"user", "limit", "auth", "billing", "node", "core", "tls", "inbound", "health", "backup", "settings", "update"}
 
 // Formats of the request body.
 const (

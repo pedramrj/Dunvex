@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/pedramrj/dunvex/internal/backup"
 	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
@@ -68,6 +69,9 @@ type Server struct {
 
 	nodeOnce sync.Once
 	nodes    *nodeHub // other servers (see hub)
+
+	Backups    *backup.Service // automatic backups (made on first use when nil; see backups.go)
+	backupOnce sync.Once
 
 	HealthRunner  *health.Runner // the config check (nil = the real cores; see health.go)
 	HealthRetry   time.Duration  // the wait before a failed config is tried again (0 = 8s)

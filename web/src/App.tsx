@@ -5,6 +5,7 @@ import {
   ShoppingBag, Star, Sun, UserPlus, Users as UsersIcon, Wallet, Waypoints, X, Zap,
   HeartPulse,
   Megaphone,
+  HardDriveDownload,
 } from "lucide-react";
 import { api, setUnauthorizedHandler, VERSION_LABEL, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
 import { ago, cx } from "./lib/format";
@@ -468,6 +469,7 @@ const kindMeta: Record<string, { icon: typeof Bell; color: string; key: Key }> =
   settings: { icon: SettingsIcon, color: "var(--text2)", key: "catSettings" },
   node: { icon: Server, color: "var(--cyan)", key: "nodes" },
   health: { icon: HeartPulse, color: "var(--color-classic)", key: "catHealth" },
+  backup: { icon: HardDriveDownload, color: "var(--warn)", key: "catBackup" },
 };
 export const eventMeta = (k: string) => kindMeta[k] ?? { icon: Bell, color: "var(--text2)", key: "events" as Key };
 

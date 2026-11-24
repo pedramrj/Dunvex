@@ -21,6 +21,7 @@ import (
 
 	"rsc.io/qr"
 
+	"github.com/pedramrj/dunvex/internal/backup"
 	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -699,6 +700,35 @@ func (b *Bot) sendBackup(chat int64) {
 	}
 }
 
+// SendFileToAdmins sends a file (a backup) to every bot admin and says to how many.
+func (b *Bot) SendFileToAdmins(name string, data []byte, caption string) (int, error) {
+	b.mu.Lock()
+	token, admins := b.token, b.adminList()
+	b.mu.Unlock()
+	if token == "" {
+		return 0, backup.ErrNoTelegram
+	}
+	if len(admins) == 0 {
+		return 0, fmt.Errorf("the bot has no admin chat to send it to (Settings > Telegram)")
+	}
+	if len(data) > 49<<20 {
+		return 0, fmt.Errorf("%s is larger than Telegram takes from bots (50 MB)", util.HumanBytes(int64(len(data))))
+	}
+	sent := 0
+	var last error
+	for _, id := range admins {
+		if err := b.upload("sendDocument", map[string]string{"chat_id": strconv.FormatInt(id, 10), "caption": caption}, "document", name, data); err != nil {
+			last = err
+		} else {
+			sent++
+		}
+	}
+	if sent == 0 {
+		return 0, last
+	}
+	return sent, nil
+}
+
 // ---------------------------------------------------------------- cards
 
 func esc(s string) string {
@@ -850,7 +880,7 @@ func dur(sec int64, lang string) string {
 
 // onEvent forwards important events to the admins.
 func (b *Bot) onEvent(kind, msg string) {
-	important := kind == "limit" || kind == "core" || kind == "auth" || kind == "health" ||
+	important := kind == "limit" || kind == "core" || kind == "auth" || kind == "health" || kind == "backup" ||
 		(kind == "user" && (strings.Contains(msg, " is now ") || strings.Contains(msg, "first time")))
 	if !important {
 		return
@@ -931,7 +961,9 @@ func (b *Bot) daily() {
 	}
 	for _, id := range admins {
 		b.send(id, strings.TrimRight(sb.String(), "\n"), b.mainMenu())
-		if b.d.St.GetSetting("tg_backup", "true") == "true" {
+		// with scheduled backups going to Telegram, the report does not add another
+		auto := b.d.St.GetSetting(backup.KeyTelegram, "true") == "true" && b.d.St.GetSetting(backup.KeyHours, "6") != "0"
+		if b.d.St.GetSetting("tg_backup", "true") == "true" && !auto {
 			b.sendBackup(id)
 		}
 	}

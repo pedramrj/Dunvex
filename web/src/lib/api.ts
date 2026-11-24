@@ -220,6 +220,41 @@ export interface Preset {
   fields: Field[];
 }
 
+/** A backup kept on the server (Settings › Backup). */
+export interface BackupFile {
+  name: string;
+  size: number;
+  at: number;
+  encrypted?: boolean;
+  safety?: boolean; // the copy taken just before a restore
+}
+
+/** One backup and where its copies went ("ok", the error, or absent when not due). */
+export interface BackupRun {
+  at: number;
+  reason: "schedule" | "manual" | "update";
+  file?: string;
+  size?: number;
+  encrypted?: boolean;
+  telegram?: string;
+  s3?: string;
+  error?: string;
+}
+
+export interface BackupInfo {
+  settings: {
+    hours: number;
+    keep: number;
+    telegram: boolean;
+    encrypted: boolean;
+    s3: { endpoint: string; region: string; bucket: string; prefix: string; access: string; secretSet: boolean };
+  };
+  files: BackupFile[];
+  runs: BackupRun[];
+  next: number;
+  telegram: { configured: boolean; admins: number };
+}
+
 export type BroadcastAudience = "all" | "active" | "ending" | "ended" | "selected";
 
 /** One message sent (or sending) to many users through the Telegram bot. */

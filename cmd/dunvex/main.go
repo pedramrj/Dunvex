@@ -345,6 +345,7 @@ func serve(home string) error {
 	defer srv.Tunnels.Close()
 	go srv.RunNodes(stopMgr)
 	go srv.RunHealthChecks(stopMgr) // config health: every config tested from here
+	go srv.RunBackups(stopMgr)      // automatic backups, kept here and sent off the server
 
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {
