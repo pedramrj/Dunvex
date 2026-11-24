@@ -132,3 +132,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Free trial in the bot: one per Telegram account, chosen data, hours, devices and protocols, a daily cap, an
       optional channel to join, the shop offered at the end, ended trials removed, and how many bought (v1.28). See
       [TRIAL.md](TRIAL.md)
+- [x] User tags and filters: tags on users (one by one, in bulk, on bot trials), filters for tags (all of them),
+      running out, never connected, unlimited data and reseller, a tag audience for broadcasts, and the tag filter in
+      the API (v1.29). See [USERS.md](USERS.md)

@@ -83,6 +83,13 @@ export interface User {
   devices: number;
   owner?: string;
   deviceList?: { ip: string; lastSeen: number }[];
+  tags: string[]; // the owner's labels
+}
+
+/** A tag and how many users carry it (GET /users/tags). */
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 export type Role = "owner" | "admin" | "reseller";
@@ -274,7 +281,7 @@ export interface BackupInfo {
   telegram: { configured: boolean; admins: number };
 }
 
-export type BroadcastAudience = "all" | "active" | "ending" | "ended" | "selected";
+export type BroadcastAudience = "all" | "active" | "ending" | "ended" | "selected" | "tag";
 
 /** One message sent (or sending) to many users through the Telegram bot. */
 export interface BroadcastRun {
@@ -283,6 +290,7 @@ export interface BroadcastRun {
   done: number; // 0 while sending
   by: string;
   audience: BroadcastAudience;
+  tag?: string; // for the "tag" audience
   text: string;
   html: boolean;
   total: number;
@@ -296,6 +304,7 @@ export interface BroadcastRun {
 
 export interface BroadcastInfo {
   counts: Record<"all" | "active" | "ending" | "ended", { users: number; linked: number }>;
+  tags?: { tag: string; users: number; linked: number }[]; // the audience of every tag
   history: BroadcastRun[];
   userBot: boolean;
   bot?: { configured: boolean; running: boolean; username: string; admins: number };

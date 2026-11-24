@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CalendarClock, CalendarPlus, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
-  Users as UsersIcon, Wifi, Megaphone,
+  Users as UsersIcon, Wifi, Megaphone, Tags, Hourglass, Unplug, Infinity as InfinityIcon, FilterX, UserCog, ListFilter,
 } from "lucide-react";
-import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type User, type WalletInfo } from "../lib/api";
+import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type Plan, type Status, type TagCount, type User, type WalletInfo } from "../lib/api";
+import { TagChip, TagInput, TagList, hasTag, normalizeTag, sameTag } from "../components/Tags";
 import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
@@ -13,6 +14,21 @@ import { PageHead, can, eventMeta, navigate, useSession } from "../App";
 
 type Filter = "" | "online" | Status;
 type SortKey = "created" | "name" | "status" | "usage" | "expiry" | "devices" | "speed";
+type Quick = "ending" | "never" | "unlimited";
+
+// quick filters: the questions an owner asks most
+const quickTest: Record<Quick, (u: User) => boolean> = {
+  // still running, but 7 days or less, or 80% of the data, left
+  ending: (u) => (u.status === "active" || u.status === "paused") && ((u.daysLeft !== null && u.daysLeft <= 7) || (u.dataLimit > 0 && u.used >= u.dataLimit * 0.8)),
+  never: (u) => !u.online && u.lastOnlineAt === 0,
+  unlimited: (u) => u.dataLimit === 0,
+};
+const quickDefs: { id: Quick; key: "qfEnding" | "qfNever" | "qfUnlimited"; hint: "qfEndingHint" | "qfNeverHint" | "qfUnlimitedHint"; icon: typeof Hourglass }[] = [
+  { id: "ending", key: "qfEnding", hint: "qfEndingHint", icon: Hourglass },
+  { id: "never", key: "qfNever", hint: "qfNeverHint", icon: Unplug },
+  { id: "unlimited", key: "qfUnlimited", hint: "qfUnlimitedHint", icon: InfinityIcon },
+];
+const TAGS_SHOWN = 8;
 
 export function UsersPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
@@ -23,8 +39,19 @@ export function UsersPage({ arg }: { arg?: string }) {
   const [filter, setFilter] = useState<Filter>("");
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [qr, setQr] = useState<User | null>(null);
+  const [quick, setQuick] = useState<Set<Quick>>(new Set());
+  const [tagSel, setTagSel] = useState<string[]>([]);
+  const [ownerSel, setOwnerSel] = useState("");
+  const [allTags, setAllTags] = useState<TagCount[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [tagDlg, setTagDlg] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the bar folds away
+  const isAdmin = can(me.admin.role, "admin");
 
-  const load = useCallback(() => api<User[]>("users").then(setUsers).catch((e) => toast(e.message, "error")), [toast]);
+  const load = useCallback(() => {
+    api<User[]>("users").then(setUsers).catch((e) => toast(e.message, "error"));
+    api<TagCount[]>("users/tags").then(setAllTags).catch(() => {});
+  }, [toast]);
   useEffect(() => {
     load();
     const id = setInterval(load, 8000);
@@ -39,6 +66,21 @@ export function UsersPage({ arg }: { arg?: string }) {
     }
     return c;
   }, [users]);
+  const quickCounts = useMemo(() => {
+    const c: Record<Quick, number> = { ending: 0, never: 0, unlimited: 0 };
+    for (const u of users ?? []) for (const d of quickDefs) if (quickTest[d.id](u)) c[d.id]++;
+    return c;
+  }, [users]);
+  // the resellers whose users this admin sees
+  const owners = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const u of users ?? []) if (u.ownerId) m.set(u.ownerId, u.owner || `#${u.ownerId}`);
+    return [...m].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [users]);
+  const toggleTag = (tag: string) => setTagSel((s) => (hasTag(s, tag) ? s.filter((x) => !sameTag(x, tag)) : [...s, tag]));
+  const activeN = quick.size + tagSel.length + (ownerSel !== "" ? 1 : 0);
+  const filtersOn = activeN > 0;
+  const clearFilters = () => { setQuick(new Set()); setTagSel([]); setOwnerSel(""); };
 
   const [sort, setSort] = useState<{ k: SortKey; dir: 1 | -1 }>({ k: "created", dir: -1 });
   const list = useMemo(() => {
@@ -55,9 +97,21 @@ export function UsersPage({ arg }: { arg?: string }) {
       }
     };
     return (users ?? [])
-      .filter((u) => (!s || (u.name + " " + u.note + " " + (u.owner ?? "")).toLowerCase().includes(s)) && (filter === "" || (filter === "online" ? u.online : u.status === filter)))
+      .filter((u) => (!s || (u.name + " " + u.note + " " + (u.owner ?? "") + " " + (u.tags ?? []).join(" ")).toLowerCase().includes(s))
+        && (filter === "" || (filter === "online" ? u.online : u.status === filter))
+        && [...quick].every((k) => quickTest[k](u))
+        && tagSel.every((tag) => hasTag(u.tags, tag))
+        && (ownerSel === "" || String(u.ownerId) === ownerSel))
       .sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
-  }, [users, q, filter, sort]);
+  }, [users, q, filter, sort, quick, tagSel, ownerSel]);
+  // the tags to offer: the ones in use, plus any picked that is no longer on anyone
+  const tagChoices = useMemo(() => [...allTags, ...tagSel.filter((x) => !allTags.some((tc) => sameTag(tc.tag, x))).map((tag) => ({ tag, count: 0 }))], [allTags, tagSel]);
+  const shownTags = tagsOpen ? tagChoices : tagChoices.filter((tc, i) => i < TAGS_SHOWN || hasTag(tagSel, tc.tag));
+  const selTags = useMemo(() => {
+    const out: string[] = [];
+    for (const u of users ?? []) if (sel.has(u.id)) for (const tag of u.tags ?? []) if (!hasTag(out, tag)) out.push(tag);
+    return out;
+  }, [users, sel]);
   const Sh = ({ k, children }: { k: SortKey; children: React.ReactNode }) => (
     <button onClick={() => setSort((o) => ({ k, dir: o.k === k ? (o.dir === 1 ? -1 : 1) : -1 }))} className={cx("inline-flex items-center gap-1 text-start hover:text-ink transition-colors", sort.k === k && "text-ink")}>
       {children}{sort.k === k && <span aria-hidden>{sort.dir === 1 ? "↑" : "↓"}</span>}
@@ -129,10 +183,68 @@ export function UsersPage({ arg }: { arg?: string }) {
         <Tabs value={filter} onChange={setFilter} items={filters.filter((f) => f.id === "" || counts[f.id]).map((f) => ({ id: f.id, label: f.label, count: counts[f.id] ?? 0 }))} />
       </div>
 
+      {users && users.length > 0 && (() => {
+        const summary = (filtersOn || q.trim() || filter) ? (
+          <span className="inline-flex items-center gap-1 text-[12.5px] text-ink3">
+            <span className="num px-1" aria-live="polite">{t("shownOf").replace("{n}", n(list.length)).replace("{m}", n(users.length))}</span>
+            {filtersOn && (
+              <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg hover:bg-fg/[.05] hover:text-ink">
+                <FilterX className="size-3.5" />{t("clearFilters")}
+              </button>
+            )}
+          </span>
+        ) : null;
+        return <>
+        <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">
+          <Button size="sm" icon={<ListFilter className="size-4" />} onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen}>
+            {t("filters")}
+            {activeN > 0 && <span className="num grid place-items-center min-w-5 h-5 px-1 rounded-full bg-primary text-white text-[11px]">{n(activeN)}</span>}
+          </Button>
+          {summary}
+        </div>
+        <div className={cx("mb-4 flex-wrap items-center gap-x-2 gap-y-2", filtersOpen ? "flex" : "hidden md:flex")} role="group" aria-label={t("filters")}>
+          {quickDefs.map((d) => (
+            <QuickChip key={d.id} on={quick.has(d.id)} icon={<d.icon />} label={t(d.key)} count={quickCounts[d.id]} title={t(d.hint)}
+              onClick={() => setQuick((s) => { const x = new Set(s); x.has(d.id) ? x.delete(d.id) : x.add(d.id); return x; })} />
+          ))}
+          {tagChoices.length > 0 && (
+            <>
+              <span className="mx-1 h-5 w-px bg-hair" aria-hidden />
+              <span className="inline-flex items-center gap-1 text-[12.5px] text-ink3"><Tags className="size-3.5" />{t("tags")}</span>
+              {shownTags.map((tc) => (
+                <TagChip key={tc.tag} tag={tc.tag} count={tc.count} active={hasTag(tagSel, tc.tag)} onClick={() => toggleTag(tc.tag)} title={t("tagFilterBy")} />
+              ))}
+              {tagChoices.length > TAGS_SHOWN && (
+                <button type="button" onClick={() => setTagsOpen((v) => !v)} className="h-7 px-2 rounded-lg text-[12.5px] text-ink3 hover:text-ink hover:bg-fg/[.05]">
+                  {tagsOpen ? t("tagsLess") : t("tagsMore").replace("{n}", n(tagChoices.length - shownTags.length))}
+                </button>
+              )}
+            </>
+          )}
+          {isAdmin && owners.length > 0 && (
+            <>
+              <span className="mx-1 h-5 w-px bg-hair" aria-hidden />
+              <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink3">
+                <UserCog className="size-3.5" /><span className="sr-only">{t("reseller")}</span>
+                <select value={ownerSel} onChange={(e) => setOwnerSel(e.target.value)}
+                  className={cx("h-7 rounded-full border px-2.5 text-[12.5px] outline-none focus:border-primary2/70 cursor-pointer", ownerSel ? "border-primary2/60 bg-primary/15 text-ink" : "border-hair bg-fg/[.025] text-ink2")}>
+                  <option value="" className="bg-panel text-ink">{t("allOwners")}</option>
+                  <option value="0" className="bg-panel text-ink">{t("ownUsers")}</option>
+                  {owners.map(([id, name]) => <option key={id} value={String(id)} className="bg-panel text-ink">{name}</option>)}
+                </select>
+              </label>
+            </>
+          )}
+          {summary && <span className="hidden md:inline-flex ms-auto">{summary}</span>}
+        </div>
+        </>;
+      })()}
+
       {sel.size > 0 && (
         <div className="rise sticky top-16 md:top-4 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-2xl glass-strong px-3 py-2.5 shadow-[0_18px_40px_-16px_rgba(0,0,0,.8)]">
           <Badge color="var(--color-cdn)" className="h-7">{n(sel.size)} {t("selected")}</Badge>
           <Button size="sm" icon={<Megaphone className="size-4" />} onClick={() => navigate("broadcast", "u" + [...sel].join("-"))}>{t("bcMessageUsers")}</Button>
+          <Button size="sm" icon={<Tags className="size-4" />} onClick={() => setTagDlg(true)}>{t("tagBulk")}</Button>
           <Button size="sm" icon={<CalendarPlus className="size-4" />} onClick={() => bulk("extend", { days: 30 })}>{t("extend")} {n(30)} {t("days")}</Button>
           <Button size="sm" icon={<RotateCcw className="size-4" />} onClick={() => bulk("reset")}>{t("resetUsage")}</Button>
           <Button size="sm" icon={<Play className="size-4" />} onClick={() => bulk("enable")}>{t("enable")}</Button>
@@ -149,7 +261,8 @@ export function UsersPage({ arg }: { arg?: string }) {
           <Empty icon={<UsersIcon className="size-7" />} title={t("emptyUsers")} hint={t("emptyUsersHint")} action={<Button variant="primary" icon={<UserPlus className="size-4" />} onClick={() => navigate("users", "new")}>{t("newUser")}</Button>} />
         </div>
       ) : list.length === 0 ? (
-        <div className="glass rounded-[20px]"><Empty icon={<Search className="size-7" />} title={t("noMatch")} /></div>
+        <div className="glass rounded-[20px]"><Empty icon={<Search className="size-7" />} title={t("noMatch")}
+          action={filtersOn ? <Button icon={<FilterX className="size-4" />} onClick={clearFilters}>{t("clearFilters")}</Button> : undefined} /></div>
       ) : (
         <div className="glass edge rounded-[20px] overflow-hidden">
           <div className="hidden lg:grid grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-3 px-5 h-12 text-[12px] text-ink3 font-medium border-b border-hair bg-fg/[.015]">
@@ -166,7 +279,7 @@ export function UsersPage({ arg }: { arg?: string }) {
           <div role="list">
             {list.map((u) => (
               <ContextMenu key={u.id} items={rowMenu(u)}>
-                <UserRow u={u} checked={sel.has(u.id)}
+                <UserRow u={u} checked={sel.has(u.id)} activeTags={tagSel} onTag={toggleTag}
                   onCheck={(v) => setSel((s) => { const x = new Set(s); v ? x.add(u.id) : x.delete(u.id); return x; })}
                   onQr={() => setQr(u)} onCopy={() => copyText(u.subUrl).then(() => toast(t("copied")))} />
               </ContextMenu>
@@ -175,8 +288,10 @@ export function UsersPage({ arg }: { arg?: string }) {
         </div>
       )}
 
-      <UserForm open={arg === "new"} onClose={close} onSaved={(u) => { load(); reload(); navigate("users", String(u.id)); }} />
-      {editing && <UserDetail key={editing.id} u={editing} onClose={close} onChanged={() => { load(); reload(); }} />}
+      <UserForm open={arg === "new"} onClose={close} tagSuggest={allTags.map((x) => x.tag)} onSaved={(u) => { load(); reload(); navigate("users", String(u.id)); }} />
+      {editing && <UserDetail key={editing.id} u={editing} tagSuggest={allTags.map((x) => x.tag)} onClose={close} onChanged={() => { load(); reload(); }} />}
+      <BulkTagDialog open={tagDlg} onClose={() => setTagDlg(false)} count={sel.size} all={allTags.map((x) => x.tag)} present={selTags}
+        onApply={(action, tag) => { setTagDlg(false); bulk(action, { tag }); }} />
       <Sheet open={!!qr} onClose={() => setQr(null)} title={<span dir="ltr">{qr?.name}</span>} sub={t("subLink")}>
         {qr && (
           <div className="flex flex-col items-center gap-5">
@@ -187,6 +302,53 @@ export function UsersPage({ arg }: { arg?: string }) {
         )}
       </Sheet>
     </div>
+  );
+}
+
+function QuickChip({ on, icon, label, count, title, onClick }: { on: boolean; icon: React.ReactNode; label: string; count: number; title: string; onClick: () => void }) {
+  const { n } = useI18n();
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} title={title} disabled={!on && count === 0}
+      className={cx("inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12.5px] transition-[background-color,border-color,color] duration-150 disabled:opacity-45 disabled:cursor-default",
+        on ? "border-primary2/60 bg-primary/15 text-ink" : "border-hair bg-fg/[.025] text-ink2 enabled:hover:text-ink enabled:hover:bg-fg/[.05]")}>
+      <span className={cx("[&>svg]:size-3.5", on ? "text-primary2" : "text-ink3")}>{icon}</span>
+      {label}
+      <span className="num text-ink3">{n(count)}</span>
+    </button>
+  );
+}
+
+/** puts one tag on the selected users, or takes it off */
+function BulkTagDialog({ open, onClose, count, all, present, onApply }: {
+  open: boolean; onClose: () => void; count: number; all: string[]; present: string[]; onApply: (action: "tag" | "untag", tag: string) => void;
+}) {
+  const { t, n } = useI18n();
+  const [mode, setMode] = useState<"tag" | "untag">("tag");
+  const [tag, setTag] = useState("");
+  useEffect(() => { if (open) { setTag(""); setMode("tag"); } }, [open]);
+  const clean = normalizeTag(tag);
+  const pool = mode === "tag" ? all : present;
+  const sugg = pool.filter((s) => !clean || s.toLowerCase().includes(clean.toLowerCase())).slice(0, 12);
+  const go = () => clean && onApply(mode, clean);
+  return (
+    <Dialog open={open} onClose={onClose} title={t("tagBulkTitle").replace("{n}", n(count))}
+      footer={<><Button variant="quiet" onClick={onClose}>{t("cancel")}</Button>
+        <Button variant="primary" icon={<Tags className="size-4" />} disabled={!clean} onClick={go}>
+          {(mode === "tag" ? t("tagAddTo") : t("tagRemoveFrom")).replace("{n}", n(count))}
+        </Button></>}>
+      <Segmented value={mode} onChange={setMode} options={[{ value: "tag", label: t("tagAdd") }, { value: "untag", label: t("tagTakeOff") }]} />
+      <label className="block mt-4">
+        <Label>{t("tag")}</Label>
+        <Input value={tag} onChange={(e) => setTag(e.target.value)} maxLength={26} dir="auto" autoFocus placeholder={t("tagPlaceholder")}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); go(); } }} />
+      </label>
+      {sugg.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {sugg.map((s) => <TagChip key={s} tag={s} active={sameTag(s, clean)} onClick={() => setTag(s)} />)}
+        </div>
+      )}
+      {mode === "untag" && present.length === 0 && <p className="mt-3 text-[12.5px] text-ink3">{t("tagNoneOnSelected")}</p>}
+    </Dialog>
   );
 }
 
@@ -222,23 +384,28 @@ function ExpiryCell({ u }: { u: User }) {
   );
 }
 
-function UserRow({ u, checked, onCheck, onQr, onCopy }: { u: User; checked: boolean; onCheck: (v: boolean) => void; onQr: () => void; onCopy: () => void }) {
+function UserRow({ u, checked, onCheck, onQr, onCopy, onTag, activeTags }: {
+  u: User; checked: boolean; onCheck: (v: boolean) => void; onQr: () => void; onCopy: () => void; onTag?: (tag: string) => void; activeTags?: string[];
+}) {
   const { t, lang, n, pc } = useI18n();
   const pct = u.dataLimit > 0 ? (u.used / u.dataLimit) * 100 : 0;
   return (
     <div role="listitem" style={{ contentVisibility: "auto", containIntrinsicSize: "0 var(--row)" }} className={cx("border-b border-hair transition-colors", checked ? "bg-primary/[.08]" : "hover:bg-fg/[.025]")}>
       <div className="grid grid-cols-[28px_1fr_auto] lg:grid-cols-[32px_minmax(170px,1.5fr)_128px_minmax(160px,1.3fr)_124px_76px_92px_112px] items-center gap-x-3 gap-y-2.5 px-4 lg:px-5 py-3.5">
         <input type="checkbox" aria-label={u.name} className="accent-[var(--primary)] size-4 cursor-pointer" checked={checked} onChange={(e) => onCheck(e.target.checked)} />
-        <a href={`#/users/${u.id}`} className="min-w-0 flex items-center gap-3 group">
-          <Avatar name={u.name} size={38} online={u.online} />
-          <span className="min-w-0">
-            <span className="block font-semibold truncate group-hover:text-primary2" dir="ltr">{u.name}</span>
-            <span className="block text-[12px] text-ink3 truncate">
-              {u.note || (u.online ? <span className="text-online">{t("online")}</span> : ago(u.lastOnlineAt, lang))}
-              {u.owner && <span className="text-violet"> · {u.owner}</span>}
+        <div className="min-w-0">
+          <a href={`#/users/${u.id}`} className="min-w-0 flex items-center gap-3 group">
+            <Avatar name={u.name} size={38} online={u.online} />
+            <span className="min-w-0">
+              <span className="block font-semibold truncate group-hover:text-primary2" dir="ltr">{u.name}</span>
+              <span className="block text-[12px] text-ink3 truncate">
+                {u.note || (u.online ? <span className="text-online">{t("online")}</span> : ago(u.lastOnlineAt, lang))}
+                {u.owner && <span className="text-violet"> · {u.owner}</span>}
+              </span>
             </span>
-          </span>
-        </a>
+          </a>
+          {(u.tags?.length ?? 0) > 0 && <div className="mt-1.5 ps-[50px]"><TagList tags={u.tags} onPick={onTag} active={activeTags} /></div>}
+        </div>
         <div className="flex items-center gap-0.5 lg:hidden">
           <IconButton label={t("copy")} onClick={onCopy}><Copy className="size-4" /></IconButton>
           <IconButton label="QR" onClick={onQr}><QrCode className="size-4" /></IconButton>
@@ -284,9 +451,10 @@ interface FormState {
   inboundIds: number[];
   note: string;
   ipLimit: number;
+  tags: string[];
 }
 
-function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: () => void; onSaved: (u: User) => void; user?: User }) {
+function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boolean; onClose: () => void; onSaved: (u: User) => void; user?: User; tagSuggest?: string[] }) {
   const { t, n } = useI18n();
   const toast = useToast();
   const { me } = useSession();
@@ -298,8 +466,9 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
       ? {
           name: user.name, count: 1, gb: user.dataLimit > 0 ? +(user.dataLimit / GB).toFixed(2) : 0, days: user.daysLeft ?? 0,
           startOnFirstUse: user.status === "pending", resetPeriod: user.resetPeriod, inboundIds: user.inboundIds, note: user.note, ipLimit: user.ipLimit,
+          tags: user.tags ?? [],
         }
-      : { name: "", count: 1, gb: 30, days: 30, startOnFirstUse: true, resetPeriod: "none", inboundIds: [], note: "", ipLimit: 0 };
+      : { name: "", count: 1, gb: 30, days: 30, startOnFirstUse: true, resetPeriod: "none", inboundIds: [], note: "", ipLimit: 0, tags: [] };
   const [f, setF] = useState<FormState>(init);
   const [daysTouched, setDaysTouched] = useState(false);
   // plans: a new user can come from one; a reseller whose wallet is on must pick one
@@ -328,7 +497,7 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
   const chosen = plans.find((p) => p.id === planId);
   const submit = () => {
     setBusy(true);
-    const body: Record<string, unknown> = { name: f.name, dataLimit: Math.round(f.gb * GB), resetPeriod: f.resetPeriod, note: f.note, ipLimit: f.ipLimit };
+    const body: Record<string, unknown> = { name: f.name, dataLimit: Math.round(f.gb * GB), resetPeriod: f.resetPeriod, note: f.note, ipLimit: f.ipLimit, tags: f.tags };
     if (isAdmin) body.inboundIds = f.inboundIds;
     if (!user || daysTouched) {
       body.durationDays = f.days;
@@ -350,6 +519,10 @@ function UserForm({ open, onClose, onSaved, user }: { open: boolean; onClose: ()
             {!user && <label><Label>{t("count")}</Label><Input type="number" min={1} max={500} value={f.count} onChange={(e) => set("count", Math.max(1, +e.target.value || 1))} className="num" /></label>}
           </div>
           <label className="block mt-3"><Label>{t("note")}</Label><Input value={f.note} onChange={(e) => set("note", e.target.value)} /></label>
+          <div className="mt-3">
+            <Label>{t("tags")}</Label>
+            <TagInput value={f.tags} onChange={(v) => set("tags", v)} suggestions={tagSuggest} />
+          </div>
         </FormSection>
 
         {!user && plans.length > 0 && (
@@ -489,7 +662,7 @@ interface Detail extends User {
   deviceList: { ip: string; lastSeen: number }[];
 }
 
-function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; onChanged: () => void }) {
+function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: () => void; onChanged: () => void; tagSuggest: string[] }) {
   const { t, lang, n, pc } = useI18n();
   const toast = useToast();
   const [cfg, setCfg] = useState<{ subUrl: string; configs: ConfigEntry[] } | null>(null);
@@ -527,7 +700,7 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
   const cur = det ?? u;
   const pct = cur.dataLimit > 0 ? (cur.used / cur.dataLimit) * 100 : 0;
 
-  if (edit) return <UserForm open user={cur} onClose={() => setEdit(false)} onSaved={() => { setEdit(false); onChanged(); }} />;
+  if (edit) return <UserForm open user={cur} tagSuggest={tagSuggest} onClose={() => setEdit(false)} onSaved={() => { setEdit(false); onChanged(); }} />;
 
   return (
     <Sheet open onClose={onClose} wide title={<span className="inline-flex items-center gap-3"><Avatar name={cur.name} size={34} online={cur.online} /><span dir="ltr">{cur.name}</span></span>}
@@ -561,6 +734,12 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
         ]} />
 
         {tab === "overview" && <>
+        {(cur.tags?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 -mb-1">
+            <Tags className="size-4 text-ink3 me-0.5" aria-label={t("tags")} />
+            {cur.tags.map((tag) => <TagChip key={tag} tag={tag} />)}
+          </div>
+        )}
         <div className="grid sm:grid-cols-[auto_1fr] gap-5 items-center rounded-2xl bg-fg/[.025] border border-hair p-4">
           <Ring value={cur.dataLimit > 0 ? pct : 100} size={128} stroke={11} color={cur.dataLimit > 0 ? ringColor(pct) : "url(#ring-ok)"}>
             <div>

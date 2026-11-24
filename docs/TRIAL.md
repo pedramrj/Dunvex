@@ -27,7 +27,8 @@ the Telegram bot must be set up.
 | Join a channel first | none | `@name` (or its t.me link). The bot must be an admin of the channel to check who joined. When it cannot check, the trial is given and the owner gets one event about it |
 | Remove ended trials after | 3 days | ended trials nobody bought are deleted this long after their end; 0 = keep them. A trial renewed by hand or bought is kept |
 
-Trial users are ordinary users named `trial-…` with the note "🎁 Telegram trial", owned by the panel's owner.
+Trial users are ordinary users named `trial-…` with the note "🎁 Telegram trial" and the tag `trial` (v1.29), owned
+by the panel's owner; filter the Users page by that tag to see them all (see [USERS.md](USERS.md)).
 
 ## Numbers
 

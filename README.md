@@ -76,6 +76,9 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
   devices and protocols you choose), once per Telegram account, with an optional channel to join first and a daily
   cap; when it ends the bot offers a plan, and ended trials nobody bought are removed. The panel counts how many
   bought. See [docs/TRIAL.md](docs/TRIAL.md).
+- **Tags and filters (v1.29)**: your own labels on users (`vip`, `family`, a city…), added one by one or to many at
+  once; filter the Users page by tags, users running out, never connected, unlimited data or reseller, then act on
+  exactly that group, or send a broadcast to one tag. See [docs/USERS.md](docs/USERS.md).
 - **Webhooks and Prometheus metrics (v1.19)**: every event (users limited or expired, servers offline, core errors,
   sign-ins, orders…) goes to your own code as signed JSON, or to Slack and Discord, with retries and a delivery log;
   and `/api/metrics` gives Prometheus users, traffic per user and protocol, protocol and core health, each server's
@@ -192,6 +195,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
   پروتکل‌ها به انتخاب شما)، هر حساب تلگرام فقط یک‌بار؛ با عضویت اجباری اختیاری در کانال و سقف روزانه. وقتی تمام شود ربات
   خرید را پیشنهاد می‌کند و تست‌های تمام‌شده‌ای که خرید نکرده‌اند پاک می‌شوند. پنل نشان می‌دهد چند نفر خرید کردند.
   راهنما: [docs/TRIAL.md](docs/TRIAL.md).
+- **برچسب و فیلتر کاربران (نسخهٔ ۱.۲۹)**: برچسب‌های خودتان روی کاربران (`vip`، خانواده، یک شهر و…)، تک‌تک یا برای
+  چند کاربر با هم؛ فیلتر صفحهٔ کاربران با برچسب، کاربران رو به اتمام، هرگز وصل‌نشده، حجم نامحدود یا نماینده، و بعد
+  عملیات گروهی روی همان دسته، یا پیام همگانی به یک برچسب. راهنما: [docs/USERS.md](docs/USERS.md).
 - **وب‌هوک و آمار Prometheus (نسخهٔ ۱.۱۹)**: هر رویداد (محدود یا منقضی شدن کاربران، قطع شدن سرورها، خطای هسته‌ها، ورودها،
   سفارش‌ها و…) به برنامهٔ خودتان با JSON امضاشده یا به Slack و Discord فرستاده می‌شود، با تلاش دوباره و فهرست ارسال‌ها؛ و
   ‎`/api/metrics`‎ برای Prometheus کاربران، مصرف هر کاربر و پروتکل، سلامت پروتکل‌ها و هسته‌ها، منابع هر سرور، انقضای گواهی‌ها

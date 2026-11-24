@@ -193,6 +193,7 @@ func (b *Bot) giveTrial(chat int64) {
 		u.InboundIDs = append([]int64{}, t.Inbounds...)
 		u.TGChat = chat
 		u.Note = "🎁 Telegram trial"
+		u.Tags = []string{"trial"}
 		if err = b.d.St.CreateUser(u); err == nil {
 			break
 		}

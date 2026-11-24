@@ -14,6 +14,7 @@ button on their user page, which opens the bot with `/start` and their token). T
 | Running out | active users whose time ends within N days (7 by default, 1 to 60) or who used more than 80% of their data |
 | Ended | users over their data limit or past their expiry: for a renewal message |
 | Picked users | select users on the **Users** page and press **Message** |
+| By tag | the users with one tag (shown when some users carry tags; see [USERS.md](USERS.md)) |
 
 Each audience shows two numbers: how many have linked Telegram (they get the message), and how many users it has in
 all. A **reseller** sees and reaches only their own users, and sees only their own messages.
@@ -47,6 +48,7 @@ messages already sent stay sent.
 ## From the Telegram bot
 
 Bot admins can broadcast from their phone: **📣 Broadcast** in the bot's menu (or `/broadcast`), pick the audience
+(the panel's audiences except picked users and tags)
 (each button shows how many it reaches), send the text, and the bot shows it as users will get it, with **Send to N**
 and **Cancel**. A message then follows the progress, with **Stop**, and ends with the result. The text is sent as
 written, with the same `{name}`, `{days}`, `{data}` and `{link}`.
@@ -55,7 +57,7 @@ written, with the same `{name}`, `{days}`, `{data}` and `{link}`.
 
 | Method | Path | Role | |
 | --- | --- | --- | --- |
-| GET | `/broadcasts?days=7` | R | Audience sizes (`users`, `linked`), the bot's state and the history |
-| POST | `/broadcasts` | R | Send: `text`, `html`, `audience` (`all`, `active`, `ending`, `ended`, `selected`), `userIds`, `days`, `button`; `"test": true` sends to the bot's admins only (owner and admins). Answers 202 with the broadcast |
+| GET | `/broadcasts?days=7` | R | Audience sizes (`users`, `linked`), each tag's (`tags`), the bot's state and the history |
+| POST | `/broadcasts` | R | Send: `text`, `html`, `audience` (`all`, `active`, `ending`, `ended`, `selected`, `tag`), `userIds`, `tag`, `days`, `button`; `"test": true` sends to the bot's admins only (owner and admins). Answers 202 with the broadcast |
 | POST | `/broadcasts/count` | R | The size of a picked audience: `{"userIds": [...]}` |
 | POST | `/broadcasts/{id}/cancel` | R | Stop the running broadcast |

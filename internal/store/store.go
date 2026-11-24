@@ -110,6 +110,7 @@ var addedColumns = []struct{ table, column, def string }{
 	{"users", "owner_id", "INTEGER NOT NULL DEFAULT 0"},
 	{"users", "tg_chat", "INTEGER NOT NULL DEFAULT 0"},
 	{"users", "notified", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "tags", "TEXT NOT NULL DEFAULT '[]'"},
 	{"admins", "role", "TEXT NOT NULL DEFAULT 'owner'"},
 	{"admins", "totp_secret", "TEXT NOT NULL DEFAULT ''"},
 	{"admins", "max_users", "INTEGER NOT NULL DEFAULT 0"},
@@ -355,33 +356,34 @@ func (s *Store) DeleteAdmin(id int64) error {
 
 // User is a VPN subscriber.
 type User struct {
-	ID           int64   `json:"id"`
-	Name         string  `json:"name"`
-	UUID         string  `json:"uuid"`
-	Password     string  `json:"password"`
-	SubToken     string  `json:"subToken"`
-	Enabled      bool    `json:"enabled"`
-	DataLimit    int64   `json:"dataLimit"`
-	UsedUp       int64   `json:"usedUp"`
-	UsedDown     int64   `json:"usedDown"`
-	LifetimeUsed int64   `json:"lifetimeUsed"`
-	ExpireAt     int64   `json:"expireAt"`
-	DurationDays int     `json:"durationDays"`
-	FirstUseAt   int64   `json:"firstUseAt"`
-	ResetPeriod  string  `json:"resetPeriod"`
-	LastResetAt  int64   `json:"lastResetAt"`
-	InboundIDs   []int64 `json:"inboundIds"`
-	Note         string  `json:"note"`
-	WGPrivate    string  `json:"-"`
-	WGPublic     string  `json:"-"`
-	WGIndex      int     `json:"-"`
-	CreatedAt    int64   `json:"createdAt"`
-	LastOnlineAt int64   `json:"lastOnlineAt"`
-	IPLimit      int     `json:"ipLimit"`     // devices (IPs) at once, 0 = unlimited
-	PausedUntil  int64   `json:"pausedUntil"` // set when the user went over IPLimit
-	OwnerID      int64   `json:"ownerId"`     // admin who created the user (0 = owner)
-	TGChat       int64   `json:"-"`           // Telegram chat bound to this user
-	Notified     string  `json:"-"`           // warnings already sent (comma list)
+	ID           int64    `json:"id"`
+	Name         string   `json:"name"`
+	UUID         string   `json:"uuid"`
+	Password     string   `json:"password"`
+	SubToken     string   `json:"subToken"`
+	Enabled      bool     `json:"enabled"`
+	DataLimit    int64    `json:"dataLimit"`
+	UsedUp       int64    `json:"usedUp"`
+	UsedDown     int64    `json:"usedDown"`
+	LifetimeUsed int64    `json:"lifetimeUsed"`
+	ExpireAt     int64    `json:"expireAt"`
+	DurationDays int      `json:"durationDays"`
+	FirstUseAt   int64    `json:"firstUseAt"`
+	ResetPeriod  string   `json:"resetPeriod"`
+	LastResetAt  int64    `json:"lastResetAt"`
+	InboundIDs   []int64  `json:"inboundIds"`
+	Note         string   `json:"note"`
+	WGPrivate    string   `json:"-"`
+	WGPublic     string   `json:"-"`
+	WGIndex      int      `json:"-"`
+	CreatedAt    int64    `json:"createdAt"`
+	LastOnlineAt int64    `json:"lastOnlineAt"`
+	IPLimit      int      `json:"ipLimit"`     // devices (IPs) at once, 0 = unlimited
+	PausedUntil  int64    `json:"pausedUntil"` // set when the user went over IPLimit
+	OwnerID      int64    `json:"ownerId"`     // admin who created the user (0 = owner)
+	TGChat       int64    `json:"-"`           // Telegram chat bound to this user
+	Notified     string   `json:"-"`           // warnings already sent (comma list)
+	Tags         []string `json:"tags"`        // the owner's labels: "vip", "family", "trial"…
 
 	// ResetUsage makes the next UpdateUser zero the period counters. Without
 	// it UpdateUser leaves them alone, so traffic counted meanwhile is kept.
@@ -439,18 +441,18 @@ func (u *User) AllowsInbound(id int64) bool {
 
 const userCols = `id,name,uuid,password,sub_token,enabled,data_limit,used_up,used_down,lifetime_used,expire_at,duration_days,
 	first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at,
-	ip_limit,paused_until,owner_id,tg_chat,notified`
+	ip_limit,paused_until,owner_id,tg_chat,notified,tags`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanUser(r scanner) (*User, error) {
 	u := &User{}
 	var enabled int
-	var ids string
+	var ids, tags string
 	err := r.Scan(&u.ID, &u.Name, &u.UUID, &u.Password, &u.SubToken, &enabled, &u.DataLimit, &u.UsedUp, &u.UsedDown,
 		&u.LifetimeUsed, &u.ExpireAt, &u.DurationDays, &u.FirstUseAt, &u.ResetPeriod, &u.LastResetAt, &ids, &u.Note,
 		&u.WGPrivate, &u.WGPublic, &u.WGIndex, &u.CreatedAt, &u.LastOnlineAt,
-		&u.IPLimit, &u.PausedUntil, &u.OwnerID, &u.TGChat, &u.Notified)
+		&u.IPLimit, &u.PausedUntil, &u.OwnerID, &u.TGChat, &u.Notified, &tags)
 	if err != nil {
 		return nil, err
 	}
@@ -458,6 +460,10 @@ func scanUser(r scanner) (*User, error) {
 	_ = json.Unmarshal([]byte(ids), &u.InboundIDs)
 	if u.InboundIDs == nil {
 		u.InboundIDs = []int64{}
+	}
+	_ = json.Unmarshal([]byte(tags), &u.Tags)
+	if u.Tags == nil {
+		u.Tags = []string{}
 	}
 	return u, nil
 }
@@ -531,6 +537,8 @@ func (s *Store) CreateUser(u *User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids, _ := json.Marshal(nonNil(u.InboundIDs))
+	u.Tags = NormalizeTags(u.Tags)
+	tags, _ := json.Marshal(u.Tags)
 	if u.CreatedAt == 0 {
 		u.CreatedAt = time.Now().Unix()
 	}
@@ -539,12 +547,12 @@ func (s *Store) CreateUser(u *User) error {
 	}
 	res, err := s.DB.Exec(`INSERT INTO users(name,uuid,password,sub_token,enabled,data_limit,used_up,used_down,lifetime_used,
 		expire_at,duration_days,first_use_at,reset_period,last_reset_at,inbound_ids,note,wg_private,wg_public,wg_index,created_at,last_online_at,
-		ip_limit,paused_until,owner_id,tg_chat,notified)
-		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		ip_limit,paused_until,owner_id,tg_chat,notified,tags)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		u.Name, u.UUID, u.Password, u.SubToken, b2i(u.Enabled), u.DataLimit, u.UsedUp, u.UsedDown, u.LifetimeUsed,
 		u.ExpireAt, u.DurationDays, u.FirstUseAt, u.ResetPeriod, u.LastResetAt, string(ids), u.Note,
 		u.WGPrivate, u.WGPublic, u.WGIndex, u.CreatedAt, u.LastOnlineAt,
-		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified)
+		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified, string(tags))
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("a user named %q already exists", u.Name)
@@ -560,15 +568,17 @@ func (s *Store) UpdateUser(u *User) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ids, _ := json.Marshal(nonNil(u.InboundIDs))
+	u.Tags = NormalizeTags(u.Tags)
+	tags, _ := json.Marshal(u.Tags)
 	reset := b2i(u.ResetUsage)
 	u.ResetUsage = false
 	_, err := s.DB.Exec(`UPDATE users SET name=?,uuid=?,password=?,sub_token=?,enabled=?,data_limit=?,
 		used_up=CASE WHEN ?=1 THEN 0 ELSE used_up END, used_down=CASE WHEN ?=1 THEN 0 ELSE used_down END,
 		expire_at=?,duration_days=?,first_use_at=?,reset_period=?,last_reset_at=?,inbound_ids=?,note=?,
-		ip_limit=?,paused_until=?,owner_id=?,tg_chat=?,notified=? WHERE id=?`,
+		ip_limit=?,paused_until=?,owner_id=?,tg_chat=?,notified=?,tags=? WHERE id=?`,
 		u.Name, u.UUID, u.Password, u.SubToken, b2i(u.Enabled), u.DataLimit, reset, reset,
 		u.ExpireAt, u.DurationDays, u.FirstUseAt, u.ResetPeriod, u.LastResetAt, string(ids), u.Note,
-		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified, u.ID)
+		u.IPLimit, u.PausedUntil, u.OwnerID, u.TGChat, u.Notified, string(tags), u.ID)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return fmt.Errorf("a user named %q already exists", u.Name)
 	}

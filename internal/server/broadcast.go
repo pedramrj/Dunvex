@@ -16,6 +16,7 @@ import (
 type Broadcaster interface {
 	AudienceCounts(owner int64, days int) map[string]bot.Count
 	SelectedCount(owner int64, ids []int64) bot.Count
+	TagCounts(owner int64) []bot.TagCount
 	TestBroadcast(r bot.BroadcastRequest) (int, error)
 	StartBroadcast(r bot.BroadcastRequest) (*bot.Broadcast, error)
 	CancelBroadcast(id int64) bool
@@ -45,7 +46,7 @@ func (s *Server) getBroadcasts(w http.ResponseWriter, r *http.Request) {
 	}
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
 	owner := broadcastOwner(adminOf(r))
-	out := map[string]any{"counts": bc.AudienceCounts(owner, days), "history": bc.Broadcasts(owner),
+	out := map[string]any{"counts": bc.AudienceCounts(owner, days), "tags": bc.TagCounts(owner), "history": bc.Broadcasts(owner),
 		"userBot": s.St.GetSetting("tg_user_bot", "true") == "true"}
 	if s.Bot != nil {
 		st := s.Bot.Status()

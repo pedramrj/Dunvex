@@ -46,9 +46,10 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | POST | `/nodes/{id}/update` · `/nodes/update` | O | Bring one node, or every node that is behind, to the panel's version (see [NODES.md](NODES.md)) |
 | DELETE | `/nodes/{id}` | O | Remove a server and its protocols (the node is released) |
 | POST | `/nodes/{id}/sync` | A | Sync a server now |
-| GET | `/users` | R | All users with usage and status |
-| POST | `/users` | R | Create users: `{"name":"sara","dataLimit":32212254720,"durationDays":30,"ipLimit":2}` |
-| POST | `/users/bulk` | R | Act on many users at once |
+| GET | `/users` | R | All users with usage and status; `?tag=vip&tag=iran` keeps users with every tag (see [USERS.md](USERS.md)) |
+| GET | `/users/tags` | R | The tags in use and how many users carry each, the most used first |
+| POST | `/users` | R | Create users: `{"name":"sara","dataLimit":32212254720,"durationDays":30,"ipLimit":2,"tags":["vip"]}` |
+| POST | `/users/bulk` | R | Act on many users at once; `"action":"tag"` or `"untag"` with `"tag":"vip"` adds or removes a tag |
 | GET | `/users/{id}` | R | One user, with connected devices |
 | PUT | `/users/{id}` | R | Change a user (limit, expiry, protocols, note…) |
 | DELETE | `/users/{id}` | R | Delete a user |
@@ -70,7 +71,7 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | POST | `/cores/{name}/install` | O | Install or update a core |
 | GET / PUT | `/settings` | O | Read or change settings |
 | GET | `/broadcasts` | R | Broadcast audiences, the bot's state and the history; see [BROADCAST.md](BROADCAST.md) |
-| POST | `/broadcasts` | R | Send a message to users through the Telegram bot (or a test to the bot's admins) |
+| POST | `/broadcasts` | R | Send a message to users through the Telegram bot (or a test to the bot's admins); `"audience":"tag","tag":"vip"` reaches one tag |
 | POST | `/broadcasts/count` | R | How many of the picked users the bot can reach |
 | POST | `/broadcasts/{id}/cancel` | R | Stop the running broadcast |
 | GET | `/backups` | O | Backup settings, the backups on the server and recent runs; see [BACKUP.md](BACKUP.md) |

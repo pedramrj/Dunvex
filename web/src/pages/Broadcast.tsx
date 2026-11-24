@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, CircleAlert, CircleCheck, CircleSlash, Megaphone, Send, Square, TestTube2, UserRound, UserX, Users as UsersIcon } from "lucide-react";
+import { Bot, CircleAlert, CircleCheck, CircleSlash, Megaphone, Send, Square, Tags, TestTube2, UserRound, UserX, Users as UsersIcon } from "lucide-react";
 import { api, type BroadcastAudience, type BroadcastInfo, type BroadcastRun } from "../lib/api";
 import { ago, cx } from "../lib/format";
 import { useI18n, type Key } from "../lib/i18n";
 import { Badge, Button, Empty, Input, Label, Meter, Panel, Skeleton, Textarea, Toggle, useConfirm, useToast } from "../components/ui";
 import { PageHead, can, navigate, useSession } from "../App";
+import { TagChip, sameTag, tagColor } from "../components/Tags";
 
 const MAX = 3500;
-const audiences: { id: Exclude<BroadcastAudience, "selected">; key: Key; hint: Key; icon: typeof UsersIcon; color: string }[] = [
+const audiences: { id: Exclude<BroadcastAudience, "selected" | "tag">; key: Key; hint: Key; icon: typeof UsersIcon; color: string }[] = [
   { id: "all", key: "bcAll", hint: "bcAllHint", icon: UsersIcon, color: "var(--primary2)" },
   { id: "active", key: "bcActive", hint: "bcActiveHint", icon: CircleCheck, color: "var(--ok)" },
   { id: "ending", key: "bcEnding", hint: "bcEndingHint", icon: CircleAlert, color: "var(--warn)" },
@@ -32,6 +33,7 @@ export function BroadcastPage({ arg }: { arg?: string }) {
   const [button, setButton] = useState(true);
   const [busy, setBusy] = useState("");
   const [sel, setSel] = useState<{ users: number; linked: number } | null>(null);
+  const [tag, setTag] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(() => api<BroadcastInfo>(`broadcasts?days=${days}`).then((r) => { setInfo(r); setErr(""); }).catch((e) => setErr(e.message)), [days]);
@@ -47,8 +49,14 @@ export function BroadcastPage({ arg }: { arg?: string }) {
     api<{ users: number; linked: number }>("broadcasts/count", { body: { userIds: picked } }).then(setSel).catch(() => {});
   }, [picked]);
 
-  const count = aud === "selected" ? sel : info?.counts[aud];
-  const req = () => ({ text, html, audience: aud, userIds: aud === "selected" ? picked : [], days, button });
+  // the tag audience starts on the most used tag
+  useEffect(() => {
+    const tags = info?.tags ?? [];
+    if (tags.length && !tags.some((x) => sameTag(x.tag, tag))) setTag(tags[0].tag);
+  }, [info, tag]);
+  const tagCount = info?.tags?.find((x) => sameTag(x.tag, tag));
+  const count = aud === "selected" ? sel : aud === "tag" ? tagCount : info?.counts[aud];
+  const req = () => ({ text, html, audience: aud, userIds: aud === "selected" ? picked : [], tag: aud === "tag" ? tag : "", days, button });
   const insert = (p: string) => {
     const el = area.current;
     if (!el) return setText(text + p);
@@ -107,7 +115,19 @@ export function BroadcastPage({ arg }: { arg?: string }) {
                   <AudienceCard key={a.id} on={aud === a.id} onClick={() => setAud(a.id)} icon={<a.icon className="size-4" />} color={a.color}
                     label={t(a.key)} count={info.counts[a.id]} title={t(a.hint)} />
                 ))}
+                {(info.tags?.length ?? 0) > 0 && (
+                  <AudienceCard on={aud === "tag"} onClick={() => setAud("tag")} icon={<Tags className="size-4" />} color={tag ? tagColor(tag) : "var(--color-violet)"}
+                    label={aud === "tag" && tag ? `${t("bcByTag")} · ${tag}` : t("bcByTag")} count={tagCount ?? null} title={t("bcTagHint")} className="col-span-2 sm:col-span-4" />
+                )}
               </div>
+              {aud === "tag" && (info.tags?.length ?? 0) > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5" role="group" aria-label={t("bcByTag")}>
+                  {info.tags!.map((x) => (
+                    <TagChip key={x.tag} tag={x.tag} count={x.linked} active={sameTag(x.tag, tag)} onClick={() => setTag(x.tag)}
+                      title={t("bcTagReach").replace("{linked}", n(x.linked)).replace("{users}", n(x.users))} />
+                  ))}
+                </div>
+              )}
               <p className="mt-2 text-[12px] text-ink3 leading-relaxed">
                 {aud === "ending" ? (
                   <span className="inline-flex flex-wrap items-center gap-2">
@@ -116,7 +136,7 @@ export function BroadcastPage({ arg }: { arg?: string }) {
                       <Input type="number" min={1} max={60} value={days} onChange={(e) => setDays(Math.max(1, Math.min(60, +e.target.value || 7)))} className="num !h-8 !w-16 text-center" />
                       {t("days")}</span>
                   </span>
-                ) : aud === "selected" ? t("bcSelectedHint") : t(audiences.find((a) => a.id === aud)!.hint)}
+                ) : aud === "selected" ? t("bcSelectedHint") : aud === "tag" ? t("bcTagHint") : t(audiences.find((a) => a.id === aud)!.hint)}
                 {" "}{t("bcOnlyLinked")}
               </p>
 
@@ -284,7 +304,11 @@ function History({ list }: { list: BroadcastRun[] }) {
                 <div className="flex flex-wrap items-center gap-2 text-[12px] text-ink3">
                   <span>{ago(x.at, lang)}</span>
                   {x.by && <><span>·</span><bdi dir="ltr">{x.by}</bdi></>}
-                  <Badge className="h-5 text-[10.5px] px-2" color={aud?.color ?? "var(--color-cyan)"}>{aud ? t(aud.key) : t("bcSelected")}</Badge>
+                  {x.audience === "tag" && x.tag ? (
+                    <Badge className="h-5 text-[10.5px] px-2" color={tagColor(x.tag)}>{t("bcByTag")} · <bdi>{x.tag}</bdi></Badge>
+                  ) : (
+                    <Badge className="h-5 text-[10.5px] px-2" color={aud?.color ?? "var(--color-cyan)"}>{aud ? t(aud.key) : t("bcSelected")}</Badge>
+                  )}
                   {x.html && <Badge className="h-5 text-[10.5px] px-2" color="var(--color-ink2)">HTML</Badge>}
                   {x.canceled && <Badge className="h-5 text-[10.5px] px-2" color="var(--warn)">{t("bcStoppedBadge")}</Badge>}
                   {x.interrupted && <Badge className="h-5 text-[10.5px] px-2" color="var(--warn)">{t("bcInterrupted")}</Badge>}

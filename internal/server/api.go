@@ -61,6 +61,7 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /nodes/update", O, s.updateAllNodes)
 
 	h("GET /users", R, s.listUsers)
+	h("GET /users/tags", R, s.userTags)
 	h("POST /users", R, s.createUsers)
 	h("POST /users/bulk", R, s.bulkUsers)
 	h("GET /users/{id}", R, s.getUser)
@@ -350,6 +351,16 @@ func (s *Server) view(r *http.Request, u *store.User, online map[int64]bool) use
 	return v
 }
 
+// userTags lists the tags of the users an admin sees, the most used first.
+func (s *Server) userTags(w http.ResponseWriter, r *http.Request) {
+	users, err := s.scopedUsers(adminOf(r))
+	if err != nil {
+		fail(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, store.CountTags(users))
+}
+
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.scopedUsers(adminOf(r))
 	if err != nil {
@@ -359,6 +370,7 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	online := s.Mgr.OnlineUsers(60)
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	status := r.URL.Query().Get("status")
+	tags := r.URL.Query()["tag"] // every one of them
 	owners := map[int64]string{}
 	if adminOf(r).Role != store.RoleReseller {
 		admins, _ := s.St.Admins()
@@ -381,29 +393,40 @@ func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 		if status != "" && status != "online" && v.Status != status {
 			continue
 		}
+		missing := false
+		for _, t := range tags {
+			missing = missing || !users[i].HasTag(t)
+		}
+		if missing {
+			continue
+		}
 		out = append(out, v)
 	}
 	writeJSON(w, 200, out)
 }
 
 type userInput struct {
-	Name         *string  `json:"name"`
-	Count        int      `json:"count"`
-	DataLimit    *int64   `json:"dataLimit"`
-	ExpireAt     *int64   `json:"expireAt"`
-	DurationDays *int     `json:"durationDays"`
-	StartOnFirst *bool    `json:"startOnFirstUse"`
-	ResetPeriod  *string  `json:"resetPeriod"`
-	InboundIDs   *[]int64 `json:"inboundIds"`
-	Note         *string  `json:"note"`
-	Enabled      *bool    `json:"enabled"`
-	UsedReset    bool     `json:"resetUsage"`
-	IPLimit      *int     `json:"ipLimit"`
-	Resume       bool     `json:"resume"` // end a device-limit pause now
-	PlanID       int64    `json:"planId"` // new users from a plan (resellers' wallets pay for it)
+	Name         *string   `json:"name"`
+	Count        int       `json:"count"`
+	DataLimit    *int64    `json:"dataLimit"`
+	ExpireAt     *int64    `json:"expireAt"`
+	DurationDays *int      `json:"durationDays"`
+	StartOnFirst *bool     `json:"startOnFirstUse"`
+	ResetPeriod  *string   `json:"resetPeriod"`
+	InboundIDs   *[]int64  `json:"inboundIds"`
+	Note         *string   `json:"note"`
+	Tags         *[]string `json:"tags"`
+	Enabled      *bool     `json:"enabled"`
+	UsedReset    bool      `json:"resetUsage"`
+	IPLimit      *int      `json:"ipLimit"`
+	Resume       bool      `json:"resume"` // end a device-limit pause now
+	PlanID       int64     `json:"planId"` // new users from a plan (resellers' wallets pay for it)
 }
 
 func (in *userInput) apply(u *store.User) error {
+	if in.Tags != nil {
+		u.Tags = store.NormalizeTags(*in.Tags)
+	}
 	if in.Name != nil {
 		n := util.SanitizeName(*in.Name)
 		if n == "" {
@@ -653,9 +676,14 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		Action string  `json:"action"`
 		Days   int     `json:"days"`
 		Bytes  int64   `json:"bytes"`
+		Tag    string  `json:"tag"` // for "tag" and "untag"
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
+		return
+	}
+	if (in.Action == "tag" || in.Action == "untag") && store.NormalizeTag(in.Tag) == "" {
+		fail(w, 400, "write the tag")
 		return
 	}
 	n := 0
@@ -692,6 +720,14 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 				u.DataLimit += in.Bytes
 			}
 			u.Notified = ""
+		case "tag":
+			if !u.AddTag(in.Tag) {
+				continue // already there, or the user has as many tags as it may
+			}
+		case "untag":
+			if !u.RemoveTag(in.Tag) {
+				continue
+			}
 		case "delete":
 			s.St.DeleteUser(u.ID)
 			n++
@@ -702,6 +738,12 @@ func (s *Server) bulkUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		s.St.UpdateUser(u)
 		n++
+	}
+	if in.Action == "tag" || in.Action == "untag" {
+		// labels only: nothing for the cores to change
+		s.St.Log("user", "%s: bulk %s %q on %d user(s)", a.Username, in.Action, store.NormalizeTag(in.Tag), n)
+		writeJSON(w, 200, map[string]int{"affected": n})
+		return
 	}
 	s.St.Log("user", "%s: bulk %s on %d user(s)", a.Username, in.Action, n)
 	s.Mgr.RequestApply()

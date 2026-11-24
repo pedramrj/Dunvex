@@ -27,6 +27,7 @@ const (
 	AudienceEnding   = "ending"   // active, but the time or the data is running out
 	AudienceEnded    = "ended"    // over the data limit or expired
 	AudienceSelected = "selected" // the users picked in the panel
+	AudienceTag      = "tag"      // the users with a tag
 )
 
 // BroadcastRequest is what an admin sends.
@@ -35,6 +36,7 @@ type BroadcastRequest struct {
 	HTML     bool    `json:"html"`     // the text uses Telegram's HTML tags (else it is sent as written)
 	Audience string  `json:"audience"` // one of the Audience values
 	UserIDs  []int64 `json:"userIds"`  // for AudienceSelected
+	Tag      string  `json:"tag"`      // for AudienceTag
 	Days     int     `json:"days"`     // AudienceEnding: expires within this many days (0 = 7)
 	Button   bool    `json:"button"`   // add the "my account" button under the message
 	By       string  `json:"-"`        // the admin who sends it
@@ -49,6 +51,7 @@ type Broadcast struct {
 	By          string   `json:"by"`
 	Owner       int64    `json:"owner,omitempty"`
 	Audience    string   `json:"audience"`
+	Tag         string   `json:"tag,omitempty"`
 	Text        string   `json:"text"`
 	HTML        bool     `json:"html"`
 	Total       int      `json:"total"`
@@ -94,7 +97,7 @@ func endingSoon(u *store.User, now int64, days int) bool {
 func inAudience(u *store.User, now int64, aud string, days int) bool {
 	st := u.Status(now)
 	switch aud {
-	case AudienceAll, AudienceSelected:
+	case AudienceAll, AudienceSelected, AudienceTag:
 		return true
 	case AudienceActive:
 		return st == store.StatusActive || st == store.StatusPending
@@ -125,6 +128,9 @@ func (b *Bot) audienceUsers(req BroadcastRequest) ([]*store.User, error) {
 		if req.Audience == AudienceSelected && !pick[u.ID] {
 			continue
 		}
+		if req.Audience == AudienceTag && !u.HasTag(req.Tag) {
+			continue
+		}
 		if inAudience(u, now, req.Audience, req.Days) {
 			out = append(out, u)
 		}
@@ -144,6 +150,28 @@ func (b *Bot) AudienceCounts(owner int64, days int) map[string]Count {
 			}
 		}
 		out[aud] = c
+	}
+	return out
+}
+
+// TagCount is the audience of one tag.
+type TagCount struct {
+	Tag string `json:"tag"`
+	Count
+}
+
+// TagCounts sizes the audience of every tag the owner's users carry.
+func (b *Bot) TagCounts(owner int64) []TagCount {
+	us, _ := b.audienceUsers(BroadcastRequest{Audience: AudienceAll, Owner: owner})
+	out := []TagCount{}
+	for _, tc := range store.CountTags(us) {
+		c := TagCount{Tag: tc.Tag, Count: Count{Users: tc.Count}}
+		for _, u := range us {
+			if u.TGChat != 0 && u.HasTag(tc.Tag) {
+				c.Linked++
+			}
+		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -218,6 +246,10 @@ func (r BroadcastRequest) Check() error {
 	case AudienceSelected:
 		if len(r.UserIDs) == 0 {
 			return errors.New("pick the users first")
+		}
+	case AudienceTag:
+		if store.NormalizeTag(r.Tag) == "" {
+			return errors.New("pick the tag first")
 		}
 	default:
 		return fmt.Errorf("unknown audience %q", r.Audience)
@@ -427,7 +459,7 @@ func (b *Bot) StartBroadcast(r BroadcastRequest) (*Broadcast, error) {
 	}
 	now := time.Now()
 	run := &Broadcast{ID: now.UnixMilli(), At: now.Unix(), // milliseconds: exact in JavaScript (below 2^53)
-		By: r.By, Owner: r.Owner, Audience: r.Audience,
+		By: r.By, Owner: r.Owner, Audience: r.Audience, Tag: map[bool]string{true: store.NormalizeTag(r.Tag)}[r.Audience == AudienceTag],
 		Text: strings.TrimSpace(r.Text), HTML: r.HTML, Total: len(to)}
 	bc.running, bc.cancel = run, make(chan struct{})
 	cancel := bc.cancel
