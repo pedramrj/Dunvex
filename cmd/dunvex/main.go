@@ -286,8 +286,9 @@ func serve(home string) error {
 	srv.Bill = bill
 	go bill.Run(ctx)
 	tg := bot.New(bot.Deps{St: st, Mgr: mgr, Sys: sys, Version: Version, NewUser: srv.NewUser, Bill: bill,
-		SubURL:  func(u *store.User) string { return srv.SubURL(nil, u) },
-		ShopURL: func() string { return srv.ShopURL(nil) }})
+		SubURL:     func(u *store.User) string { return srv.SubURL(nil, u) },
+		ShopURL:    func() string { return srv.ShopURL(nil) },
+		SupportDir: srv.SupportDir()})
 	srv.Bot = tg
 	tg.Start()
 	// every event also goes to the webhooks (and is counted for the metrics)

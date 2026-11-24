@@ -13,6 +13,7 @@ import { PageHead, can, roleColor, roleKey, useSession } from "../App";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
 import { BackupsTab } from "../components/Backups";
 import { TrialPanel } from "../components/Trial";
+import { SupportSettingsPanel } from "../components/SupportSettings";
 import { Logo } from "../components/Logo";
 import { IntegrationsTab } from "./Integrations";
 
@@ -237,6 +238,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
       </div>
     </Panel>
     <TrialPanel />
+    <SupportSettingsPanel />
     </>
   );
 }

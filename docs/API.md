@@ -81,6 +81,10 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | GET / DELETE | `/backups/{name}` | O | Download or delete a stored backup |
 | POST | `/backups/{name}/restore` | O | Restore a stored backup (the panel restarts) |
 | GET / PUT | `/trial` | O | The bot's free trial: settings, numbers and the latest trials; see [TRIAL.md](TRIAL.md) |
+| GET | `/support` | R | The support inbox: conversations, counts and the bot's state; the rest is in [SUPPORT.md](SUPPORT.md) |
+| GET | `/support/threads/{id}` | R | One conversation with the user beside it and its messages |
+| POST | `/support/threads/{id}/reply` | R | Answer through the bot: `{"text":"…"}` or a form with `text` and `photo` |
+| GET / PUT | `/support/settings` | O | Support on/off, guests, alerts, rate and length limits, retention, the note |
 | GET | `/backup` | O | Download the database |
 | GET / POST | `/update` | O | Check for, or install, a new Dunvex version |
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |

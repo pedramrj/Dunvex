@@ -40,7 +40,7 @@ func (b *Bot) buyerMenu(chat int64) keyboard {
 	if _, err := b.d.St.UserByTG(chat); err == nil {
 		kb = append(kb, []button{{Text: b.t("b_renew"), Data: "sh:r"}, {Text: b.t("b_mine"), Data: "me"}})
 	}
-	return kb
+	return b.withSupport(chat, kb)
 }
 
 func money(v int64) string {

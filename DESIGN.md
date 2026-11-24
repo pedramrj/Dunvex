@@ -67,7 +67,9 @@ All colours are CSS variables per `html[data-theme]`, mapped to Tailwind tokens 
 
 ## Pages
 Overview (customisable widgets, KPIs with trends, time range), Users (sortable list, context menu,
-drawer with overview, configs, devices, usage and activity), Protocols, Network centre (topology,
+drawer with overview, configs, devices, usage and activity), Support (the bot's inbox: conversations on one side,
+the thread with the person's subscription beside it, receipts and a reply box; on phones the list and the thread are
+two screens), Protocols, Network centre (topology,
 world map with the server's real location, inspector, recent events), Servers, Analytics (zoomable
 charts with legend toggles and CSV export), Logs (Xray, sing-box and panel events, live tail,
 filters, export), Alerts (categories, severity, read state, quiet mode), Security (sign-in history,

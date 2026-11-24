@@ -13,7 +13,7 @@ type Form = { id?: string; name: string; url: string; format: Hook["format"]; ki
 
 const kindKey: { [k: string]: Key } = {
   user: "catUser", limit: "catLimit", auth: "catAuth", billing: "catBilling", node: "catNode", core: "catCore",
-  tls: "catTls", inbound: "catInbound", health: "catHealth", backup: "catBackup", settings: "catSettings", update: "catUpdate",
+  tls: "catTls", inbound: "catInbound", health: "catHealth", backup: "catBackup", settings: "catSettings", update: "catUpdate", support: "catSupport",
 };
 const formatName = { json: "JSON", slack: "Slack", discord: "Discord" };
 

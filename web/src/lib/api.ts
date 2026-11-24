@@ -310,6 +310,76 @@ export interface BroadcastInfo {
   bot?: { configured: boolean; running: boolean; username: string; admins: number };
 }
 
+/** One person's conversation with support through the Telegram bot. */
+export interface SupportThread {
+  id: number;
+  chat: number; // the Telegram chat
+  userId: number;
+  name: string; // Telegram first name
+  username: string; // Telegram @username, without the @
+  open: boolean;
+  unread: number; // the person's messages nobody opened yet
+  lastAt: number;
+  lastText: string;
+  lastStaff: boolean; // the newest message is an answer
+  createdAt: number;
+  closedAt: number;
+  closedBy: string;
+  messages: number;
+  waiting: boolean; // open, the person wrote last
+  user: SupportUser | null; // null: no subscription, or it was deleted
+}
+
+/** The person's subscription beside the thread. */
+export interface SupportUser {
+  id: number;
+  name: string;
+  status: Status;
+  online: boolean;
+  used: number;
+  dataLimit: number;
+  expireAt: number;
+  daysLeft: number | null;
+  devices: number;
+  ipLimit: number;
+  note: string;
+  owner?: string; // the reseller's name (owners and admins only)
+}
+
+export interface SupportMessage {
+  id: number;
+  threadId: number;
+  at: number;
+  staff: boolean; // an answer
+  by?: string; // the admin who answered
+  text: string;
+  photo?: string;
+  seen: boolean;
+  answered: boolean;
+}
+
+export interface SupportCounts { open: number; waiting: number; unread: number; closed: number }
+
+export interface SupportInfo {
+  threads: SupportThread[];
+  counts: SupportCounts;
+  bot: { configured: boolean; running?: boolean; username?: string };
+  on: boolean;
+  maxAnswer: number;
+}
+
+/** Settings › Telegram › Support. */
+export interface SupportSettings {
+  on: boolean;
+  guests: boolean; // people without a linked subscription may write too
+  alert: boolean; // each message goes to the bot's admins
+  rate: number; // messages an hour per person (0 = no limit)
+  maxLen: number; // characters in one message
+  keep: number; // messages kept per conversation (0 = all)
+  days: number; // removed after this many days (0 = never)
+  note: string; // a line on the person's support screen
+}
+
 /** One config's result in the config health check (GET /health). */
 export interface HealthResult {
   inboundId: number;

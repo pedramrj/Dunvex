@@ -135,3 +135,7 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] User tags and filters: tags on users (one by one, in bulk, on bot trials), filters for tags (all of them),
       running out, never connected, unlimited data and reseller, a tag audience for broadcasts, and the tag filter in
       the API (v1.29). See [USERS.md](USERS.md)
+- [x] Support inbox in the bot: one conversation per person beside their subscription, text and photos both ways,
+      receipts as reactions and "typing…", answers from the panel or from Telegram signed "Support", close/reopen,
+      search, an unread badge, resellers limited to their users, a `support` event and webhook kind, a rate limit, a
+      length limit and retention (v1.30). See [SUPPORT.md](SUPPORT.md)

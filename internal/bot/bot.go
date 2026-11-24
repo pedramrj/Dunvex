@@ -39,6 +39,8 @@ type Deps struct {
 	Version string
 	Bill    *billing.Service // the shop (nil: no selling in the bot)
 	ShopURL func() string    // the web shop's address
+
+	SupportDir string // where the support inbox keeps photos
 }
 
 // Bot polls Telegram and answers. It is safe to Reload at any time.
@@ -64,6 +66,8 @@ type Bot struct {
 
 	bc     broadcasting               // one message to many users (see broadcast.go)
 	drafts map[int64]BroadcastRequest // admin chat → the broadcast waiting for "send"
+
+	sp supporting // the support inbox (see support.go)
 }
 
 // New creates the bot; call Start to run it.
@@ -288,12 +292,17 @@ type update struct {
 			FileID   string `json:"file_id"`
 			FileSize int64  `json:"file_size"`
 		} `json:"photo"`
+		Document *struct {
+			FileID   string `json:"file_id"`
+			MimeType string `json:"mime_type"`
+		} `json:"document"`
 		Chat struct {
 			ID   int64  `json:"id"`
 			Type string `json:"type"`
 		} `json:"chat"`
 		From struct {
-			Name string `json:"first_name"`
+			Name     string `json:"first_name"`
+			Username string `json:"username"`
 		} `json:"from"`
 	} `json:"message"`
 	Callback *struct {
@@ -369,10 +378,22 @@ func (b *Bot) handle(u update) {
 		return
 	}
 	if m := u.Message; m != nil && m.Chat.Type == "private" {
-		if len(m.Photo) > 0 { // a receipt: the largest size is the last
-			if !b.onReceipt(m.Chat.ID, m.Photo[len(m.Photo)-1].FileID, strings.TrimSpace(m.Caption)) {
+		from := sender{msg: m.ID, name: m.From.Name, username: m.From.Username}
+		caption := strings.TrimSpace(m.Caption)
+		if len(m.Photo) > 0 { // a receipt, or a photo for support: the largest size is the last
+			file := m.Photo[len(m.Photo)-1].FileID
+			if !b.onReceipt(m.Chat.ID, file, caption) && !b.onSupportMessage(m.Chat.ID, from, caption, file) {
 				b.onText(m.Chat.ID, "")
 			}
+			return
+		}
+		if d := m.Document; d != nil && strings.HasPrefix(d.MimeType, "image/") { // a photo sent as a file
+			if !b.onSupportMessage(m.Chat.ID, from, caption, d.FileID) {
+				b.onText(m.Chat.ID, "")
+			}
+			return
+		}
+		if b.onSupportMessage(m.Chat.ID, from, strings.TrimSpace(m.Text), "") {
 			return
 		}
 		b.onText(m.Chat.ID, strings.TrimSpace(m.Text))
@@ -384,6 +405,7 @@ func (b *Bot) handle(u update) {
 func (b *Bot) onText(chat int64, text string) {
 	admin := b.isAdmin(chat)
 	if strings.HasPrefix(text, "/start") {
+		b.setWriting(chat, false)
 		arg := strings.TrimSpace(strings.TrimPrefix(text, "/start"))
 		if arg != "" && b.bindUser(chat, arg) {
 			return
@@ -402,6 +424,10 @@ func (b *Bot) onText(chat int64, text string) {
 	if !admin {
 		if text == "/trial" {
 			b.giveTrial(chat)
+			return
+		}
+		if text == "/support" {
+			b.openSupport(chat)
 			return
 		}
 		if text != "" && b.onReceipt(chat, "", text) {
@@ -425,6 +451,8 @@ func (b *Bot) onText(chat int64, text string) {
 		b.send(chat, b.t("users"), b.usersMenu(0, ""))
 	case text == "/backup":
 		b.sendBackup(chat)
+	case text == "/support":
+		b.supportList(chat, 0)
 	case strings.HasPrefix(text, "/new ") || want == "new":
 		b.createUser(chat, strings.TrimSpace(strings.TrimPrefix(text, "/new")))
 	case strings.HasPrefix(want, "bc:"):
@@ -459,6 +487,7 @@ func (b *Bot) sendUserCard(chat int64, u *store.User) {
 	if b.shopOn() {
 		kb = append(kb, []button{{Text: b.t("b_renew"), Data: "sh:r"}})
 	}
+	kb = b.withSupport(chat, kb)
 	b.sendQR(chat, b.d.SubURL(u), b.userText(u, false)+"\n\n<code>"+esc(b.d.SubURL(u))+"</code>", kb)
 }
 
@@ -470,10 +499,14 @@ func (b *Bot) greet(chat int64) {
 		return
 	}
 	if b.trialOffered(chat) {
-		b.send(chat, fmt.Sprintf(b.t("trial_offer"), b.trialSize(LoadTrial(b.d.St))), keyboard{b.trialButton()})
+		b.send(chat, fmt.Sprintf(b.t("trial_offer"), b.trialSize(LoadTrial(b.d.St))), b.withSupport(chat, keyboard{b.trialButton()}))
 		return
 	}
-	b.send(chat, fmt.Sprintf(b.t("unknown"), chat), nil)
+	var kb keyboard
+	if kb = b.withSupport(chat, nil); len(kb) == 0 {
+		kb = nil
+	}
+	b.send(chat, fmt.Sprintf(b.t("unknown"), chat), kb)
 }
 
 // ---------------------------------------------------------------- buttons
@@ -484,19 +517,24 @@ func (b *Bot) mainMenu() keyboard {
 		{{Text: b.t("b_new"), Data: "new"}, {Text: b.t("b_find"), Data: "find"}},
 		{{Text: b.t("b_online"), Data: "on"}, {Text: b.t("b_backup"), Data: "bk"}},
 		{{Text: b.t("b_orders"), Data: "ol"}, {Text: b.t("b_broadcast"), Data: "bc"}},
+		{b.supportMenuButton()},
 	}
 }
 
 func (b *Bot) backMenu() keyboard { return keyboard{{{Text: b.t("b_back"), Data: "m"}}} }
 
 func (b *Bot) onButton(chat, msg int64, data string) {
+	if b.onSupportButton(chat, msg, data) {
+		return
+	}
+	b.setWriting(chat, false) // another button: what is typed next is not for support
 	if data == "tr" {
 		b.giveTrial(chat)
 		return
 	}
 	if data == "me" {
 		if u, err := b.d.St.UserByTG(chat); err == nil {
-			b.send(chat, b.userText(u, false), keyboard{{{Text: b.t("refresh"), Data: "me"}}})
+			b.send(chat, b.userText(u, false), b.withSupport(chat, keyboard{{{Text: b.t("refresh"), Data: "me"}}}))
 		}
 		return
 	}
@@ -932,13 +970,16 @@ func (b *Bot) ticker() {
 	defer t.Stop()
 	n := 0
 	for range t.C {
+		if n++; n%60 == 1 {
+			b.pruneSupport() // the retention holds with the bot off too
+		}
 		b.mu.Lock()
 		on := b.token != ""
 		b.mu.Unlock()
 		if !on {
 			continue
 		}
-		if n++; n%5 == 0 {
+		if n%5 == 0 {
 			b.warnUsers()
 		}
 		if n%60 == 0 {

@@ -6,6 +6,7 @@ import {
   HeartPulse,
   Megaphone,
   HardDriveDownload,
+  LifeBuoy,
 } from "lucide-react";
 import { api, setUnauthorizedHandler, VERSION_LABEL, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
 import { ago, cx } from "./lib/format";
@@ -25,6 +26,7 @@ import { AnalyticsPage } from "./pages/Analytics";
 import { LogsPage } from "./pages/Logs";
 import { AlertsPage } from "./pages/Alerts";
 import { BroadcastPage } from "./pages/Broadcast";
+import { SupportPage, SUPPORT_EVENT } from "./pages/Support";
 import { SecurityPage } from "./pages/Security";
 import { NodesPage } from "./pages/Nodes";
 import { MissionControl } from "./pages/Mission";
@@ -35,9 +37,9 @@ import { CDNPage } from "./pages/CDN";
 
 // ================================================================= routes
 
-export type Page = "overview" | "users" | "broadcast" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
+export type Page = "overview" | "users" | "broadcast" | "support" | "protocols" | "routing" | "cdn" | "sales" | "wallet" | "network" | "nodes" | "analytics" | "logs" | "alerts" | "security" | "settings" | "mission";
 export type Route = { page: Page; arg?: string };
-const pages: Page[] = ["overview", "users", "broadcast", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
+const pages: Page[] = ["overview", "users", "broadcast", "support", "protocols", "routing", "cdn", "sales", "wallet", "network", "nodes", "analytics", "logs", "alerts", "security", "settings", "mission"];
 
 function parseHash(): Route {
   const [page, arg] = window.location.hash.replace(/^#\/?/, "").split("/");
@@ -54,6 +56,7 @@ export const navItems: NavItem[] = [
   { page: "overview", key: "overview", icon: LayoutDashboard, need: "reseller", group: "main" },
   { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "main" },
   { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "main" },
+  { page: "support", key: "support", icon: LifeBuoy, need: "reseller", group: "main" },
   { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "main" },
   { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "main" },
   { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "main" },
@@ -163,6 +166,17 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
     return () => { alive = false; clearInterval(id); };
   }, [isAdmin, prefs.quiet, toast, lang]);
 
+  // conversations with messages nobody opened, for the Support badge
+  const [supportUnread, setSupportUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api<{ unread: number }>("support/unread").then((c) => alive && setSupportUnread(c.unread)).catch(() => {});
+    load();
+    const id = setInterval(load, 15000);
+    window.addEventListener(SUPPORT_EVENT, load);
+    return () => { alive = false; clearInterval(id); window.removeEventListener(SUPPORT_EVENT, load); };
+  }, []);
+
   const unread = events.filter((e) => e.id > prefs.lastRead).length;
   const markRead = useCallback(() => set("lastRead", events[0]?.id ?? prefs.lastRead), [events, prefs.lastRead, set]);
 
@@ -192,7 +206,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
       <a href="#main" className="skip-link" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("skipToContent")}</a>
       <div className="aurora" aria-hidden />
       <div className={cx("relative z-[1] min-h-dvh md:grid transition-[grid-template-columns] duration-300 ease-out", focus ? "md:grid-cols-[0_1fr]" : collapsed ? "md:grid-cols-[84px_1fr]" : "md:grid-cols-[264px_1fr]")}>
-        {!focus ? <Sidebar items={items} page={page} me={me} status={status} unread={unread} onLogout={logout} /> : <span />}
+        {!focus ? <Sidebar items={items} page={page} me={me} status={status} unread={unread} supportUnread={supportUnread} onLogout={logout} /> : <span />}
 
         <div className="min-w-0 flex flex-col">
           {!focus && <Topbar page={page} arg={route.arg} me={me} status={status} events={events} unread={unread} markRead={markRead} onPalette={() => setPalette(true)} onLogout={logout} onMenu={() => setMobileNav(true)} />}
@@ -201,6 +215,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
               {page === "overview" && <OverviewPage />}
               {page === "users" && <UsersPage arg={route.arg} />}
               {page === "broadcast" && <BroadcastPage arg={route.arg} />}
+              {page === "support" && <SupportPage arg={route.arg} />}
               {page === "protocols" && <ProtocolsPage arg={route.arg} />}
               {page === "network" && <NetworkPage />}
               {page === "nodes" && <NodesPage />}
@@ -224,6 +239,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
             {items.slice(0, 4).map(({ page: p, key, icon: Icon }) => (
               <a key={p} href={"#/" + p} aria-current={page === p ? "page" : undefined} className={cx("relative flex flex-col items-center justify-center gap-1 h-16 text-[11px] transition-colors", page === p ? "text-ink" : "text-ink3")}>
                 {page === p && <span className="absolute top-0 h-[3px] w-10 rounded-b-full brand-gradient" />}
+                {p === "support" && supportUnread > 0 && <span className="absolute top-2.5 [inset-inline-start:calc(50%+6px)] size-2 rounded-full bg-primary2 shadow-[0_0_8px_var(--primary)]" aria-hidden />}
                 <Icon className={cx("size-5", page === p && "text-primary2")} />
                 {t(key)}
               </a>
@@ -233,7 +249,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
             </button>
           </nav>
         )}
-        {mobileNav && <MobileNav items={items} page={page} onClose={() => setMobileNav(false)} onPalette={() => { setMobileNav(false); setPalette(true); }} />}
+        {mobileNav && <MobileNav items={items} page={page} supportUnread={supportUnread} onClose={() => setMobileNav(false)} onPalette={() => { setMobileNav(false); setPalette(true); }} />}
       </div>
 
       {focus && (
@@ -248,7 +264,7 @@ function Shell({ me, reload, onOut }: { me: Me; reload: () => void; onOut: () =>
 
 // ================================================================= sidebar
 
-function Sidebar({ items, page, me, status, unread, onLogout }: { items: NavItem[]; page: Page; me: Me; status: StatusInfo | null; unread: number; onLogout: () => void }) {
+function Sidebar({ items, page, me, status, unread, supportUnread, onLogout }: { items: NavItem[]; page: Page; me: Me; status: StatusInfo | null; unread: number; supportUnread: number; onLogout: () => void }) {
   const { t, n } = useI18n();
   const { prefs, set, toggleFavorite } = usePrefs();
   const [q, setQ] = useState("");
@@ -258,7 +274,7 @@ function Sidebar({ items, page, me, status, unread, onLogout }: { items: NavItem
   const favs = items.filter((x) => prefs.favorites.includes(x.page));
   const groups: { id: NavItem["group"]; key: Key }[] = [{ id: "main", key: "navMain" }, { id: "monitor", key: "navMonitor" }, { id: "admin", key: "navAdmin" }];
   const healthy = status ? status.cores.every((c) => c.running || !c.installed) && status.problems === 0 : null;
-  const counter = (p: Page) => (p === "alerts" ? unread : p === "users" ? status?.online ?? 0 : 0);
+  const counter = (p: Page) => (p === "alerts" ? unread : p === "users" ? status?.online ?? 0 : p === "support" ? supportUnread : 0);
 
   const link = (x: NavItem, fav = false) => {
     const on = page === x.page;
@@ -273,7 +289,7 @@ function Sidebar({ items, page, me, status, unread, onLogout }: { items: NavItem
         {!collapsed && <span className="flex-1 truncate">{t(x.key)}</span>}
         {c > 0 && (collapsed
           ? <span className="absolute top-1.5 [inset-inline-end:14px] size-2 rounded-full bg-primary2" />
-          : <span className={cx("num text-[11px] rounded-full px-1.5 min-w-5 text-center", x.page === "alerts" ? "bg-bad/20 text-bad" : "bg-online/15 text-online")}>{n(c)}</span>)}
+          : <span className={cx("num text-[11px] rounded-full px-1.5 min-w-5 text-center", x.page === "alerts" ? "bg-bad/20 text-bad" : x.page === "support" ? "bg-primary/20 text-primary2" : "bg-online/15 text-online")}>{n(c)}</span>)}
         {!collapsed && !fav && (
           <button onClick={(e) => { e.preventDefault(); toggleFavorite(x.page); }} aria-label={t("pin")}
             className={cx("opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity", prefs.favorites.includes(x.page) && "opacity-100")}>
@@ -357,8 +373,8 @@ function Sidebar({ items, page, me, status, unread, onLogout }: { items: NavItem
   );
 }
 
-function MobileNav({ items, page, onClose, onPalette }: { items: NavItem[]; page: Page; onClose: () => void; onPalette: () => void }) {
-  const { t } = useI18n();
+function MobileNav({ items, page, supportUnread, onClose, onPalette }: { items: NavItem[]; page: Page; supportUnread: number; onClose: () => void; onPalette: () => void }) {
+  const { t, n } = useI18n();
   useEscape(true, onClose);
   return (
     <div className="md:hidden fixed inset-0 z-50">
@@ -368,7 +384,8 @@ function MobileNav({ items, page, onClose, onPalette }: { items: NavItem[]; page
         <button onClick={onPalette} className="w-full flex items-center gap-3 h-11 px-3 rounded-xl bg-fg/[.04] border border-hair text-ink3 text-[13px] mb-3"><Search className="size-4" />{t("searchAnything")}</button>
         <div className="grid grid-cols-3 gap-2">
           {items.map(({ page: p, key, icon: Icon }) => (
-            <a key={p} href={"#/" + p} className={cx("flex flex-col items-center gap-1.5 py-3 rounded-2xl text-[12px] border", page === p ? "border-primary/40 bg-primary/12 text-ink" : "border-hair text-ink2")}>
+            <a key={p} href={"#/" + p} className={cx("relative flex flex-col items-center gap-1.5 py-3 rounded-2xl text-[12px] border", page === p ? "border-primary/40 bg-primary/12 text-ink" : "border-hair text-ink2")}>
+              {p === "support" && supportUnread > 0 && <span className="absolute top-1.5 [inset-inline-end:8px] num text-[10.5px] rounded-full px-1.5 min-w-5 text-center bg-primary/20 text-primary2">{n(supportUnread)}</span>}
               <Icon className="size-5" />{t(key)}
             </a>
           ))}
@@ -400,7 +417,7 @@ function Topbar({ page, arg, me, status, events, unread, markRead, onPalette, on
           <a href="#/overview" className="text-ink3 hover:text-ink">Dunvex</a>
           <span className="text-ink3">/</span>
           <a href={"#/" + page} className={cx(arg ? "text-ink3 hover:text-ink" : "text-ink font-semibold")}>{item ? t(item.key) : ""}</a>
-          {arg && <><span className="text-ink3">/</span><span className="text-ink font-semibold truncate max-w-40" dir={crumb ? undefined : "ltr"}>{crumb ? t(crumb) : arg}</span></>}
+          {arg && page !== "support" && <><span className="text-ink3">/</span><span className="text-ink font-semibold truncate max-w-40" dir={crumb ? undefined : "ltr"}>{crumb ? t(crumb) : arg}</span></>}
         </nav>
 
         <button onClick={onPalette} className="ms-auto sm:ms-4 flex items-center gap-2 h-9 px-3 rounded-xl bg-fg/[.035] border border-hair text-ink3 text-[12.5px] hover:border-hair2 hover:text-ink2 transition-colors sm:w-64">
@@ -470,6 +487,7 @@ const kindMeta: Record<string, { icon: typeof Bell; color: string; key: Key }> =
   node: { icon: Server, color: "var(--cyan)", key: "nodes" },
   health: { icon: HeartPulse, color: "var(--color-classic)", key: "catHealth" },
   backup: { icon: HardDriveDownload, color: "var(--warn)", key: "catBackup" },
+  support: { icon: LifeBuoy, color: "var(--cyan)", key: "catSupport" },
 };
 export const eventMeta = (k: string) => kindMeta[k] ?? { icon: Bell, color: "var(--text2)", key: "events" as Key };
 

@@ -130,7 +130,7 @@ var addedColumns = []struct{ table, column, def string }{
 }
 
 func (s *Store) migrate() error {
-	for _, m := range append(append(append(append(migrations, accessTables...), nodeTables...), billingTables...), trialTables...) {
+	for _, m := range append(append(append(append(append(migrations, accessTables...), nodeTables...), billingTables...), trialTables...), supportTables...) {
 		if _, err := s.DB.Exec(m); err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
