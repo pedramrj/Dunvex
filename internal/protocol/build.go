@@ -16,9 +16,10 @@ type Env struct {
 	Domain     string // configured domain, may be empty
 	CertFile   string
 	KeyFile    string
-	SelfSigned bool   // certificate is self-signed: clients must skip verification
-	Listen     string // bind address for inbounds ("" = all interfaces)
-	CertSHA256 string // hex SHA-256 of the certificate, for pinning self-signed certs
+	SelfSigned bool      // certificate is self-signed: clients must skip verification
+	Listen     string    // bind address for inbounds ("" = all interfaces)
+	CertSHA256 string    // hex SHA-256 of the certificate, for pinning self-signed certs
+	Fragment   *Fragment // TLS fragment for Xray clients (links and the Xray JSON subscription); nil = off
 }
 
 type obj = map[string]any

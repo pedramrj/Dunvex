@@ -56,6 +56,40 @@ func XrayOutbound(link, tag string) (map[string]any, error) {
 	return o, nil
 }
 
+// privateNets never go through the VPN (no geo files needed for them).
+var privateNets = []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16",
+	"100.64.0.0/10", "fc00::/7", "fe80::/10", "::1/128"}
+
+// XrayClientConfig is one whole config of the Xray JSON subscription, in the
+// form v2rayNG, v2rayN and Streisand import: SOCKS on 10808 and HTTP on
+// 10809 (where those apps send the device's traffic), proxy as the way out,
+// local networks direct. directDomains and directIPs (Xray rule syntax) go
+// straight from the device too, resolved by its own DNS. No geo files are
+// named, so it runs whatever files the app has.
+func XrayClientConfig(remarks string, proxy map[string]any, directDomains, directIPs []string) map[string]any {
+	sniff := obj{"enabled": true, "destOverride": []string{"http", "tls", "quic"}, "routeOnly": true}
+	rules := []obj{{"type": "field", "ip": privateNets, "outboundTag": "direct"}}
+	servers := []any{"https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"}
+	if len(directDomains) > 0 {
+		rules = append(rules, obj{"type": "field", "domain": directDomains, "outboundTag": "direct"})
+		servers = append(servers, obj{"address": "localhost", "domains": directDomains, "skipFallback": true})
+	}
+	if len(directIPs) > 0 {
+		rules = append(rules, obj{"type": "field", "ip": directIPs, "outboundTag": "direct"})
+	}
+	return obj{
+		"remarks": remarks,
+		"log":     obj{"loglevel": "warning"},
+		"dns":     obj{"servers": servers, "queryStrategy": "UseIP"},
+		"inbounds": []obj{
+			{"tag": "socks", "listen": "127.0.0.1", "port": 10808, "protocol": "socks", "settings": obj{"auth": "noauth", "udp": true}, "sniffing": sniff},
+			{"tag": "http", "listen": "127.0.0.1", "port": 10809, "protocol": "http", "sniffing": sniff},
+		},
+		"outbounds": []obj{proxy, {"tag": "direct", "protocol": "freedom"}},
+		"routing":   obj{"domainStrategy": "AsIs", "rules": rules},
+	}
+}
+
 // linkAddr is the server address and port of a parsed link.
 func linkAddr(u *url.URL) (string, int, error) {
 	host, ps := u.Hostname(), u.Port()

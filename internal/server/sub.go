@@ -67,6 +67,9 @@ func (s *Server) serveSub(w http.ResponseWriter, r *http.Request, rest string) {
 	case "singbox", "sing-box", "json":
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.Write(s.singboxProfile(u, now))
+	case "xray", "xray-json", "v2ray":
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Write(s.xrayProfile(u, now))
 	case "info":
 		writeJSON(w, 200, s.view(r, u, s.Mgr.OnlineUsers(60)))
 	case "conf":
@@ -253,6 +256,40 @@ func (s *Server) clashProfile(u *store.User, now int64) []byte {
 	return b.Bytes()
 }
 
+// xrayProfile is the Xray JSON subscription: one whole Xray config per config
+// of the user, for v2rayNG, v2rayN and Streisand. Unlike plain links it
+// carries the routing (local networks and, when on, Iranian sites direct) and
+// the TLS fragment for every TCP config with TLS or Reality, VMess included.
+// Configs Xray cannot open (TUIC, AnyTLS, Mieru, AmneziaWG…) are left out.
+func (s *Server) xrayProfile(u *store.User, now int64) []byte {
+	var domains, ips []string
+	if ir := s.iranDirect(); ir != nil {
+		domains, ips = ir.xrayDomains(), ir.cidr4
+	}
+	out := []map[string]any{}
+	placeholder := func(name string) {
+		o, _ := protocol.XrayOutbound(dummyLink(name), "proxy")
+		out = append(out, protocol.XrayClientConfig(name, o, nil, nil))
+	}
+	if reason := blockedReason(u, now); reason != "" {
+		placeholder(reason)
+	} else {
+		if s.St.GetSetting("sub_info_entry", "true") == "true" {
+			placeholder(statusLine(u, now))
+		}
+		for _, it := range s.items(u) {
+			o, err := protocol.XrayOutbound(protocol.Link(it.p, it.in, u, it.env, it.name), "proxy")
+			if err != nil {
+				continue
+			}
+			protocol.WithFragment(o, it.env.Fragment)
+			out = append(out, protocol.XrayClientConfig(it.name, o, domains, ips))
+		}
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	return b
+}
+
 func (s *Server) singboxProfile(u *store.User, now int64) []byte {
 	var outbounds, endpoints []obj
 	var tags []string
@@ -357,6 +394,7 @@ func appLinks(sub, name string) []appLink {
 	return []appLink{
 		{"Hiddify", "all", "hiddify://import/" + sub + "#" + n},
 		{"v2rayNG", "android", "v2rayng://install-config?url=" + e + "#" + n},
+		{"v2rayNG · Xray JSON", "android", "v2rayng://install-config?url=" + url.QueryEscape(sub+"/xray") + "#" + n},
 		{"Happ", "all", "happ://add/" + sub},
 		{"NekoBox", "android", "sn://subscription?url=" + e + "&name=" + n},
 		{"Streisand", "ios", "streisand://import/" + sub + "#" + n},

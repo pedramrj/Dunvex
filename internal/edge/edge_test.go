@@ -237,3 +237,89 @@ func TestFallback(t *testing.T) {
 		r.Close()
 	}
 }
+
+// fragmentHello splits a ClientHello record into handshake records of size
+// bytes each, as Xray's TLS fragment ("tlshello") sends it.
+func fragmentHello(rec []byte, size int) []byte {
+	body := rec[5:]
+	var out []byte
+	for len(body) > 0 {
+		n := min(size, len(body))
+		out = append(out, 0x16, rec[1], rec[2], byte(n>>8), byte(n))
+		out = append(out, body[:n]...)
+		body = body[n:]
+	}
+	return out
+}
+
+// A ClientHello in many small records (TLS fragment on the client) still
+// finds its protocol by name, and reaches it byte for byte.
+func TestFragmentedHello(t *testing.T) {
+	r, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	go r.Serve()
+	type delivery struct {
+		to string
+		b  []byte
+	}
+	got := make(chan delivery, 2)
+	backend := func(name string) string {
+		l, _ := net.Listen("tcp", "127.0.0.1:0")
+		go func() {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			c.SetReadDeadline(time.Now().Add(3 * time.Second))
+			b, _ := io.ReadAll(c)
+			got <- delivery{name, b}
+			c.Close()
+			l.Close()
+		}()
+		return l.Addr().String()
+	}
+	right, wrong := backend("right"), backend("wrong")
+	r.SetRoutes(map[string]Target{"www.microsoft.com": {Addr: right}, "www.speedtest.net": {Addr: wrong}, Fallback: {Addr: wrong}})
+
+	for _, size := range []int{7, 100, 150} {
+		frag := fragmentHello(clientHello(t, "www.microsoft.com"), size)
+		br := bufio.NewReaderSize(strings.NewReader(string(frag)), 16<<10)
+		if sni := peekServerName(br); sni != "www.microsoft.com" {
+			t.Fatalf("pieces of %d bytes: %q", size, sni)
+		}
+		if b, _ := br.Peek(len(frag)); string(b) != string(frag) {
+			t.Fatal("bytes were consumed")
+		}
+	}
+
+	// through the router, the pieces sent with pauses between them
+	frag := fragmentHello(clientHello(t, "www.microsoft.com"), 100)
+	c, err := net.Dial("tcp", r.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(frag); i += 105 {
+		c.Write(frag[i:min(i+105, len(frag))])
+		time.Sleep(5 * time.Millisecond)
+	}
+	c.(*net.TCPConn).CloseWrite()
+	select {
+	case d := <-got:
+		if d.to != "right" || string(d.b) != string(frag) {
+			t.Fatalf("the %s backend got %d bytes, want the right one with %d", d.to, len(d.b), len(frag))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("nothing reached a backend")
+	}
+	c.Close()
+
+	// a broken second record: no name, so the fallback answers
+	bad := fragmentHello(clientHello(t, "www.microsoft.com"), 100)
+	bad[105] = 0x17
+	if sni := peekServerName(bufio.NewReaderSize(strings.NewReader(string(bad)), 16<<10)); sni != "" {
+		t.Fatalf("a broken hello gave %q", sni)
+	}
+}

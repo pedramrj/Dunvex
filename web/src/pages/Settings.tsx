@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Bot, Palette, Sparkles, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
+  Bot, Palette, Sparkles, Cpu, Download, Globe, HardDriveDownload, KeyRound, LayoutPanelLeft, Link2, Plus, RefreshCw, Scissors, ScrollText, Send, ShieldCheck, ShieldOff, Trash2, Upload,
   UserCog, Users as UsersIcon, Webhook,
 } from "lucide-react";
 import { api, BASE, VERSION, type Admin, type CoreStatus, type Role } from "../lib/api";
@@ -161,6 +161,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
 
   if (tab === "sub")
     return (
+      <>
       <Panel icon={<Link2 className="size-4" />} title={t("subscription")}>
         <div className="grid sm:grid-cols-2 gap-4">
           <label><Label>{t("subTitle")}</Label><Input value={s.sub_title ?? ""} onChange={(e) => set("sub_title", e.target.value)} /></label>
@@ -172,6 +173,26 @@ function OwnerSettings({ tab }: { tab: TabId }) {
         <div className="mt-5"><Toggle checked={s.sub_info_entry !== "false"} onChange={(v) => set("sub_info_entry", String(v))} label={t("infoEntry")} /></div>
         <SaveBar keys={["sub_title", "sub_update_hours", "support_url", "announce", "sub_base_url", "sub_info_entry"]} />
       </Panel>
+      <Panel icon={<Scissors className="size-4" />} title={t("fragment")} sub={t("fragmentSub")}
+        action={<Badge color={s.fragment === "true" ? "var(--color-online)" : "var(--color-ink3)"}>{s.fragment === "true" ? t("on") : t("off")}</Badge>}>
+        <p className="text-[13.5px] text-ink2 leading-relaxed max-w-[70ch]">{t("fragmentHelp")}</p>
+        <div className="mt-4"><Toggle checked={s.fragment === "true"} onChange={(v) => set("fragment", String(v))} label={t("fragmentOn")} /></div>
+        {s.fragment === "true" && (
+          <div className="mt-5 grid sm:grid-cols-3 gap-4">
+            <label>
+              <Label>{t("fragPackets")}</Label>
+              <Select value={s.fragment_packets || "tlshello"} onChange={(v) => set("fragment_packets", v)}
+                options={[{ value: "tlshello", label: t("fragHello") }, { value: "1-1", label: t("fragFirst") }, { value: "1-3", label: t("fragFirst3") },
+                  ...(["tlshello", "1-1", "1-3"].includes(s.fragment_packets || "tlshello") ? [] : [{ value: s.fragment_packets, label: s.fragment_packets }])]} />
+            </label>
+            <label><Label hint={<span className="mono">bytes</span>}>{t("fragLength")}</Label><Input dir="ltr" className="mono" value={s.fragment_length ?? "100-200"} placeholder="100-200" onChange={(e) => set("fragment_length", e.target.value)} /></label>
+            <label><Label hint={<span className="mono">ms</span>}>{t("fragDelay")}</Label><Input dir="ltr" className="mono" value={s.fragment_delay ?? "10-20"} placeholder="10-20" onChange={(e) => set("fragment_delay", e.target.value)} /></label>
+          </div>
+        )}
+        <p className="mt-4 text-[12px] text-ink3 leading-relaxed max-w-[70ch]">{t("fragmentNote")}</p>
+        <SaveBar keys={["fragment", "fragment_packets", "fragment_length", "fragment_delay"]} />
+      </Panel>
+      </>
     );
 
   if (tab === "panel")

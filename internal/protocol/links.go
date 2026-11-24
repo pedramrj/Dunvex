@@ -95,6 +95,12 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		}
 	}
 
+	addFragment := func() {
+		if env.Fragment != nil && Fragmentable(p) {
+			q.Set("fm", fragmentMask(env.Fragment))
+		}
+	}
+
 	switch p.proto {
 	case "vless":
 		q.Set("encryption", "none")
@@ -106,6 +112,7 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 		}
 		addTransport()
 		addSecurity()
+		addFragment()
 		if p.transport == "xdns" {
 			h, port := xdnsTarget(in, env)
 			return "vless://" + u.UUID + "@" + hostPort(h, port) + "?" + q.Encode() + frag
@@ -130,6 +137,7 @@ func Link(p *Preset, in *store.Inbound, u *store.User, env Env, remark string) s
 	case "trojan":
 		addTransport()
 		addSecurity()
+		addFragment()
 		return "trojan://" + url.PathEscape(u.Password) + "@" + hostPort(host, in.Port) + "?" + q.Encode() + frag
 	case "vmess":
 		v := obj{"v": "2", "ps": remark, "add": host, "port": strconv.Itoa(in.Port), "id": u.UUID, "aid": "0",

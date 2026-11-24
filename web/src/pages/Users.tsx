@@ -585,6 +585,13 @@ function UserDetail({ u, onClose, onChanged }: { u: User; onClose: () => void; o
               <a className="inline-flex items-center gap-1.5 text-[13px] text-primary2 hover:text-ink" href={cur.subUrl} target="_blank" rel="noreferrer">{t("openUserPage")} <ExternalLink className="size-3.5" /></a>
             </div>
           </div>
+          <div className="mt-4 pt-3 border-t border-hair">
+            <div className="flex items-baseline justify-between gap-2 mb-1.5 text-[12.5px]">
+              <span className="font-medium text-ink2">{t("xrayJson")}</span>
+              <span className="text-ink3">v2rayNG · v2rayN · Streisand</span>
+            </div>
+            <CopyField value={cur.subUrl + "/xray"} />
+          </div>
         </Panel>
 
         <div className="grid grid-cols-2 gap-3 text-[12.5px] text-ink2">

@@ -120,3 +120,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Config health: every config (each protocol on every server, its CDN and relay copies) tried from the server with
       real client cores (Xray, sing-box, dnstt) on a schedule and on demand, with alerts and metrics (v1.24). See
       [CONFIG-HEALTH.md](CONFIG-HEALTH.md)
+- [x] Xray JSON subscription (whole configs with routing for v2rayNG, v2rayN and Streisand) and the TLS fragment for
+      every TLS and Reality config, in the links (`fm`) and that subscription; the router on 443 reads fragmented
+      ClientHellos (v1.25). See [XRAY-JSON.md](XRAY-JSON.md)

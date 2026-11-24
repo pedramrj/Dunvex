@@ -73,6 +73,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
   and on demand. The Overview shows how many work, the failures with the reason, and how long a page took through each
   one; a config that stops working or works again reaches Telegram, webhooks and Prometheus.
   See [docs/CONFIG-HEALTH.md](docs/CONFIG-HEALTH.md).
+- **Xray JSON subscription and TLS fragment (v1.25)**: every user also gets their configs as whole Xray configs (with
+  routing and DNS) for v2rayNG, v2rayN and Streisand, one tap from the user page; and the owner can turn on the TLS
+  fragment (the ClientHello sent in small pieces) for every TLS and Reality config, in the links and in that
+  subscription. See [docs/XRAY-JSON.md](docs/XRAY-JSON.md).
 - **CDN helper (v1.17)**: put the CDN protocols behind Cloudflare. Their configs go through the CDN name plus one per
   clean address (labelled, for example by operator); a check tries the DNS, each protocol through the CDN and straight
   to the server, and each clean address, explaining Cloudflare's errors; and one click with your own API token (never
@@ -173,6 +177,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
   و هر وقت بخواهید. صفحهٔ «نمای کلی» نشان می‌دهد چندتا کار می‌کنند، خرابی‌ها با دلیلشان، و یک صفحه از راه هرکدام چقدر
   طول کشید. کانفیگی که از کار بیفتد یا دوباره درست شود به تلگرام، وب‌هوک‌ها و Prometheus خبر داده می‌شود.
   راهنما: [docs/CONFIG-HEALTH.md](docs/CONFIG-HEALTH.md).
+- **اشتراک Xray JSON و Fragment (نسخهٔ ۱.۲۵)**: هر کاربر کانفیگ‌هایش را به شکل کانفیگ کامل Xray (با مسیریابی و DNS) هم
+  می‌گیرد، برای v2rayNG، v2rayN و Streisand، با یک لمس از صفحهٔ کاربر؛ و مالک می‌تواند Fragment (فرستادن ClientHello در
+  تکه‌های کوچک) را برای همهٔ کانفیگ‌های TLS و Reality روشن کند، هم در لینک‌ها و هم در همین اشتراک.
+  راهنما: [docs/XRAY-JSON.md](docs/XRAY-JSON.md).
 - **دستیار CDN (نسخهٔ ۱.۱۷)**: پروتکل‌های CDN پشت کلادفلر؛ کانفیگ‌ها از راه نام CDN و یکی هم برای هر آی‌پی تمیز (با
   برچسب، مثلاً نام اپراتور)؛ بررسی DNS، هر پروتکل از راه CDN و مستقیم و هر آی‌پی تمیز با توضیح خطاهای کلادفلر؛ و با یک
   کلیک و توکن API خودتان (که ذخیره نمی‌شود) رکورد DNS پروکسی ساخته و SSL/TLS و WebSockets درست می‌شود. راهنما:

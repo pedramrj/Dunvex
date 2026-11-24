@@ -163,12 +163,7 @@ func (r *Router) handle(c net.Conn) {
 	sni, isTLS := "", false
 	if hdr, err := br.Peek(5); err == nil && hdr[0] == 0x16 && hdr[1] == 0x03 {
 		isTLS = true
-		n := int(hdr[3])<<8 | int(hdr[4])
-		if n > 0 && n <= 16<<10 {
-			if rec, err := br.Peek(5 + n); err == nil {
-				sni = ServerName(rec[5:])
-			}
-		}
+		sni = peekServerName(br)
 	} else if err != nil {
 		c.Close()
 		return
@@ -251,6 +246,40 @@ func proxyHeader(src, dst net.Addr) string {
 		fam, sip, dip = "TCP6", s.IP.To16(), d.IP.To16()
 	}
 	return fmt.Sprintf("PROXY %s %s %s %d %d\r\n", fam, sip, dip, s.Port, d.Port)
+}
+
+// peekServerName reads the ClientHello's SNI without consuming anything. A
+// client with TLS fragment on (Xray's "tlshello") splits the ClientHello over
+// many small handshake records; they are joined until the message is whole.
+func peekServerName(br *bufio.Reader) string {
+	var hello []byte
+	off := 0
+	for records := 0; records < 512; records++ {
+		hdr, err := br.Peek(off + 5)
+		if err != nil {
+			return ""
+		}
+		h := hdr[off:]
+		if h[0] != 0x16 || h[1] != 0x03 {
+			return ""
+		}
+		n := int(h[3])<<8 | int(h[4])
+		if n == 0 || n > 16<<10 {
+			return ""
+		}
+		rec, err := br.Peek(off + 5 + n)
+		if err != nil {
+			return "" // longer than the buffer: no name, the fallback answers
+		}
+		hello = append(hello, rec[off+5:]...)
+		off += 5 + n
+		if len(hello) >= 4 {
+			if need := 4 + (int(hello[1])<<16 | int(hello[2])<<8 | int(hello[3])); len(hello) >= need {
+				return ServerName(hello[:need])
+			}
+		}
+	}
+	return ""
 }
 
 // ServerName reads the SNI from a TLS handshake message (a ClientHello, without the record header).

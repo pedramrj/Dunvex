@@ -363,7 +363,7 @@ func (s *Server) envFor(in *store.Inbound, local protocol.Env, nodes map[int64]*
 	if n == nil {
 		return local
 	}
-	e := protocol.Env{Host: n.Address, Domain: n.Domain}
+	e := protocol.Env{Host: n.Address, Domain: n.Domain, Fragment: local.Fragment}
 	if !n.RealCert {
 		e.SelfSigned, e.CertSHA256 = true, n.CertSHA256
 	}

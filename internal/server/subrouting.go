@@ -88,6 +88,22 @@ func (l *iranLists) singboxDomains() obj {
 	return r
 }
 
+// xrayDomains is the domain part in Xray's rule syntax.
+func (l *iranLists) xrayDomains() []string {
+	var out []string
+	for _, d := range l.suffix {
+		out = append(out, "domain:"+d)
+	}
+	for _, d := range l.full {
+		out = append(out, "full:"+d)
+	}
+	out = append(out, l.keyword...) // a plain word matches as a keyword
+	for _, d := range l.regex {
+		out = append(out, "regexp:"+d)
+	}
+	return out
+}
+
 // clashRules are Clash Meta rule lines that send Iranian sites direct.
 func (l *iranLists) clashRules() []string {
 	var out []string

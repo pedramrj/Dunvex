@@ -132,7 +132,37 @@ func (s *Server) Env() protocol.Env {
 	if env.SelfSigned && env.CertFile != "" {
 		env.CertSHA256 = util.CertSHA256(env.CertFile)
 	}
+	env.Fragment = s.fragment()
 	return env
+}
+
+// Fragment settings (see protocol.Fragment).
+const (
+	fragmentSetting        = "fragment"
+	fragmentPacketsSetting = "fragment_packets"
+	fragmentLengthSetting  = "fragment_length"
+	fragmentDelaySetting   = "fragment_delay"
+)
+
+// fragmentFrom reads the fragment settings from get (nil when it is off).
+func fragmentFrom(get func(k, def string) string) *protocol.Fragment {
+	if get(fragmentSetting, "false") != "true" {
+		return nil
+	}
+	f := protocol.Fragment{
+		Packets: get(fragmentPacketsSetting, protocol.FragmentPackets),
+		Length:  get(fragmentLengthSetting, protocol.FragmentLength),
+		Delay:   get(fragmentDelaySetting, protocol.FragmentDelay),
+	}
+	if f.Check() != nil {
+		f = protocol.Fragment{Packets: protocol.FragmentPackets, Length: protocol.FragmentLength, Delay: protocol.FragmentDelay}
+	}
+	return &f
+}
+
+// fragment is the TLS fragment Xray clients get, nil when the owner keeps it off.
+func (s *Server) fragment() *protocol.Fragment {
+	return fragmentFrom(func(k, def string) string { return s.St.GetSetting(k, def) })
 }
 
 // PublicBase returns the base URL the server is reachable at (for subscription links).

@@ -1187,6 +1187,7 @@ func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
 var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
 	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
 	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes", "sub_accent", healthHoursSetting,
+	fragmentSetting, fragmentPacketsSetting, fragmentLengthSetting, fragmentDelaySetting,
 	"tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_backup", "tg_user_bot", "tg_api"}
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -1197,7 +1198,9 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	defaults := map[string]string{"sub_title": "Dunvex", "sub_update_hours": "12", "block_torrent": "true",
 		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true",
-		"ip_pause_minutes": "10", healthHoursSetting: healthDefaultHours, "tg_lang": "fa", "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
+		"ip_pause_minutes": "10", healthHoursSetting: healthDefaultHours, "tg_lang": "fa",
+		fragmentSetting: "false", fragmentPacketsSetting: protocol.FragmentPackets, fragmentLengthSetting: protocol.FragmentLength,
+		fragmentDelaySetting: protocol.FragmentDelay, "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
 	for k, v := range defaults {
 		if out[k] == "" {
 			out[k] = v
@@ -1228,6 +1231,31 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	allowed := map[string]bool{}
 	for _, k := range editableSettings {
 		allowed[k] = true
+	}
+	// the fragment's parts are checked together, as they will be used
+	fragChanged := false
+	for _, k := range []string{fragmentSetting, fragmentPacketsSetting, fragmentLengthSetting, fragmentDelaySetting} {
+		if v, ok := in[k]; ok {
+			in[k] = strings.TrimSpace(v)
+			fragChanged = fragChanged || in[k] != s.St.GetSetting(k, "")
+		}
+	}
+	if fragChanged {
+		get := func(k, def string) string {
+			if v, ok := in[k]; ok && v != "" {
+				return v
+			}
+			return s.St.GetSetting(k, def)
+		}
+		f := protocol.Fragment{Packets: get(fragmentPacketsSetting, protocol.FragmentPackets),
+			Length: get(fragmentLengthSetting, protocol.FragmentLength), Delay: get(fragmentDelaySetting, protocol.FragmentDelay)}
+		if err := f.Check(); err != nil {
+			fail(w, 400, "fragment: "+err.Error())
+			return
+		}
+		if v, ok := in[fragmentSetting]; ok && v != "true" {
+			in[fragmentSetting] = "false"
+		}
 	}
 	needRestart := false
 	for k, v := range in {
@@ -1301,6 +1329,9 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.St.Log("settings", "settings updated")
 	s.Mgr.RequestApply()
+	if fragChanged && engine.HealthUser(s.St) != nil {
+		s.CheckConfigs() // links changed: see at once whether every config still works
+	}
 	if s.Bot != nil {
 		s.Bot.Reload()
 	}
