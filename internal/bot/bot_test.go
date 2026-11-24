@@ -26,6 +26,7 @@ type fakeTelegram struct {
 	nextID  int64
 	sent    []map[string]any // method + fields
 	methods []string
+	members map[string]string // user id → channel membership status (getChatMember)
 }
 
 func (f *fakeTelegram) push(u map[string]any) {
@@ -52,6 +53,14 @@ func (f *fakeTelegram) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch method {
 	case "getMe":
 		result = map[string]any{"id": 1, "username": "dunvex_test_bot"}
+	case "getChatMember":
+		f.mu.Lock()
+		st := f.members[jsonNum(fields["user_id"].(float64))]
+		f.mu.Unlock()
+		if st == "" {
+			st = "left"
+		}
+		result = map[string]any{"status": st}
 	case "getUpdates":
 		time.Sleep(30 * time.Millisecond)
 		f.mu.Lock()

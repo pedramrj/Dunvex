@@ -79,6 +79,7 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | POST | `/backups/check-bucket` | O | Write a test file to an S3-compatible bucket |
 | GET / DELETE | `/backups/{name}` | O | Download or delete a stored backup |
 | POST | `/backups/{name}/restore` | O | Restore a stored backup (the panel restarts) |
+| GET / PUT | `/trial` | O | The bot's free trial: settings, numbers and the latest trials; see [TRIAL.md](TRIAL.md) |
 | GET | `/backup` | O | Download the database |
 | GET / POST | `/update` | O | Check for, or install, a new Dunvex version |
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |

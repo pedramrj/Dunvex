@@ -220,6 +220,25 @@ export interface Preset {
   fields: Field[];
 }
 
+/** The free trial the Telegram bot gives (Settings › Telegram). */
+export interface TrialSettings {
+  on: boolean;
+  dataMB: number; // 0 = no limit
+  hours: number;
+  devices: number; // 0 = no limit
+  inbounds: number[]; // empty = every protocol
+  daily: number; // 0 = no cap
+  channel: string; // "@name" to join first, "" = none
+  cleanupDays: number; // 0 = keep ended trials
+}
+
+export interface TrialInfo {
+  settings: TrialSettings;
+  stats: { total: number; day: number; bought: number; active: number };
+  recent: { chat: number; userId: number; name: string; at: number; ends: number; bought: boolean; status: string }[];
+  bot?: { configured: boolean; username: string };
+}
+
 /** A backup kept on the server (Settings › Backup). */
 export interface BackupFile {
   name: string;

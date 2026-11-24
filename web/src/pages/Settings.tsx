@@ -12,6 +12,7 @@ import {
 import { PageHead, can, roleColor, roleKey, useSession } from "../App";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
 import { BackupsTab } from "../components/Backups";
+import { TrialPanel } from "../components/Trial";
 import { Logo } from "../components/Logo";
 import { IntegrationsTab } from "./Integrations";
 
@@ -213,6 +214,7 @@ function OwnerSettings({ tab }: { tab: TabId }) {
   // telegram
   const tg = info.telegram;
   return (
+    <>
     <Panel icon={<Bot className="size-4" />} title={t("telegram")} sub={t("botFeatures")}
       action={tg?.configured ? <Badge color={tg.running ? "var(--color-online)" : "var(--color-bad)"}><Dot color={tg.running ? "var(--color-online)" : "var(--color-bad)"} size={6} pulse={tg.running} />{tg.running ? (tg.username ? "@" + tg.username : t("botRunning")) : t("botStopped")}</Badge> : undefined}>
       {tg?.error && <div className="mb-4 rounded-xl border border-bad/40 bg-bad/[.07] px-3 py-2 text-[12.5px] mono" dir="ltr">{tg.error}</div>}
@@ -234,6 +236,8 @@ function OwnerSettings({ tab }: { tab: TabId }) {
         <Button variant="primary" loading={busy} onClick={() => save(["tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_api", "tg_backup", "tg_user_bot"])}>{t("save")}</Button>
       </div>
     </Panel>
+    <TrialPanel />
+    </>
   );
 }
 

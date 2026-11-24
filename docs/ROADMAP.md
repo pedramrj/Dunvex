@@ -129,3 +129,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] Automatic backups: scheduled and before updates, rotated, sent to Telegram and an S3-compatible bucket, optional
       passphrase encryption, restore from the list or an uploaded .db/.gz/.enc file, failures as alerts (v1.27). See
       [BACKUP.md](BACKUP.md)
+- [x] Free trial in the bot: one per Telegram account, chosen data, hours, devices and protocols, a daily cap, an
+      optional channel to join, the shop offered at the end, ended trials removed, and how many bought (v1.28). See
+      [TRIAL.md](TRIAL.md)

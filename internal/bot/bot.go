@@ -60,6 +60,8 @@ type Bot struct {
 	lastDaily string
 	sent      []time.Time // alert rate limit
 
+	channelErr string // the last error checking a trial channel (reported once)
+
 	bc     broadcasting               // one message to many users (see broadcast.go)
 	drafts map[int64]BroadcastRequest // admin chat → the broadcast waiting for "send"
 }
@@ -398,6 +400,10 @@ func (b *Bot) onText(chat int64, text string) {
 		return
 	}
 	if !admin {
+		if text == "/trial" {
+			b.giveTrial(chat)
+			return
+		}
 		if text != "" && b.onReceipt(chat, "", text) {
 			return
 		}
@@ -460,7 +466,11 @@ func (b *Bot) sendUserCard(chat int64, u *store.User) {
 // otherwise how to link a subscription.
 func (b *Bot) greet(chat int64) {
 	if b.shopOn() {
-		b.send(chat, b.t("shop_hello"), b.buyerMenu(chat))
+		b.send(chat, b.t("shop_hello"), b.buyerMenu(chat)) // with the trial in it, when offered
+		return
+	}
+	if b.trialOffered(chat) {
+		b.send(chat, fmt.Sprintf(b.t("trial_offer"), b.trialSize(LoadTrial(b.d.St))), keyboard{b.trialButton()})
 		return
 	}
 	b.send(chat, fmt.Sprintf(b.t("unknown"), chat), nil)
@@ -480,6 +490,10 @@ func (b *Bot) mainMenu() keyboard {
 func (b *Bot) backMenu() keyboard { return keyboard{{{Text: b.t("b_back"), Data: "m"}}} }
 
 func (b *Bot) onButton(chat, msg int64, data string) {
+	if data == "tr" {
+		b.giveTrial(chat)
+		return
+	}
 	if data == "me" {
 		if u, err := b.d.St.UserByTG(chat); err == nil {
 			b.send(chat, b.userText(u, false), keyboard{{{Text: b.t("refresh"), Data: "me"}}})
@@ -927,6 +941,9 @@ func (b *Bot) ticker() {
 		if n++; n%5 == 0 {
 			b.warnUsers()
 		}
+		if n%60 == 0 {
+			b.cleanTrials()
+		}
 		b.daily()
 	}
 }
@@ -982,10 +999,12 @@ func (b *Bot) warnUsers() {
 		return
 	}
 	now := time.Now().Unix()
+	trials := b.d.St.TrialUsers()
 	for _, u := range users {
 		if u.TGChat == 0 {
 			continue
 		}
+		_, trial := trials[u.ID]
 		flags := map[string]bool{}
 		for _, f := range strings.Split(u.Notified, ",") {
 			if f != "" {
@@ -1011,7 +1030,18 @@ func (b *Bot) warnUsers() {
 		if key == "" || flags[key] {
 			continue
 		}
-		if b.send(u.TGChat, "🔔 "+text+"\n\n"+b.userText(u, false), keyboard{{{Text: b.t("refresh"), Data: "me"}}}) == nil {
+		kb := keyboard{{{Text: b.t("refresh"), Data: "me"}}}
+		if trial {
+			// a trial is short: no running-out notes, only its end, with the shop
+			if key != "lim" && key != "exp" {
+				continue
+			}
+			text = b.t("trial_over")
+			if k := b.afterTrialMenu(u.TGChat); k != nil {
+				kb = append(k, kb...)
+			}
+		}
+		if b.send(u.TGChat, "🔔 "+text+"\n\n"+b.userText(u, false), kb) == nil {
 			flags[key] = true
 			var list []string
 			for f := range flags {
