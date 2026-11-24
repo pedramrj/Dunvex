@@ -277,6 +277,8 @@ need_deps() {
   NEED=()
   for c in curl tar; do command -v "$c" >/dev/null 2>&1 || NEED+=("$c"); done
   [ -e /etc/ssl/certs/ca-certificates.crt ] || [ -e /etc/pki/tls/certs/ca-bundle.crt ] || NEED+=(ca-certificates)
+  # AmneziaWG (on by default) sends its clients out through NAT
+  command -v iptables >/dev/null 2>&1 || command -v nft >/dev/null 2>&1 || NEED+=(iptables)
 }
 install_deps() {
   if command -v apt-get >/dev/null 2>&1; then
@@ -457,11 +459,12 @@ do_install() {
   [ -n "${DUNVEX_USER:-}" ] && args+=(--user "$DUNVEX_USER")
   [ -n "${DUNVEX_PASS:-}" ] && args+=(--pass "$DUNVEX_PASS")
   export DUNVEX_HOME="$HOME_DIR"
-  TASK_NOTE="xray + sing-box + geoip + starter protocols" task CORES "cores and admin" bash -c "umask 077; '$BIN' setup ${args[*]:-} > '$HOME_DIR/install-info.txt'"
+  TASK_NOTE="cores + geoip + 8 protocols" task CORES "cores and admin" bash -c "umask 077; '$BIN' setup ${args[*]:-} > '$HOME_DIR/install-info.txt'"
   chmod 600 "$HOME_DIR/install-info.txt"
   TASK_NOTE="bbr · fq · fast open" task TUNE "network tuning" tune_network
-  # open the panel's port and the starter protocols' ports (usually all 443: TCP for
-  # the panel + Reality, UDP for Hysteria2), each once
+  # open the panel's port and the starter protocols' ports (443 TCP for the panel,
+  # Reality, XHTTP, TrustTunnel and the Telegram proxy; 443 UDP for Hysteria2; one
+  # each for AmneziaWG and Mieru), each once
   local panel_port fw_ports=() p
   panel_port=$(sed -n 's/.*Panel: *http[^:]*:\/\/[^:]*:\([0-9]*\)\/.*/\1/p' "$HOME_DIR/install-info.txt" | head -n1)
   for p in "${panel_port:-2096}" $(grep 'starter inbounds' "$HOME_DIR/install-info.txt" | grep -o '(port [0-9]*' | grep -o '[0-9]*$'); do

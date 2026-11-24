@@ -17,6 +17,9 @@ var xicmpCheck struct {
 	ok bool
 }
 
+// XICMPReady reports why xICMP cannot run on this server, or nil.
+func XICMPReady() error { return xicmpReady() }
+
 // xicmpReady reports why raw ICMP sockets cannot be opened here, or nil.
 // Success is remembered; a failure is tried again at the next apply.
 var xicmpReady = func() error {

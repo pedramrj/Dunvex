@@ -380,7 +380,7 @@ func setup(home string, args []string) error {
 	user := fsf.String("user", "", "admin username")
 	pass := fsf.String("pass", "", "admin password (random when empty)")
 	noCores := fsf.Bool("no-cores", false, "skip downloading cores")
-	starter := fsf.Bool("starter", true, "create a starter Reality inbound and a demo user on a fresh install")
+	starter := fsf.Bool("starter", true, "turn on every protocol that needs no domain on a fresh install")
 	fsf.Parse(args)
 	st, err := openStore(home)
 	if err != nil {
@@ -458,22 +458,21 @@ func setup(home string, args []string) error {
 	}
 	if fresh && *starter {
 		if list, _ := st.Inbounds(); len(list) == 0 {
-			// 443 for everything when we can: Reality shares the panel's TCP port
-			// by SNI, Hysteria2 takes UDP 443 and looks like ordinary HTTP/3
-			pp, _ := strconv.Atoi(st.GetSetting("panel_port", "0"))
-			pr := protocol.Get("vless-reality-universal")
-			port := 443
-			if port != pp && !util.FreePort(port) {
-				port = 8443
-			}
-			st.CreateInbound(&store.Inbound{Preset: pr.ID, Port: port, Enabled: true, Remark: "Reality", Params: protocol.Defaults(pr, nil, "")})
-			hy := protocol.Get("hysteria2")
-			hport := 443
-			if !util.FreeUDPPort(hport) {
-				hport = hy.DefaultPort
-			}
-			st.CreateInbound(&store.Inbound{Preset: hy.ID, Port: hport, Enabled: true, Remark: "Hysteria2", Params: protocol.Defaults(hy, map[string]any{"obfs": true}, "")})
-			fmt.Println("  ✓ starter inbounds: VLESS Reality (port", port, ") + Hysteria2 (port", hport, ")")
+			fmt.Println("• Turning on the protocols that need no domain ...")
+			items := starterInbounds(st, starterEnv{
+				binDir: binDir,
+				free: func(port int, udp bool) bool {
+					if udp {
+						return util.FreeUDPPort(port)
+					}
+					return util.FreePort(port)
+				},
+				goodSNI:  func(h string) bool { return tlsmgr.TestSNI(h).OK },
+				icmpOK:   engine.XICMPReady,
+				randPort: starterPort,
+			})
+			fmt.Println("  ✓ starter inbounds:", starterLine(items))
+			fmt.Println("    " + starterDetails(items))
 		}
 	}
 	printInfo(st, u, p)

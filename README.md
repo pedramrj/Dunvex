@@ -24,7 +24,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 Ubuntu, Debian, CentOS/Alma/Rocky, Fedora, Arch · amd64 & arm64 · root.
 At the end you get the panel address and a **one-time setup link** (also as a QR code): open it and choose your own
 username and password. There is no random password to copy; `dunvex info` shows the link again until you use it.
-The first install already serves **VLESS Reality** and **Hysteria2**: add a user and share the link.
+The first install already serves **every protocol that needs no domain**: VLESS Reality and Reality XHTTP,
+TrustTunnel and the Telegram proxy (all on TCP 443), Hysteria2 (UDP 443), AmneziaWG and Mieru (a port each) and the
+xICMP ping tunnel. Add a user and share the link; turn off what you do not need on the Protocols page. The CDN
+protocols and the DNS tunnels need your domain, so you add them later.
 
 **One port for everything: 443.** The panel, the subscription page and Reality share TCP 443: a connection that names
 a Reality SNI goes to Reality, everything else reaches the panel (and a stranger who opens the IP sees only a blank
@@ -121,7 +124,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 
 در پایان آدرس پنل و یک **لینک راه‌اندازی یک‌بارمصرف** (همراه با QR) نمایش داده می‌شود: آن را باز کنید و نام کاربری
 و رمز دلخواه خودتان را بگذارید. رمز تصادفی‌ای در کار نیست؛ تا وقتی لینک استفاده نشده، `dunvex info` دوباره نشانش می‌دهد.
-بعد از نصب، **VLESS Reality** و **Hysteria2** آماده‌اند؛ فقط کاربر بسازید و لینک را بفرستید.
+بعد از نصب، **همهٔ پروتکل‌هایی که دامنه لازم ندارند** آماده‌اند: VLESS Reality و Reality XHTTP، TrustTunnel و پراکسی
+تلگرام (همه روی TCP 443)، Hysteria2 (UDP 443)، AmneziaWG و Mieru (هر کدام یک پورت) و تونل پینگ xICMP. فقط کاربر بسازید
+و لینک را بفرستید؛ هرکدام را نخواستید در صفحهٔ «پروتکل‌ها» خاموش کنید. پروتکل‌های CDN و تونل‌های DNS دامنهٔ شما را لازم
+دارند و بعداً اضافه می‌شوند.
 
 **یک پورت برای همه: ۴۴۳.** پنل، صفحهٔ اشتراک و Reality روی TCP 443 شریک‌اند: اتصالی که SNI مربوط به Reality را دارد
 به Reality می‌رسد و بقیه به پنل (کسی که IP را باز کند فقط یک صفحهٔ خالی 404 می‌بیند). Hysteria2 روی UDP 443 است و

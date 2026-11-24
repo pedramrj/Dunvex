@@ -98,6 +98,9 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
 - [x] dnstt (inside Dunvex) and Slipstream DNS tunnels for SlipNet and DNSTT.XYZ, with per-user sign-in, sharing
       port 53 with XDNS by tunnel domain (v1.21). See [DNS-TUNNELS.md](DNS-TUNNELS.md)
 - [x] xICMP ping tunnel, one per server, with a raw-socket check before Xray starts (v1.22). See [XICMP.md](XICMP.md)
+- [x] A fresh install turns on every protocol that needs no domain: Reality, Reality XHTTP (its camouflage site
+      tested at install), TrustTunnel and the Telegram proxy on TCP 443, Hysteria2 on UDP 443, AmneziaWG, Mieru and
+      xICMP (v1.23)
 - [ ] paqet, AIVPN, MASQUE and XDRIVE (experimental)
 
 ## Phase 4: Network (v2.0)
