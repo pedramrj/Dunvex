@@ -167,9 +167,12 @@ export function BroadcastPage({ arg }: { arg?: string }) {
               {!info.userBot && <p className="mt-3 text-[12px] text-warn">{t("bcUserBotOff")}</p>}
             </Panel>
 
-            <Panel className="xl:col-span-5 xl:sticky xl:top-24" title={t("bcPreview")} sub={t("bcPreviewSub")}>
-              <TelegramPreview text={text} html={html} button={button} />
-            </Panel>
+            {/* the panel itself is position:relative, so the sticky part is its wrapper */}
+            <div className="xl:col-span-5 xl:sticky xl:top-24">
+              <Panel title={t("bcPreview")} sub={t("bcPreviewSub")}>
+                <TelegramPreview text={text} html={html} button={button} />
+              </Panel>
+            </div>
           </div>
 
           <History list={info.history} />

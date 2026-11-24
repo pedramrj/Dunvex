@@ -3,11 +3,12 @@ import { ArrowRightLeft, CircleArrowUp, Cpu, Globe, HardDrive, LayoutGrid, List,
 import { api, type Geo, type NodeView, type Overview, type RelayStat } from "../lib/api";
 import { ago, bytes, cx, date, duration, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
-import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, ErrorState, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Skeleton, Textarea, Toggle, useToast } from "../components/ui";
+import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, ErrorState, IconButton, Input, KV, Label, Meter, Panel, Segmented, Select, Skeleton, Textarea, Toggle, useToast } from "../components/ui";
 import { Spark } from "../components/charts";
 import { Logo } from "../components/Logo";
 import { PageHead, useSession } from "../App";
 import { ErrText } from "../components/ErrText";
+import { Cells } from "../components/Rack";
 
 const INSTALL_NODE = "bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.sh) node";
 
@@ -57,7 +58,7 @@ export function NodesPage() {
   };
 
   const local = (
-    <Panel>
+    <Panel className="rack-mod">
       <div className="flex flex-wrap items-center gap-4 mb-5">
         <span className="grid place-items-center size-14 rounded-2xl bg-primary/12 border border-primary/30"><Logo part="emblem" width={42} /></span>
         <div className="min-w-0">
@@ -156,12 +157,14 @@ export function NodesPage() {
 
 function Rings({ cpu, mem, disk }: { cpu: number; mem: number; disk: number }) {
   const { t, pc } = useI18n();
+  // console readouts: a segment meter per resource, amber past 75 %, red past 90 %
+  const tone = (v: number) => (v >= 90 ? "var(--bad)" : v >= 75 ? "var(--warn)" : "var(--ok)");
   return (
     <div className="grid grid-cols-3 gap-3 mb-5">
       {[{ k: t("cpu"), v: cpu, i: <Cpu className="size-3.5" /> }, { k: t("ram"), v: mem, i: <MemoryStick className="size-3.5" /> }, { k: t("disk"), v: disk, i: <HardDrive className="size-3.5" /> }].map((x) => (
-        <div key={x.k} className="flex items-center gap-3 rounded-2xl border border-hair bg-fg/[.02] p-3">
-          <Ring value={x.v} size={54} stroke={6} color={ringColor(x.v)}><span className="text-[11.5px] font-bold num">{pc(x.v, 0)}</span></Ring>
-          <span className="text-[12.5px] text-ink2 inline-flex items-center gap-1.5">{x.i}{x.k}</span>
+        <div key={x.k} className="field-recess p-3">
+          <div className="flex items-center gap-1.5 text-[12px] text-ink2">{x.i}{x.k}<b className="ms-auto num font-semibold" style={x.v >= 75 ? { color: tone(x.v) } : undefined}>{pc(x.v, 0)}</b></div>
+          <div className="mt-2"><Cells lit={Math.round(x.v / 10)} n={10} c={tone(x.v)} /></div>
         </div>
       ))}
     </div>
@@ -192,7 +195,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
   const coreErr = ns ? Object.entries(ns.coreErrors ?? {}) : [];
 
   return (
-    <Panel className={cx(!x.enabled && "opacity-75")}>
+    <Panel className={cx("rack-mod", !x.enabled && "opacity-75")}>
       <div className="flex flex-wrap items-center gap-4 mb-5">
         {isRelay
           ? <span className="grid place-items-center size-14 rounded-2xl bg-violet/10 border border-violet/30 text-violet"><ArrowRightLeft className="size-6" /></span>

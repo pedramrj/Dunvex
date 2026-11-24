@@ -118,17 +118,20 @@ func Money(v int64) string {
 	return b.String()
 }
 
+// faMoney writes 150000 as "۱۵۰٬۰۰۰" for the Persian shop pages.
+func faMoney(v int64) string { return faDigits(strings.ReplaceAll(Money(v), ",", "٬")) }
+
 func viewPlan(p *store.Plan) planView {
-	v := planView{ID: p.ID, Name: p.Name, Note: p.Note, Price: Money(p.Price), Data: "نامحدود", Days: "بدون محدودیت زمانی",
+	v := planView{ID: p.ID, Name: p.Name, Note: p.Note, Price: faMoney(p.Price), Data: "نامحدود", Days: "بدون محدودیت زمانی",
 		Start: p.StartOnFirst && p.Days > 0}
 	if p.DataLimit > 0 {
-		v.Data = billing.DataText(p.DataLimit, true)
+		v.Data = faDigits(billing.DataText(p.DataLimit, true))
 	}
 	if p.Days > 0 {
-		v.Days = strconv.Itoa(p.Days) + " روز"
+		v.Days = faDigits(strconv.Itoa(p.Days)) + " روز"
 	}
 	if p.IPLimit > 0 {
-		v.Devices = strconv.Itoa(p.IPLimit)
+		v.Devices = faDigits(strconv.Itoa(p.IPLimit))
 	}
 	return v
 }
@@ -298,7 +301,7 @@ func (s *Server) shopOrder(w http.ResponseWriter, r *http.Request, set billing.S
 func (s *Server) orderPage(w http.ResponseWriter, r *http.Request, set billing.Settings, page shopPage, o *store.Order) {
 	page.Mode = "order"
 	st := statusNames[o.Status]
-	v := &orderView{Code: o.Code, Token: o.Token, Kind: o.Kind, Amount: Money(o.Amount), MethodName: methodNames[o.Method].Name,
+	v := &orderView{Code: o.Code, Token: o.Token, Kind: o.Kind, Amount: faMoney(o.Amount), MethodName: methodNames[o.Method].Name,
 		Status: o.Status, StatusText: st[0], StatusClass: st[1], TG: o.TGChat != 0}
 	switch o.Kind {
 	case store.OrderTopUp:

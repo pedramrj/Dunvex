@@ -40,8 +40,8 @@ export function BillingPage() {
         action={sum.settings.shop ? <Button icon={<ExternalLink className="size-4" />} onClick={() => window.open(sum.shopUrl, "_blank", "noopener")}>{t("openShop")}</Button> : undefined} />
       {sum.settings.shop && <CopyField value={sum.shopUrl} className="mb-5 max-w-xl" sensitive={false} />}
       <div className="grid gap-[var(--gap)] sm:grid-cols-3 mb-[var(--gap)]">
-        <StatCard icon={<ShoppingBag className="size-[18px]" />} label={t("todaySales")} value={<span className="num">{money(s.todayTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.todayCount) + " " + t("orderUnit")} accent="var(--ok)" />
-        <StatCard icon={<CalendarDays className="size-[18px]" />} label={t("monthSales")} value={<span className="num">{money(s.monthTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.monthCount) + " " + t("orderUnit")} />
+        <StatCard icon={<ShoppingBag className="size-[18px]" />} label={t("todaySales")} value={<span className="num">{n(s.todayTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.todayCount) + " " + t("orderUnit")} accent="var(--ok)" />
+        <StatCard icon={<CalendarDays className="size-[18px]" />} label={t("monthSales")} value={<span className="num">{n(s.monthTotal)} <span className="text-[13px] font-normal text-ink3">{cur}</span></span>} sub={n(s.monthCount) + " " + t("orderUnit")} />
         <StatCard icon={<Clock className="size-[18px]" />} label={t("waitingApproval")} value={<span className="num">{n(s.review)}</span>} accent={s.review ? "var(--color-violet)" : "var(--text3)"} onClick={() => setTab("orders")} />
       </div>
       <Tabs value={tab} onChange={setTab} className="mb-[var(--gap)]" items={[
@@ -93,7 +93,7 @@ function Orders({ currency, onChange }: { currency: string; onChange: () => void
                   <span className="block truncate text-[13.5px] font-medium">{t(("orderKind_" + o.kind) as Key)}{o.planName && " · " + o.planName}</span>
                   <span className="block truncate text-[12px] text-ink3" dir="auto">{o.userName || o.adminName || o.contact || "—"}</span>
                 </span>
-                <span className="num text-[13.5px] font-semibold">{money(o.amount)} <span className="text-ink3 font-normal text-[12px]">{currency}</span></span>
+                <span className="num text-[13.5px] font-semibold">{n(o.amount)} <span className="text-ink3 font-normal text-[12px]">{currency}</span></span>
                 <span className="text-[12px] text-ink3 w-24">{t(("method_" + o.method) as Key)}</span>
                 <OrderBadge status={o.status} />
                 <span className="text-[12px] text-ink3 w-20 text-end">{ago(o.createdAt, lang)}</span>
@@ -109,7 +109,7 @@ function Orders({ currency, onChange }: { currency: string; onChange: () => void
 }
 
 function OrderSheet({ order: o, currency, onClose, onDone }: { order: Order; currency: string; onClose: () => void; onDone: () => void }) {
-  const { t, lang } = useI18n();
+  const { t, lang, n } = useI18n();
   const toast = useToast();
   const [busy, setBusy] = useState("");
   const [reason, setReason] = useState("");
@@ -135,7 +135,7 @@ function OrderSheet({ order: o, currency, onClose, onDone }: { order: Order; cur
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center gap-2"><OrderBadge status={o.status} />{o.status === "paid" && !o.doneAt && <Badge color="var(--bad)">{t("notApplied")}</Badge>}</div>
         <div className="grid grid-cols-2 gap-4">
-          <KV label={t("amountField")}><span className="num">{money(o.amount)}</span> {currency}</KV>
+          <KV label={t("amountField")}><span className="num">{n(o.amount)}</span> {currency}</KV>
           <KV label={t("payMethod")}>{t(("method_" + o.method) as Key)}{o.cryptoAmount && <span className="num text-ink3" dir="ltr"> · {o.cryptoAmount} USDT</span>}</KV>
           <KV label={t("buyer")}><span dir="auto">{o.userName || o.adminName || o.contact || "—"}</span></KV>
           <KV label={o.paidAt ? t("paidAt") : t("created")}>{date(o.paidAt || o.createdAt, lang)}</KV>
@@ -190,7 +190,7 @@ function Plans({ currency, wallet }: { currency: string; wallet: boolean }) {
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-[16px] font-bold truncate">{p.name}</div>
-                  <div className="text-[22px] font-bold mt-1 num">{money(p.price)} <span className="text-[13px] font-normal text-ink3">{currency}</span></div>
+                  <div className="text-[22px] font-bold mt-1 num">{n(p.price)} <span className="text-[13px] font-normal text-ink3">{currency}</span></div>
                 </div>
                 <Badge color={p.enabled ? "var(--ok)" : "var(--text3)"}>{p.enabled ? t("forSale") : t("hidden")}</Badge>
               </div>
@@ -200,7 +200,7 @@ function Plans({ currency, wallet }: { currency: string; wallet: boolean }) {
                 {p.ipLimit > 0 && <span>{n(p.ipLimit)} {t("devices")}</span>}
                 {p.startOnFirstUse && p.days > 0 && <span className="text-ink3">{t("startOnFirst")}</span>}
               </div>
-              {wallet && <div className="text-[12.5px] text-ink3 mt-2">{t("resellerPrice")}: <span className="num">{money(p.resellerPrice ?? p.price)}</span></div>}
+              {wallet && <div className="text-[12.5px] text-ink3 mt-2">{t("resellerPrice")}: <span className="num">{n(p.resellerPrice ?? p.price)}</span></div>}
               {p.note && <div className="text-[12.5px] text-ink3 mt-2 line-clamp-2">{p.note}</div>}
               <div className="flex gap-1 mt-3 -mb-1">
                 <IconButton label={t("edit")} onClick={() => setEdit({ ...p })}><Pencil className="size-4" /></IconButton>
@@ -337,7 +337,7 @@ function Payments({ initial, onSaved }: { initial: BillingSettings; onSaved: () 
 // ---------------------------------------------------------------- reseller wallets (owner)
 
 function Wallets({ currency }: { currency: string }) {
-  const { t, lang } = useI18n();
+  const { t, lang, n } = useI18n();
   const toast = useToast();
   const [list, setList] = useState<{ id: number; username: string; balance: number }[] | null>(null);
   const [adjust, setAdjust] = useState<{ id: number; username: string } | null>(null);
@@ -361,7 +361,7 @@ function Wallets({ currency }: { currency: string }) {
           {list.map((w) => (
             <li key={w.id} className="flex items-center gap-3 px-[var(--pad)] py-3">
               <span className="flex-1 font-medium" dir="ltr">{w.username}</span>
-              <span className="num font-semibold">{money(w.balance)} <span className="text-ink3 font-normal text-[12px]">{currency}</span></span>
+              <span className="num font-semibold">{n(w.balance)} <span className="text-ink3 font-normal text-[12px]">{currency}</span></span>
               <Button size="sm" onClick={() => api<WalletTx[]>(`billing/wallets/${w.id}`).then((txs) => setHistory({ username: w.username, txs }))}>{t("walletHistory")}</Button>
               <Button size="sm" onClick={() => setAdjust(w)}>{t("adjustBalance")}</Button>
             </li>
@@ -383,15 +383,15 @@ function Wallets({ currency }: { currency: string }) {
 }
 
 export function TxList({ txs, currency, lang }: { txs: WalletTx[]; currency: string; lang: "fa" | "en" }) {
-  const { t } = useI18n();
+  const { t, n } = useI18n();
   if (txs.length === 0) return <Empty icon={<Wallet className="size-6" />} title={t("noTransactions")} />;
   return (
     <ul className="divide-y divide-hair">
       {txs.map((x) => (
         <li key={x.id} className="flex items-center gap-3 py-2.5">
-          <span className={cx("num font-semibold w-32", x.amount >= 0 ? "text-online" : "text-bad")} dir="ltr">{x.amount >= 0 ? "+" : ""}{money(x.amount)}</span>
+          <span className={cx("num font-semibold w-32", x.amount >= 0 ? "text-online" : "text-bad")} dir="ltr">{x.amount >= 0 ? "+" : ""}{n(x.amount)}</span>
           <span className="flex-1 min-w-0 truncate text-[13px]" dir="auto">{x.note}</span>
-          <span className="num text-[12px] text-ink3">{money(x.balance)} {currency}</span>
+          <span className="num text-[12px] text-ink3">{n(x.balance)} {currency}</span>
           <span className="text-[12px] text-ink3 w-20 text-end">{ago(x.at, lang)}</span>
         </li>
       ))}

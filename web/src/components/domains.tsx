@@ -71,8 +71,8 @@ export function DomainRow({ name, label, badges, dns, cert, uses, menu, onOpen, 
   };
   return (
     <li onDragOver={drag?.onDragOver} onDrop={drag?.onDrop}
-      className={cx("group relative flex items-stretch gap-1 rounded-2xl border transition-[background-color,border-color,opacity] duration-150",
-        over ? "border-primary2/60 bg-primary/[.06]" : "border-hair hover:border-hair2 hover:bg-fg/[.025]", dragging && "opacity-45")}>
+      className={cx("group relative flex items-stretch gap-1 rounded-[12px] border transition-[background-color,border-color,opacity] duration-150",
+        over ? "border-primary2/60 bg-primary/[.06]" : "rack-mod border-hair2", dragging && "opacity-45")}>
       {drag && (
         <span draggable onDragStart={drag.onDragStart} onDragEnd={drag.onDragEnd} title={t("dmDrag")} aria-hidden
           className="hidden sm:grid place-items-center w-7 shrink-0 cursor-grab active:cursor-grabbing text-ink3 opacity-60 group-hover:opacity-100">

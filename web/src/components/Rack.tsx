@@ -27,7 +27,7 @@ function level(r: number, max: number) {
   return Math.max(1, Math.round((12 * Math.log1p(r)) / Math.log1p(max)));
 }
 
-function Cells({ lit, n = 12, c, vertical }: { lit: number; n?: number; c: string; vertical?: boolean }) {
+export function Cells({ lit, n = 12, c, vertical }: { lit: number; n?: number; c: string; vertical?: boolean }) {
   return (
     <span className={cx("flex gap-[2px]", vertical ? "flex-col-reverse" : "")} dir="ltr" aria-hidden>
       {Array.from({ length: n }, (_, i) => (

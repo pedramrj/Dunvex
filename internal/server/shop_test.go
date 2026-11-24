@@ -101,7 +101,7 @@ func TestShopEndToEnd(t *testing.T) {
 
 	// the buyer: plans → checkout → order
 	code, _, page := shopGet(t, shop)
-	if code != 200 || !strings.Contains(page, "ماهانه ۵۰ گیگ") || !strings.Contains(page, "150,000") {
+	if code != 200 || !strings.Contains(page, "ماهانه ۵۰ گیگ") || !strings.Contains(page, "۱۵۰٬۰۰۰") {
 		t.Fatalf("plans page %d", code)
 	}
 	_, _, page = shopGet(t, shop+"buy?plan="+itoa(planID))

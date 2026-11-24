@@ -5,6 +5,7 @@ import { ago, cx } from "../lib/format";
 import { useI18n, type Key } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, Label, Panel, Segmented, Sheet, Skeleton, Toggle, useToast } from "../components/ui";
 import { navigate } from "../App";
+import { ErrText } from "../components/ErrText";
 
 interface Delivery { id: string; event: string; message: string; at: number; attempt: number; ok: boolean; status?: number; error?: string; ms: number; retry?: number }
 interface Hook { id: string; name: string; url: string; format: "json" | "slack" | "discord"; kinds: string[]; secret: string; enabled: boolean; last?: Delivery }
@@ -88,10 +89,12 @@ function WebhooksPanel() {
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {h.kinds.length === 0 ? <Badge color="var(--primary2)">{t("hookAllEvents")}</Badge> : h.kinds.map((k) => <Badge key={k}>{t(kindKey[k] ?? "catCore")}</Badge>)}
                 {h.last && (
-                  <span className="ms-auto inline-flex items-center gap-1.5 text-[12px] text-ink3">
-                    <Dot color={h.last.ok ? "var(--ok)" : "var(--bad)"} size={7} />
-                    {h.last.ok ? `${h.last.status ?? ""}` : h.last.error} · {ago(h.last.at, lang)}
-                  </span>
+                  // the last delivery: a readable sentence for a failure, the time kept apart so it never runs into the text
+                  <div className={cx("flex items-start gap-2 text-[12px] text-ink3", h.last.ok ? "ms-auto" : "w-full mt-1")}>
+                    <span className={cx("led mt-[8px]", h.last.ok ? "on" : "rd")} />
+                    {h.last.ok ? <span className="leading-6 mono" dir="ltr">{h.last.status ?? ""}</span> : <ErrText raw={h.last.error ?? ""} className="flex-1 min-w-0 text-ink2 !text-[12.5px]" />}
+                    <span className="ms-auto shrink-0 leading-6 whitespace-nowrap">{ago(h.last.at, lang)}</span>
+                  </div>
                 )}
               </div>
             </div>

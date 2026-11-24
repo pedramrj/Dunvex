@@ -226,6 +226,11 @@ body {
   font-feature-settings: "tnum" 1;
   unicode-bidi: isolate;
 }
+/* Persian: tabular figures give the separators (٬ and ٫) a whole digit's width, so ۵۵۰٬۰۰۰ read as "۵۵۰ , ۰۰۰" */
+:lang(fa) .num {
+  font-variant-numeric: normal;
+  font-feature-settings: normal;
+}
 .mono {
   font-family: "DVX Mono", ui-monospace, monospace;
   unicode-bidi: isolate;
@@ -806,20 +811,20 @@ h3 {
 }
 
 /* ================================================================= KPI cards and gauges */
-.kpi::before {
-  content: "";
-  position: absolute;
-  inset-inline: 20px;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--k) 85%, transparent), transparent);
-  box-shadow: 0 0 14px 1px color-mix(in oklab, var(--k) 55%, transparent);
-  pointer-events: none;
+/* a readout module: an LED in the accent colour and the icon sunk into the panel */
+.kpi-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--k);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--k) 16%, transparent), 0 0 8px color-mix(in oklab, var(--k) 55%, transparent);
 }
 .kpi-icon {
-  color: var(--k);
-  background: radial-gradient(120% 120% at 30% 15%, color-mix(in oklab, var(--k) 28%, transparent), color-mix(in oklab, var(--k) 7%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--k) 40%, transparent), 0 10px 26px -12px color-mix(in oklab, var(--k) 80%, transparent);
+  color: color-mix(in oklab, var(--k) 75%, var(--text2));
+  background: color-mix(in oklab, var(--bg) 80%, #000);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 .kpi-sub {
   color: color-mix(in oklab, var(--k) 72%, var(--text));
@@ -1002,3 +1007,8 @@ svg:has(.topo-node:hover) .topo-node:not(:hover) {
 .rack-mod:active { transform: scale(0.98); }
 .rack-pulse { stroke-dasharray: 3 97; animation: earth-ride 2s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .rack-pulse { animation: none; display: none; } }
+
+/* the form's Advanced part: folded, with its current values in one line */
+.adv-sec > summary::-webkit-details-marker { display: none; }
+.adv-sec[open] .adv-chev { transform: rotate(180deg); }
+.adv-chev { transition: transform 0.2s var(--ease-out); }

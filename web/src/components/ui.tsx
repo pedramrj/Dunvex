@@ -174,9 +174,20 @@ export function Tabs<T extends string>({ value, onChange, items, className }: { 
   const { n } = useI18n();
   const wrap = useRef<HTMLDivElement>(null);
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
+  // measured again whenever a tab changes width (a count arriving, fonts loading): in RTL the
+  // first tab moves when the bar grows, so measuring once left the pill under the wrong tab
   useLayoutEffect(() => {
-    const el = wrap.current?.querySelector<HTMLElement>(`[data-tab="${CSS.escape(String(value))}"]`);
-    if (el && wrap.current) setPill({ x: el.offsetLeft, w: el.offsetWidth });
+    const w = wrap.current;
+    if (!w) return;
+    const measure = () => {
+      const el = w.querySelector<HTMLElement>(`[data-tab="${CSS.escape(String(value))}"]`);
+      if (el) setPill((p) => (p && p.x === el.offsetLeft && p.w === el.offsetWidth ? p : { x: el.offsetLeft, w: el.offsetWidth }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(w);
+    w.querySelectorAll("[data-tab]").forEach((b) => ro.observe(b));
+    return () => ro.disconnect();
   }, [value, items.length]);
   return (
     <div ref={wrap} className={cx("relative flex gap-1 overflow-x-auto p-1 rounded-2xl glass w-fit max-w-full", className)} role="tablist">
@@ -450,7 +461,8 @@ export function Panel({ title, sub, icon, action, children, className, pad = tru
   );
 }
 
-/** KPI card: glowing icon tile, value, coloured sub-line and an optional full-width spark along the bottom. */
+/** KPI readout: an LED in the accent colour, the label, the value, a coloured sub-line, the icon in a recessed well,
+ *  and an optional full-width spark along the bottom. */
 export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", children, foot, className, trend, onClick, tip }: {
   icon: ReactNode; label: string; value: ReactNode; sub?: ReactNode; accent?: string; children?: ReactNode; foot?: ReactNode; className?: string; trend?: number | null; onClick?: () => void; tip?: string;
 }) {
@@ -458,11 +470,11 @@ export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", 
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick} title={tip} style={{ ["--k" as string]: accent }}
-      className={cx("kpi spot glass rounded-[18px] min-w-0 flex flex-col text-start overflow-hidden", onClick && "transition-transform duration-150 hover:-translate-y-0.5 active:scale-[.99]", className)}>
-      <div className="flex items-start gap-3.5 w-full p-[calc(var(--pad)*.85)] pb-3">
-        <span className="kpi-icon grid place-items-center size-11 rounded-2xl shrink-0">{icon}</span>
+      className={cx("kpi mach relative rounded-[14px] min-w-0 flex flex-col text-start overflow-hidden", onClick && "transition-[border-color,transform] duration-150 hover:border-[color-mix(in_oklab,var(--k)_60%,transparent)] active:scale-[.99]", className)}>
+      <div className="flex items-start gap-3 w-full px-4 pt-3.5 pb-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
+            <span className="kpi-led" aria-hidden />
             <span className="text-[12.5px] text-ink2 font-medium truncate">{label}</span>
             {trend !== undefined && trend !== null && Number.isFinite(trend) && (
               <span className={cx("ms-auto text-[11px] font-semibold num rounded-full px-2 py-0.5 shrink-0", trend >= 0 ? "text-online bg-online/12" : "text-bad bg-bad/12")} dir="ltr">
@@ -470,9 +482,10 @@ export function StatCard({ icon, label, value, sub, accent = "var(--primary2)", 
               </span>
             )}
           </div>
-          <div className="mt-1.5 text-[26px] leading-none font-bold tracking-tight">{value}</div>
+          <div className="mt-2.5 text-[23px] sm:text-[24px] leading-none font-semibold tracking-tight">{value}</div>
           {sub && <div className="kpi-sub mt-2 text-[12px] num truncate">{sub}</div>}
         </div>
+        <span className="kpi-icon grid place-items-center size-9 rounded-[10px] shrink-0">{icon}</span>
       </div>
       {children && <div className="mt-auto w-full px-[calc(var(--pad)*.85)] pb-[calc(var(--pad)*.85)]">{children}</div>}
       {foot && <div className={cx("w-full", !children && "mt-auto")}>{foot}</div>}

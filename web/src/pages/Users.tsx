@@ -1,9 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CalendarClock, CalendarPlus, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
+  CalendarClock, CalendarPlus, ChevronDown, SlidersHorizontal, Copy, Download, ExternalLink, FileText, Gauge, KeyRound, Pencil, Play, Power, QrCode, RotateCcw, Search, Smartphone, Trash2, UserPlus,
   Users as UsersIcon, Megaphone, Tags, Hourglass, Unplug, Infinity as InfinityIcon, FilterX, UserCog, ListFilter,
 } from "lucide-react";
-import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type DeviceInfo, type Plan, type Status, type TagCount, type User, type UserMap, type WalletInfo } from "../lib/api";
+import { api, qrURL, saveText, type ConfigEntry, type Event, type Inbound, type DeviceInfo, type Plan, type Status, type TagCount, type User, type UserMap, type WalletInfo } from "../lib/api";
 import { TagChip, TagInput, TagList, hasTag, normalizeTag, sameTag } from "../components/Tags";
 import { GB, ago, bytes, copyText, cx, date, regionName, speed } from "../lib/format";
 import { operatorName } from "../lib/operators";
@@ -500,7 +500,7 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
   return (
     <Sheet open={open} onClose={onClose} wide title={user ? t("edit") : t("newUser")} sub={user ? <span dir="ltr">{user.name}</span> : undefined}
       footer={<>
-        {!user && <span className="me-auto text-[12.5px] text-ink3 truncate"><bdi dir="ltr" className="text-ink">{f.name || "…"}</bdi> · {f.gb > 0 ? (f.gb >= 1024 ? `${n(f.gb / 1024)} ${t("tbUnit")}` : `${n(f.gb)} ${t("gb")}`) : t("unlimited")} · {f.days > 0 ? (f.days === 365 ? t("oneYear") : `${n(f.days)} ${t("days")}`) : t("never")}<span className="hidden sm:inline"> · <kbd className="mono">Ctrl ↵</kbd></span></span>}
+        {!user && <span className="hidden sm:block me-auto min-w-0 text-[12.5px] text-ink3 truncate"><bdi dir="ltr" className="text-ink">{f.name || "…"}</bdi> · {f.gb > 0 ? (f.gb >= 1024 ? `${n(f.gb / 1024)} ${t("tbUnit")}` : `${n(f.gb)} ${t("gb")}`) : t("unlimited")} · {f.days > 0 ? (f.days === 365 ? t("oneYear") : `${n(f.days)} ${t("days")}`) : t("never")}<span className="hidden sm:inline"> · <kbd className="mono">Ctrl ↵</kbd></span></span>}
         <Button variant="quiet" onClick={onClose}>{t("cancel")}</Button><Button variant="primary" loading={busy} onClick={submit}>{user ? t("save") : t("createShare")}</Button></>}>
       <div className="flex flex-col gap-5" onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}>
         <FormSection title={t("general")}>
@@ -522,8 +522,8 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
             {chosen && <PlanFacts p={chosen} />}
             {chosen && mustPlan && wallet && (
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
-                <span>{t("price")}: <b className="num">{money((chosen.resellerPrice ?? chosen.price) * f.count)}</b> {wallet.currency}</span>
-                <span className="text-ink3">{t("balance")}: <span className="num">{money(wallet.balance)}</span></span>
+                <span>{t("price")}: <b className="num">{n((chosen.resellerPrice ?? chosen.price) * f.count)}</b> {wallet.currency}</span>
+                <span className="text-ink3">{t("balance")}: <span className="num">{n(wallet.balance)}</span></span>
                 <span className="text-ink3 basis-full">{t("planRequired")}</span>
               </div>
             )}
@@ -546,21 +546,29 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
               <div className="mt-3"><Toggle checked={f.startOnFirstUse} onChange={(v) => { set("startOnFirstUse", v); setDaysTouched(true); }} label={t("startOnFirst")} /></div>
             )}
           </div>
-          <label className="block mt-5">
-            <Label>{t("resetPeriod")}</Label>
-            <Select value={f.resetPeriod} onChange={(v) => set("resetPeriod", v as FormState["resetPeriod"])} options={(["none", "daily", "weekly", "monthly"] as const).map((p) => ({ value: p, label: t(p) }))} />
-          </label>
         </FormSection>}
 
-        {!chosen && <FormSection title={t("limits")}>
+        {!chosen && (
+          <details className="adv-sec mach rounded-2xl" open={!!user}>
+            <summary className="flex items-center gap-3 px-4 min-h-12 py-2 cursor-pointer list-none">
+              <SlidersHorizontal className="size-4 text-ink3 shrink-0" /><b className="font-semibold">{t("advanced")}</b>
+              <span className="text-[12.5px] text-ink3 truncate min-w-0">{t("deviceLimit")}: {f.ipLimit > 0 ? n(f.ipLimit) : "∞"} · {t("resetPeriod")}: {t(f.resetPeriod === "none" ? "none" : f.resetPeriod)} · {f.inboundIds.length ? `${n(f.inboundIds.length)} ${t("protocols")}` : t("allProtocols")}</span>
+              <ChevronDown className="adv-chev size-4 ms-auto text-ink3 shrink-0" />
+            </summary>
+            <div className="px-4 pb-4 pt-1 flex flex-col gap-5 border-t border-hair">
+              <div className="pt-3">
           <Label hint={f.ipLimit > 0 ? n(f.ipLimit) : t("unlimited")}>{t("deviceLimit")}</Label>
           <Segmented value={[0, 1, 2, 3, 5].includes(f.ipLimit) ? f.ipLimit : -1} onChange={(v) => v >= 0 && set("ipLimit", v)}
             options={[{ value: 0, label: t("unlimited") }, ...[1, 2, 3, 5].map((d) => ({ value: d, label: n(d) }))]} />
           <p className="text-[12.5px] text-ink3 mt-2">{t("deviceLimitHint")}</p>
-        </FormSection>}
-
-        {isAdmin && !chosen && inbounds.length > 0 && (
-          <FormSection title={t("access")}>
+              </div>
+          <label className="block mt-5">
+            <Label>{t("resetPeriod")}</Label>
+            <Select value={f.resetPeriod} onChange={(v) => set("resetPeriod", v as FormState["resetPeriod"])} options={(["none", "daily", "weekly", "monthly"] as const).map((p) => ({ value: p, label: t(p) }))} />
+          </label>
+              {isAdmin && inbounds.length > 0 && (
+                <div>
+                  <Label>{t("access")}</Label>
             <Segmented value={f.inboundIds.length ? "some" : "all"} onChange={(v) => set("inboundIds", v === "all" ? [] : inbounds.map((i) => i.id))}
               options={[{ value: "all", label: t("allProtocols") }, { value: "some", label: t("onlyThese") }]} />
             {f.inboundIds.length > 0 && (
@@ -575,7 +583,10 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
                 ))}
               </div>
             )}
-          </FormSection>
+                </div>
+              )}
+            </div>
+          </details>
         )}
       </div>
     </Sheet>
@@ -585,7 +596,7 @@ function UserForm({ open, onClose, onSaved, user, tagSuggest = [] }: { open: boo
 /** gives a user a plan: days add to the time left, data left is kept;
  * a reseller with a wallet pays for it */
 function RenewDialog({ open, user, plans, onClose, onDone }: { open: boolean; user: User; plans: Plan[]; onClose: () => void; onDone: () => void }) {
-  const { t } = useI18n();
+  const { t, n } = useI18n();
   const toast = useToast();
   const { me } = useSession();
   const reseller = !can(me.admin.role, "admin");
@@ -615,8 +626,8 @@ function RenewDialog({ open, user, plans, onClose, onDone }: { open: boolean; us
       <p className="text-[12.5px] text-ink3 mt-3">{t("renewHint")}</p>
       {p && pays && wallet && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
-          <span>{t("price")}: <b className="num">{money(p.resellerPrice ?? p.price)}</b> {wallet.currency}</span>
-          <span className="text-ink3">{t("balance")}: <span className="num">{money(wallet.balance)}</span></span>
+          <span>{t("price")}: <b className="num">{n(p.resellerPrice ?? p.price)}</b> {wallet.currency}</span>
+          <span className="text-ink3">{t("balance")}: <span className="num">{n(wallet.balance)}</span></span>
         </div>
       )}
     </Dialog>
@@ -804,7 +815,7 @@ function UserDetail({ u, onClose, onChanged, tagSuggest }: { u: User; onClose: (
           <Ring value={cur.dataLimit > 0 ? pct : 100} size={128} stroke={11} color={cur.dataLimit > 0 ? ringColor(pct) : "url(#ring-ok)"}>
             <div>
               <div className="text-[19px] font-bold num leading-tight">{bytes(cur.used, lang)}</div>
-              <div className="text-[11.5px] text-ink3 num">{cur.dataLimit > 0 ? <><bdi>{pc(pct, 0)}</bdi> · <bdi>{bytes(cur.dataLimit, lang)}</bdi></> : "∞"}</div>
+              <div className="text-[11.5px] text-ink3 num">{cur.dataLimit > 0 ? <><bdi>{pc(pct, 0)}</bdi> {t("ofWord")} <bdi>{bytes(cur.dataLimit, lang)}</bdi></> : "∞"}</div>
             </div>
           </Ring>
           <div className="grid grid-cols-2 gap-x-5 gap-y-3.5">

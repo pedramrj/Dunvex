@@ -1,9 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Languages, Lock, ShieldCheck, Sparkles, Terminal, User } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { Button, Input, Label } from "../components/ui";
 import { Logo } from "../components/Logo";
+
+/** The sign-in and setup cards: a console module, not a floating glass sheet. */
+const cardCls = "rise mach w-full max-w-[400px] mx-auto rounded-[18px] p-6 sm:p-7";
+
+/** A card's head: a status strip with a printed label, then the title beside a recessed icon well. */
+function CardHead({ tag, icon, title, sub }: { tag: string; icon: ReactNode; title: ReactNode; sub: ReactNode }) {
+  return (
+    <>
+      <div className="flex items-center gap-2 pb-3.5 mb-5 border-b border-hair">
+        <span className="led on live" />
+        <span className="ss">{tag}</span>
+        <span className="ss ms-auto">DUNVEX</span>
+      </div>
+      <div className="flex items-center gap-3 mb-6">
+        <span className="grid place-items-center size-10 rounded-[10px] shrink-0 field-recess !text-primary2">{icon}</span>
+        <div className="min-w-0">
+          <h1 className="text-[19px] font-semibold leading-tight">{title}</h1>
+          <p className="text-ink3 text-[12.5px]">{sub}</p>
+        </div>
+      </div>
+    </>
+  );
+}
 
 /** The one-time token from a first-run link: #/setup/<token>. */
 const setupToken = () => /^#\/setup\/([A-Za-z0-9]+)/.exec(location.hash)?.[1] ?? "";
@@ -56,16 +79,9 @@ export function Login({ onDone }: { onDone: () => void }) {
         {/* the form */}
         <div className="flex flex-col justify-center px-5 pb-12 lg:py-12">
           {pending === null ? <div className="h-[420px]" aria-busy="true" /> : pending ? <SetupCard onDone={onDone} /> : (
-          <form onSubmit={submit} className="rise glass-strong edge w-full max-w-[400px] mx-auto rounded-[26px] p-7 sm:p-8 shadow-[0_40px_100px_-40px_rgba(0,0,0,.9)]">
-            <div className="flex items-center gap-3 mb-7">
-              <span className="grid place-items-center size-11 rounded-2xl brand-gradient text-white shadow-[0_10px_30px_-10px_color-mix(in_oklab,var(--primary)_80%,transparent)]">
-                {need2fa ? <ShieldCheck className="size-5" /> : <Lock className="size-5" />}
-              </span>
-              <div>
-                <h1 className="text-[20px] font-bold leading-tight">{need2fa ? t("twoFactor") : t("signIn")}</h1>
-                <p className="text-ink3 text-[12.5px]">{need2fa ? t("enterCode") : "Dunvex · Powered by Pedram"}</p>
-              </div>
-            </div>
+          <form onSubmit={submit} className={cardCls}>
+            <CardHead tag={need2fa ? "TWO-FACTOR" : "SECURE ACCESS"} icon={need2fa ? <ShieldCheck className="size-[18px]" /> : <Lock className="size-[18px]" />}
+              title={need2fa ? t("twoFactor") : t("signIn")} sub={need2fa ? t("enterCode") : "Dunvex · Powered by Pedram"} />
 
             {!need2fa ? (
               <>
@@ -129,18 +145,12 @@ function SetupCard({ onDone }: { onDone: () => void }) {
   const Arrow = lang === "fa" ? ArrowLeft : ArrowRight;
   const score = Math.min(4, [password.length >= 8, password.length >= 12, /[A-Z]/.test(password) && /[a-z]/.test(password), /\d/.test(password) && /[^A-Za-z0-9]/.test(password)].filter(Boolean).length);
   const meter = ["var(--bad)", "var(--bad)", "var(--warn)", "var(--primary2)", "var(--ok)"][score];
-  const card = "rise glass-strong edge w-full max-w-[420px] mx-auto rounded-[26px] p-7 sm:p-8 shadow-[0_40px_100px_-40px_rgba(0,0,0,.9)]";
+  const card = cardCls + " max-w-[420px]";
 
   if (!token) {
     return (
       <div className={card}>
-        <div className="flex items-center gap-3 mb-5">
-          <span className="grid place-items-center size-11 rounded-2xl brand-gradient text-white"><Terminal className="size-5" /></span>
-          <div>
-            <h1 className="text-[20px] font-bold leading-tight">{t("setupNeeded")}</h1>
-            <p className="text-ink3 text-[12.5px]">Dunvex · Powered by Pedram</p>
-          </div>
-        </div>
+        <CardHead tag="SETUP" icon={<Terminal className="size-[18px]" />} title={t("setupNeeded")} sub="Dunvex · Powered by Pedram" />
         <p className="text-ink2 text-[14px] leading-7">{t("setupNoLink")}</p>
         <div className="mt-4 rounded-xl border border-hair bg-fg/[.04] px-3.5 py-3 mono text-[13px]" dir="ltr" translate="no">dunvex info</div>
       </div>
@@ -161,13 +171,7 @@ function SetupCard({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className={card}>
-      <div className="flex items-center gap-3 mb-6">
-        <span className="grid place-items-center size-11 rounded-2xl brand-gradient text-white"><Sparkles className="size-5" /></span>
-        <div>
-          <h1 className="text-[20px] font-bold leading-tight">{t("setupTitle")}</h1>
-          <p className="text-ink3 text-[12.5px]">{t("setupSub")}</p>
-        </div>
-      </div>
+      <CardHead tag="FIRST RUN" icon={<Sparkles className="size-[18px]" />} title={t("setupTitle")} sub={t("setupSub")} />
       <label className="block mb-4">
         <Label>{t("username")}</Label>
         <div className="relative">

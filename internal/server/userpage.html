@@ -45,6 +45,8 @@ body{margin:0;min-height:100vh;color:var(--ink);font:15px/1.75 var(--ui);-webkit
 .segs i{flex:1;height:9px;border-radius:2px;background:#202329;transition:background .4s,box-shadow .4s}
 .segs i.l{background:var(--c,var(--acc));box-shadow:0 0 6px color-mix(in oklab,var(--c,var(--acc)) 55%,transparent)}
 .meta{font-size:13px;color:var(--ink3);margin-top:8px}
+/* a hairline between facts: a dot beside Persian digits reads as a zero */
+.sep{display:inline-block;width:1px;height:.95em;background:var(--line2);vertical-align:-.14em;margin:0 9px}
 .alert{display:flex;gap:12px;align-items:flex-start;margin-top:12px;border-radius:14px;padding:12px 14px;border:1px solid;font-size:14.5px;line-height:1.85}
 .alert .led{margin-top:8px}
 .alert.bad{border-color:rgba(255,79,94,.4);background:rgba(255,79,94,.08)}
@@ -111,7 +113,7 @@ footer{text-align:center;margin-top:28px}
     <div class="fig" style="text-align:left"><b style="font-size:30px">{{.DaysFa}}</b><span>روز</span></div>
   </div>
   <div class="segs" data-pct="{{.LeftPct}}" aria-hidden="true"></div>
-  <div class="meta">{{.UsedFa}} از {{.LimitFa}} مصرف شده{{if .ExpireFa}} · تا {{.ExpireFa}}{{end}}{{if .DevLimitFa}} · {{.DevLimitFa}} دستگاه هم‌زمان{{end}}</div>
+  <div class="meta">{{.UsedFa}} از {{.LimitFa}} مصرف شده{{if .ExpireFa}}<span class="sep"></span>تا {{.ExpireFa}}{{end}}{{if .DevLimitFa}}<span class="sep"></span>{{.DevLimitFa}} دستگاه هم‌زمان{{end}}</div>
 </div>
 
 {{if .Announce}}<div class="alert note"><span class="led bl"></span><div>{{.Announce}}</div></div>{{end}}
@@ -126,9 +128,9 @@ footer{text-align:center;margin-top:28px}
     <button role="tab" data-os="android" aria-selected="false">Android</button>
     <button role="tab" data-os="desk" aria-selected="false">Windows · Mac</button>
   </div>
-  <div class="step"><span class="k">1</span><div><b>برنامهٔ <bdi id="appName">Hiddify</bdi> را نصب کنید</b><small id="appStore">از فروشگاه برنامه‌های گوشی</small></div></div>
-  <div class="step"><span class="k">2</span><div><b>اشتراک را اضافه کنید</b><a class="btn p w" id="appAdd" href="#" style="margin-top:8px">افزودن به <bdi id="appName2">Hiddify</bdi></a></div></div>
-  <div class="step"><span class="k">3</span><div><b>در برنامه «اتصال» را بزنید</b><small>برنامهٔ دیگری دارید؟</small><div class="others" id="others"></div></div></div>
+  <div class="step"><span class="k">۱</span><div><b>برنامهٔ <bdi id="appName">Hiddify</bdi> را نصب کنید</b><small id="appStore">از فروشگاه برنامه‌های گوشی</small></div></div>
+  <div class="step"><span class="k">۲</span><div><b>اشتراک را اضافه کنید</b><a class="btn p w" id="appAdd" href="#" style="margin-top:8px">افزودن به <bdi id="appName2">Hiddify</bdi></a></div></div>
+  <div class="step"><span class="k">۳</span><div><b>در برنامه «اتصال» را بزنید</b><small>برنامهٔ دیگری دارید؟</small><div class="others" id="others"></div></div></div>
   <div class="copyrow"><input class="copy" id="sub" readonly value="{{.Sub}}" aria-label="لینک اشتراک"><button class="btn" onclick="cp('sub',this)">کپی</button></div>
   <details style="margin-top:8px;border-top:0;padding:4px 0 0"><summary>نمایش QR</summary><div class="qr">{{.SubQR}}</div></details>
   <div hidden id="apps">{{range .Apps}}<a data-os="{{.OS}}" href="{{safeURL .URL}}">{{.Name}}</a>{{end}}</div>

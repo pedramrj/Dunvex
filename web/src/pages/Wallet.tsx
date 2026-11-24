@@ -9,7 +9,7 @@ import { OrderBadge, TxList } from "./Billing";
 
 /** A reseller's wallet: balance, top-ups and what it paid for. */
 export function WalletPage() {
-  const { t, lang, pc } = useI18n();
+  const { t, lang, pc, n } = useI18n();
   const toast = useToast();
   const [w, setW] = useState<WalletInfo | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -48,7 +48,7 @@ export function WalletPage() {
     <>
       <PageHead title={t("wallet")} sub={w.enabled ? t("walletPageHint") : t("walletOff")} />
       <div className="grid gap-[var(--gap)] sm:grid-cols-2 mb-[var(--gap)]">
-        <StatCard icon={<WalletIcon className="size-[18px]" />} label={t("balance")} value={<span className="num">{money(w.balance)} <span className="text-[13px] font-normal text-ink3">{w.currency}</span></span>} accent="var(--ok)" />
+        <StatCard icon={<WalletIcon className="size-[18px]" />} label={t("balance")} value={<span className="num">{n(w.balance)} <span className="text-[13px] font-normal text-ink3">{w.currency}</span></span>} accent="var(--ok)" />
         <StatCard icon={<Percent className="size-[18px]" />} label={t("yourDiscount")} value={<span className="num">{pc(w.discount, 0)}</span>} />
       </div>
       {w.enabled && (
@@ -71,7 +71,7 @@ export function WalletPage() {
                 <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
                   <span className="mono text-[12.5px] w-24" dir="ltr">{o.code}</span>
                   <span className="flex-1 min-w-0 truncate text-[13px]">{t(("orderKind_" + o.kind) as Key)}{o.planName && " · " + o.planName}{o.userName && " · " + o.userName}</span>
-                  <span className="num text-[13px] font-semibold">{money(o.amount)}</span>
+                  <span className="num text-[13px] font-semibold">{n(o.amount)}</span>
                   <OrderBadge status={o.status} />
                   {(o.status === "pending" || o.status === "rejected") && o.kind === "topup" && <a className="text-primary2 text-[12.5px] hover:underline" href={o.page} target="_blank" rel="noopener">{t("open")}</a>}
                   <span className="text-[12px] text-ink3 w-20 text-end">{ago(o.createdAt, lang)}</span>
