@@ -129,6 +129,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	p.family("dunvex_inbound_traffic_bytes_total", "counter", "Traffic through each protocol.", inTraffic...)
 	p.family("dunvex_inbound_up", "gauge", "Whether each protocol is on and running.", inUp...)
+	s.healthMetrics(&p)
 
 	// servers: this one and the nodes
 	snap := s.Sys.Get()

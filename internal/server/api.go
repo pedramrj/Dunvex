@@ -120,6 +120,8 @@ func (s *Server) apiMux() http.Handler {
 	h("POST /webhooks/{id}/test", O, s.testHook)
 	h("GET /webhooks/{id}/deliveries", O, s.hookDeliveries)
 	h("GET /metrics", A, s.metrics)
+	h("GET /health", A, s.getHealth)
+	h("POST /health/check", A, s.postHealthCheck)
 	h("GET /cdn", O, s.getCDN)
 	h("PUT /cdn", O, s.putCDN)
 	h("POST /cdn/check", O, s.checkCDN)
@@ -1184,7 +1186,7 @@ func (s *Server) deleteInbound(w http.ResponseWriter, r *http.Request) {
 
 var editableSettings = []string{"host", "domain", "sub_title", "sub_update_hours", "support_url", "sub_base_url",
 	"block_torrent", "panel_port", "panel_path", "sub_path", "cert_mode", "cert_file", "key_file", "acme_email",
-	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes", "sub_accent",
+	"sub_info_entry", "announce", "panel_tls", "ip_pause_minutes", "sub_accent", healthHoursSetting,
 	"tg_token", "tg_admins", "tg_lang", "tg_daily_hour", "tg_backup", "tg_user_bot", "tg_api"}
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -1195,7 +1197,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	defaults := map[string]string{"sub_title": "Dunvex", "sub_update_hours": "12", "block_torrent": "true",
 		"cert_mode": "self", "panel_path": s.PanelPath(), "sub_path": s.SubPath(), "sub_info_entry": "true",
-		"ip_pause_minutes": "10", "tg_lang": "fa", "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
+		"ip_pause_minutes": "10", healthHoursSetting: healthDefaultHours, "tg_lang": "fa", "tg_daily_hour": "9", "tg_backup": "true", "tg_user_bot": "true"}
 	for k, v := range defaults {
 		if out[k] == "" {
 			out[k] = v
@@ -1241,6 +1243,11 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		case "sub_accent":
 			if v != "" && !accentRe.MatchString(v) {
 				fail(w, 400, "accent colour must look like #397bff")
+				return
+			}
+		case healthHoursSetting:
+			if n, err := strconv.Atoi(v); err != nil || !healthHourChoices[n] {
+				fail(w, 400, "the config check runs every 1, 2, 3, 6, 12 or 24 hours, or 0 for only when asked")
 				return
 			}
 		case "ip_pause_minutes", "tg_daily_hour":

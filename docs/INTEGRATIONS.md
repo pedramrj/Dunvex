@@ -8,7 +8,8 @@ Every Dunvex event goes to the addresses you add: users created, renewed, limite
 and back, core errors, sign-ins and API keys, orders and payments, certificates, updates. These are the same
 events as the **Alerts** page.
 Each webhook follows all events or the kinds you pick: `user`, `limit`, `auth`, `billing`, `node`, `core`, `tls`,
-`inbound`, `settings`, `update`.
+`inbound`, `health` (configs that stop working or work again; see [CONFIG-HEALTH.md](CONFIG-HEALTH.md)), `settings`,
+`update`.
 
 Formats:
 
@@ -69,6 +70,9 @@ scrape_configs:
 | `dunvex_user_traffic_bytes_total` | `user`, `direction` | traffic in the current period (restarts when usage is reset) |
 | `dunvex_inbound_traffic_bytes_total` | `id`, `protocol`, `name`, `server`, `direction` | traffic through each protocol |
 | `dunvex_inbound_up` | `id`, `protocol`, `name`, `server` | 1 when the protocol is on and running |
+| `dunvex_config_up` | `id`, `protocol`, `name`, `server`, `via` | 1 when the config passed the last [config health](CONFIG-HEALTH.md) check |
+| `dunvex_config_latency_milliseconds` | `id`, `protocol`, `name`, `server`, `via` | how long a page took through each working config |
+| `dunvex_config_check_timestamp_seconds` | | when the last config check finished |
 | `dunvex_server_up` | `server`, `role` | 1 when a server answers (`panel` is this one) |
 | `dunvex_server_cpu_percent`, `…_memory_used_bytes`, `…_memory_total_bytes`, `…_disk_used_bytes`, `…_disk_total_bytes`, `…_uptime_seconds` | `server` | each server's resources |
 | `dunvex_server_network_bytes_per_second` | `server`, `direction` | network speed now |

@@ -117,3 +117,6 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       adult blocking, own domains; Cloudflare WARP for chosen sites or everything, for Mieru and TrustTunnel too (v1.14)
 - [x] REST API with tokens (v1.6)
 - [x] Webhooks (signed JSON, Slack, Discord; retries and a delivery log) and Prometheus metrics (v1.19)
+- [x] Config health: every config (each protocol on every server, its CDN and relay copies) tried from the server with
+      real client cores (Xray, sing-box, dnstt) on a schedule and on demand, with alerts and metrics (v1.24). See
+      [CONFIG-HEALTH.md](CONFIG-HEALTH.md)

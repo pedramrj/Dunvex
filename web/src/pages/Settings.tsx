@@ -75,7 +75,7 @@ export function SettingsPage({ arg }: { arg?: string }) {
 // ---------------------------------------------------------------- owner settings
 
 function OwnerSettings({ tab }: { tab: TabId }) {
-  const { t, lang } = useI18n();
+  const { t, lang, n } = useI18n();
   const toast = useToast();
   const [s, setS] = useState<S | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
@@ -119,8 +119,14 @@ function OwnerSettings({ tab }: { tab: TabId }) {
           </div>
           <div className="mt-5 flex flex-col gap-4">
             <label className="max-w-xs"><Label>{t("pauseMinutes")}</Label><Input type="number" min={1} className="num" value={s.ip_pause_minutes ?? "10"} onChange={(e) => set("ip_pause_minutes", e.target.value)} /></label>
+            <label className="max-w-md">
+              <Label>{t("healthEvery")}</Label>
+              <Select className="max-w-xs" value={s.health_hours || "3"} onChange={(v) => set("health_hours", v)}
+                options={[{ value: "0", label: t("healthOff") }, ...[1, 2, 3, 6, 12, 24].map((h) => ({ value: String(h), label: t("everyHours").replace("{h}", n(h)) }))]} />
+              <span className="block mt-1.5 text-[12px] text-ink3 leading-relaxed">{t("healthEveryHint")}</span>
+            </label>
           </div>
-          <SaveBar keys={["domain", "host", "ip_pause_minutes"]} />
+          <SaveBar keys={["domain", "host", "ip_pause_minutes", "health_hours"]} />
         </Panel>
         <Panel icon={<ShieldCheck className="size-4" />} title={t("certificate")}
           action={<Badge color={info.selfSigned ? "var(--color-ink2)" : "var(--color-online)"}>{info.selfSigned ? (lang === "fa" ? "خودامضا" : "Self-signed") : "TLS ✓"}</Badge>}>
@@ -465,7 +471,7 @@ function AppearanceTab() {
   const { prefs, set } = usePrefs();
   const presets: { id: string; key: Key; widgets: Widget[]; favorites: string[] }[] = [
     { id: "super", key: "presetSuper", widgets: allWidgets, favorites: ["overview", "users", "security"] },
-    { id: "noc", key: "presetNoc", widgets: ["live", "health", "network", "cores", "events", "kpis"], favorites: ["network", "logs", "analytics"] },
+    { id: "noc", key: "presetNoc", widgets: ["live", "health", "configs", "network", "cores", "events", "kpis"], favorites: ["network", "logs", "analytics"] },
     { id: "support", key: "presetSupport", widgets: ["kpis", "top", "events", "usage"], favorites: ["users", "alerts"] },
     { id: "reseller", key: "presetReseller", widgets: ["kpis", "usage", "top"], favorites: ["users"] },
   ];

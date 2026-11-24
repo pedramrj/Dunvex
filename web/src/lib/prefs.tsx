@@ -6,8 +6,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type Theme = "navy" | "oled" | "light" | "system";
 export type Density = "compact" | "comfortable" | "spacious";
 export type FaFont = "estedad" | "vazirmatn";
-export type Widget = "live" | "health" | "kpis" | "network" | "usage" | "top" | "cores" | "events";
-export const allWidgets: Widget[] = ["kpis", "live", "health", "network", "usage", "top", "cores", "events"];
+export type Widget = "live" | "health" | "kpis" | "network" | "configs" | "usage" | "top" | "cores" | "events";
+export const allWidgets: Widget[] = ["kpis", "live", "health", "network", "configs", "usage", "top", "cores", "events"];
+/** the widgets before the list was remembered: any other one is new to a saved layout */
+const firstWidgets: Widget[] = ["kpis", "live", "health", "network", "usage", "top", "cores", "events"];
 
 export interface Prefs {
   theme: Theme;
@@ -20,6 +22,7 @@ export interface Prefs {
   focus: boolean; // focus mode: no sidebar or top bar
   quiet: boolean; // no toast for incoming alerts
   widgets: Widget[]; // overview widgets in order (hidden ones are left out)
+  widgetsKnown: Widget[]; // the widgets that existed when the layout was saved
   lastRead: number; // last notification id the admin has seen
   sheetWidth: number;
   intro: "always" | "session" | "off";
@@ -36,6 +39,7 @@ const defaults: Prefs = {
   focus: false,
   quiet: false,
   widgets: allWidgets,
+  widgetsKnown: allWidgets,
   lastRead: 0,
   sheetWidth: 640,
   intro: "session",
@@ -46,7 +50,19 @@ const KEY = "dvx-prefs";
 function load(): Prefs {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const p: Prefs = { ...defaults, ...JSON.parse(raw) };
+      // a widget added since the layout was saved shows up after its neighbour
+      const known = p.widgetsKnown ?? firstWidgets;
+      for (const w of allWidgets.filter((x) => !known.includes(x))) {
+        const before = allWidgets.slice(0, allWidgets.indexOf(w)).reverse().find((x) => p.widgets.includes(x));
+        const list = p.widgets.filter((x) => x !== w);
+        list.splice(before ? list.indexOf(before) + 1 : 0, 0, w);
+        p.widgets = list;
+      }
+      p.widgetsKnown = allWidgets;
+      return p;
+    }
   } catch {
     /* storage blocked */
   }

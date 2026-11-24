@@ -840,7 +840,7 @@ func dur(sec int64, lang string) string {
 
 // onEvent forwards important events to the admins.
 func (b *Bot) onEvent(kind, msg string) {
-	important := kind == "limit" || kind == "core" || kind == "auth" ||
+	important := kind == "limit" || kind == "core" || kind == "auth" || kind == "health" ||
 		(kind == "user" && (strings.Contains(msg, " is now ") || strings.Contains(msg, "first time")))
 	if !important {
 		return

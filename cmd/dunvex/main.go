@@ -335,6 +335,7 @@ func serve(home string) error {
 	mgr.OnApplied = srv.KickNodes // other servers follow every change
 	go router.Serve()
 
+	engine.EnsureHealthKey(st) // the config check's user, on this server and (synced) on the nodes
 	stopMgr := make(chan struct{})
 	mgrDone := make(chan struct{})
 	go func() { mgr.Run(stopMgr); close(mgrDone) }()
@@ -343,6 +344,7 @@ func serve(home string) error {
 	srv.Tunnels = relay.NewTunnels(os.Getenv("DUNVEX_LISTEN")) // links to reverse relays in front of this server
 	defer srv.Tunnels.Close()
 	go srv.RunNodes(stopMgr)
+	go srv.RunHealthChecks(stopMgr) // config health: every config tested from here
 
 	hs := &http.Server{Addr: addr, Handler: srv.Handler(), ReadHeaderTimeout: 15 * time.Second, IdleTimeout: 120 * time.Second}
 	go func() {

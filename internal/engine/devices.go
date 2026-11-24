@@ -32,7 +32,7 @@ func newDevices() *devices {
 }
 
 func (d *devices) see(user, ip string, at int64) {
-	if user == "" || ip == "" || ip == "127.0.0.1" || ip == "::1" || tunnelID(ip) {
+	if user == "" || user == HealthName || ip == "" || ip == "127.0.0.1" || ip == "::1" || tunnelID(ip) {
 		return
 	}
 	d.mu.Lock()

@@ -39,6 +39,16 @@ export function duration(sec: number, lang: Lang): string {
   return `${m}m`;
 }
 
+/** "in 2 hours": a time still to come. */
+export function until(unix: number, lang: Lang): string {
+  const s = Math.max(0, unix - Math.floor(Date.now() / 1000));
+  const rtf = new Intl.RelativeTimeFormat(lang === "fa" ? "fa" : "en", { numeric: "auto" });
+  if (s < 60) return rtf.format(1, "minute");
+  if (s < 3600) return rtf.format(Math.ceil(s / 60), "minute");
+  if (s < 86400) return rtf.format(Math.round(s / 3600), "hour");
+  return rtf.format(Math.round(s / 86400), "day");
+}
+
 export function ago(unix: number, lang: Lang): string {
   if (!unix) return lang === "fa" ? "هرگز" : "never";
   const s = Math.max(0, Math.floor(Date.now() / 1000) - unix);

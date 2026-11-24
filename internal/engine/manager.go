@@ -330,7 +330,13 @@ func (m *Manager) build() (b built, err error) {
 		}
 	}
 	muxed := dnsMuxed(dnsCount, dnsTunnel)
-	xicmpIn := int64(0) // the one ping tunnel of this server
+	xicmpIn := int64(0)           // the one ping tunnel of this server
+	health := HealthUser(m.Store) // the config check's own user (see health.go)
+	for _, u := range users {
+		if u.Name == HealthName {
+			health = nil // a restored database with a user of that name: leave it alone
+		}
+	}
 	var xin, sin []obj
 	var sTags, sUsers []string
 	seenUser := map[string]bool{}
@@ -374,6 +380,9 @@ func (m *Manager) build() (b built, err error) {
 				us = append(us, u)
 				b.active[u.Name] = true
 			}
+		}
+		if health != nil && HealthServed(p) {
+			us = append(us, health)
 		}
 		switch p.Engine {
 		case "trusttunnel":
@@ -520,7 +529,7 @@ func (m *Manager) build() (b built, err error) {
 			sin = append(sin, ibs...)
 			sTags = append(sTags, in.Tag())
 			for _, u := range us {
-				if !seenUser[u.Name] {
+				if u.Name != HealthName && !seenUser[u.Name] {
 					seenUser[u.Name] = true
 					sUsers = append(sUsers, u.Name)
 				}

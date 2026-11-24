@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/node"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/relay"
@@ -160,8 +161,9 @@ func (h *nodeHub) round() {
 // may connect and may use at least one of them.
 func (s *Server) desired(n *store.Node) node.State {
 	st := node.State{Inbounds: []*store.Inbound{}, Users: []node.User{}, Settings: map[string]string{
-		"block_torrent": s.St.GetSetting("block_torrent", "true"),
-		"routing":       s.St.GetSetting("routing", ""),
+		"block_torrent":         s.St.GetSetting("block_torrent", "true"),
+		"routing":               s.St.GetSetting("routing", ""),
+		engine.HealthKeySetting: s.St.GetSetting(engine.HealthKeySetting, ""), // the config check's user
 	}}
 	if n.IsRelay() {
 		// a relay forwards ports; it needs no protocols, users, routing or domain

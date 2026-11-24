@@ -23,6 +23,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/billing"
 	"github.com/pedramrj/dunvex/internal/engine"
 	"github.com/pedramrj/dunvex/internal/geoip"
+	"github.com/pedramrj/dunvex/internal/health"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
@@ -67,6 +68,13 @@ type Server struct {
 
 	nodeOnce sync.Once
 	nodes    *nodeHub // other servers (see hub)
+
+	HealthRunner  *health.Runner // the config check (nil = the real cores; see health.go)
+	HealthRetry   time.Duration  // the wait before a failed config is tried again (0 = 8s)
+	healthMu      sync.Mutex
+	healthRunning bool
+	healthStarted int64
+	healthReady   time.Time // no scheduled check before this (the cores settle after a start)
 }
 
 // Bot is the Telegram side, as seen by the HTTP layer.

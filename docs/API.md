@@ -74,6 +74,8 @@ Role: **R** any admin (resellers see only their own users), **A** admin or owner
 | POST | `/users/{id}/renew` | R | Renew a user with a plan: `{"planId":1}` |
 | GET / PUT | `/routing` | O | Blocking, Iranian sites and WARP; the rest is in [ROUTING.md](ROUTING.md) |
 | GET | `/metrics` | A | Prometheus metrics (a read-only API key is enough); see [INTEGRATIONS.md](INTEGRATIONS.md) |
+| GET | `/health` | A | The last config health report; see [CONFIG-HEALTH.md](CONFIG-HEALTH.md) |
+| POST | `/health/check` | A | Start a config health check now (it runs in the background) |
 | GET / POST | `/webhooks` | O | Webhooks; editing, tests and deliveries are in [INTEGRATIONS.md](INTEGRATIONS.md) |
 | GET / PUT | `/cdn` | O | Links through the CDN and clean addresses; `POST /cdn/check` and `POST /cdn/cloudflare` are in [CDN.md](CDN.md) |
 | GET | `/billing/plans` · `/billing/orders` · `/wallet` | R | Plans, orders and your wallet; the rest is in [BILLING.md](BILLING.md) |

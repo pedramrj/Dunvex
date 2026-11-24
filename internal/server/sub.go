@@ -161,6 +161,7 @@ type profileItem struct {
 	in   *store.Inbound
 	name string
 	env  protocol.Env // the address of the server the inbound runs on
+	via  string       // "cdn" or "relay" for those copies of a config, "" for the config itself
 }
 
 func (s *Server) items(u *store.User) []profileItem {
@@ -188,21 +189,21 @@ func (s *Server) items(u *store.User) []profileItem {
 			if seen[name]++; seen[name] > 1 {
 				name = fmt.Sprintf("%s %d", name, seen[name])
 			}
-			out = append(out, profileItem{p, in, name, env})
+			out = append(out, profileItem{p, in, name, env, ""})
 		}
 		for _, v := range cl.variants(in, p, title, env) {
 			name := v.name
 			if seen[name]++; seen[name] > 1 {
 				name = fmt.Sprintf("%s %d", name, seen[name])
 			}
-			out = append(out, profileItem{p, v.in, name, v.env})
+			out = append(out, profileItem{p, v.in, name, v.env, "cdn"})
 		}
 		for _, r := range relays {
 			name := relayRemark(in, p, title, r)
 			if seen[name]++; seen[name] > 1 {
 				name = fmt.Sprintf("%s %d", name, seen[name])
 			}
-			out = append(out, profileItem{p, viaRelay(in, r), name, env})
+			out = append(out, profileItem{p, viaRelay(in, r), name, env, "relay"})
 		}
 	}
 	return out

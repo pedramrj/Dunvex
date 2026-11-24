@@ -220,6 +220,29 @@ export interface Preset {
   fields: Field[];
 }
 
+/** One config's result in the config health check (GET /health). */
+export interface HealthResult {
+  inboundId: number;
+  preset: string;
+  name: string; // as in the users' apps
+  server?: string; // node name; empty = this server
+  via?: "cdn" | "relay";
+  status: "ok" | "fail" | "skip";
+  ms?: number;
+  error?: string; // why it failed, or why it was not tested
+}
+
+export interface HealthReport {
+  at: number; // when the last check finished (0 = never)
+  took: number;
+  results: HealthResult[];
+  running: boolean;
+  started?: number;
+  hours: number; // the schedule (0 = only when asked)
+  next?: number;
+  summary: { total: number; ok: number; fail: number; skip: number };
+}
+
 export interface Inbound {
   id: number;
   preset: string;

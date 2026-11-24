@@ -68,6 +68,11 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
   sign-ins, orders…) goes to your own code as signed JSON, or to Slack and Discord, with retries and a delivery log;
   and `/api/metrics` gives Prometheus users, traffic per user and protocol, protocol and core health, each server's
   resources, certificate expiry and relays, behind a read-only API key. See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+- **Config health (v1.24)**: every config your users get (each protocol on every server, and its CDN and relay
+  copies) is tried from the server with the same client cores the apps use (Xray, sing-box, dnstt), every few hours
+  and on demand. The Overview shows how many work, the failures with the reason, and how long a page took through each
+  one; a config that stops working or works again reaches Telegram, webhooks and Prometheus.
+  See [docs/CONFIG-HEALTH.md](docs/CONFIG-HEALTH.md).
 - **CDN helper (v1.17)**: put the CDN protocols behind Cloudflare. Their configs go through the CDN name plus one per
   clean address (labelled, for example by operator); a check tries the DNS, each protocol through the CDN and straight
   to the server, and each clean address, explaining Cloudflare's errors; and one click with your own API token (never
@@ -163,6 +168,11 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
   سفارش‌ها و…) به برنامهٔ خودتان با JSON امضاشده یا به Slack و Discord فرستاده می‌شود، با تلاش دوباره و فهرست ارسال‌ها؛ و
   ‎`/api/metrics`‎ برای Prometheus کاربران، مصرف هر کاربر و پروتکل، سلامت پروتکل‌ها و هسته‌ها، منابع هر سرور، انقضای گواهی‌ها
   و رله‌ها را با یک کلید API فقط‌خواندنی می‌دهد. راهنما: [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md).
+- **سلامت کانفیگ‌ها (نسخهٔ ۱.۲۴)**: هر کانفیگی که کاربران می‌گیرند (هر پروتکل روی هر سرور، و نسخه‌های CDN و رلهٔ آن)
+  از خود سرور با همان هسته‌هایی که برنامه‌ها به کار می‌برند (Xray، sing-box و dnstt) امتحان می‌شود؛ هر چند ساعت یک‌بار
+  و هر وقت بخواهید. صفحهٔ «نمای کلی» نشان می‌دهد چندتا کار می‌کنند، خرابی‌ها با دلیلشان، و یک صفحه از راه هرکدام چقدر
+  طول کشید. کانفیگی که از کار بیفتد یا دوباره درست شود به تلگرام، وب‌هوک‌ها و Prometheus خبر داده می‌شود.
+  راهنما: [docs/CONFIG-HEALTH.md](docs/CONFIG-HEALTH.md).
 - **دستیار CDN (نسخهٔ ۱.۱۷)**: پروتکل‌های CDN پشت کلادفلر؛ کانفیگ‌ها از راه نام CDN و یکی هم برای هر آی‌پی تمیز (با
   برچسب، مثلاً نام اپراتور)؛ بررسی DNS، هر پروتکل از راه CDN و مستقیم و هر آی‌پی تمیز با توضیح خطاهای کلادفلر؛ و با یک
   کلیک و توکن API خودتان (که ذخیره نمی‌شود) رکورد DNS پروکسی ساخته و SSL/TLS و WebSockets درست می‌شود. راهنما:

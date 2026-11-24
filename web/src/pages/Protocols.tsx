@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, Globe2, Plus, Radar, Server, Sparkles, Trash2 } from "lucide-react";
-import { api, type Field, type Group, type Inbound, type NodeView, type Preset } from "../lib/api";
-import { bytes, cx, groupColor, groups } from "../lib/format";
+import { AlertTriangle, ChevronDown, CircleCheck, CircleSlash, CircleX, Globe2, Plus, Radar, RefreshCw, Server, Sparkles, Trash2 } from "lucide-react";
+import { api, type Field, type Group, type HealthResult, type Inbound, type NodeView, type Preset } from "../lib/api";
+import { ago, bytes, cx, groupColor, groups } from "../lib/format";
+import { msColor, useHealth, worstByInbound } from "../lib/health";
 import { useI18n } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, Empty, Input, Label, SectionTitle, Select, Sheet, Skeleton, Toggle, useToast } from "../components/ui";
 import { PageHead, navigate } from "../App";
@@ -23,6 +24,11 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
     api<NodeView[]>("nodes").then((l) => setNodes(l.filter((x) => x.role !== "relay"))).catch(() => {}); // relays run no protocols
   }, [load]);
   const nodeName = (id: number) => nodes.find((x) => x.id === id)?.name ?? "?";
+  const health = useHealth();
+  const worst = useMemo(() => worstByInbound(health.report?.results ?? []), [health.report]);
+  const [asked, setAsked] = useState(false);
+  const checking = !!health.report?.running || asked;
+  const checkNow = () => { setAsked(true); health.check().catch((e) => toast(e.message, "error")).finally(() => setAsked(false)); };
   const byId = useMemo(() => Object.fromEntries(presets.map((p) => [p.id, p])), [presets]);
 
   const adding = arg?.startsWith("add");
@@ -47,7 +53,15 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
             {errors > 0 && <span className="text-bad num">{n(errors)} {t("error")}</span>}
           </span>
         )}
-        action={<Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add")}>{t("addProtocol")}</Button>}
+        action={<>
+          {inbounds && inbounds.length > 0 && (
+            <Button icon={<RefreshCw className={cx("size-4", checking && "animate-spin")} />} disabled={checking} onClick={checkNow}
+              title={health.report?.at ? t("healthChecked").replace("{ago}", ago(health.report.at, lang)) : undefined}>
+              {checking ? t("checking") : t("checkConfigs")}
+            </Button>
+          )}
+          <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => navigate("protocols", "add")}>{t("addProtocol")}</Button>
+        </>}
       />
       {!inbounds ? (
         <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40" />)}</div>
@@ -93,7 +107,11 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
                                 <bdi dir="ltr">{i.nodeId ? nodeName(i.nodeId) : t("thisServer")}</bdi>
                               </Badge>
                             )}
+                            {i.enabled && worst[i.id] && <HealthBadge r={worst[i.id]} />}
                           </div>
+                          {i.enabled && !i.error && worst[i.id]?.status === "fail" && worst[i.id].error && (
+                            <p className="-mt-1 text-[11.5px] text-bad/90 line-clamp-2 [overflow-wrap:anywhere]" dir="ltr" title={worst[i.id].error}>{worst[i.id].error}</p>
+                          )}
                           {i.error ? (
                             <div className="flex gap-2 items-start rounded-xl bg-bad/[.08] border border-bad/30 px-3 py-2 text-[12px] text-bad">
                               <AlertTriangle className="size-4 shrink-0 mt-0.5 text-bad" />
@@ -120,6 +138,16 @@ export function ProtocolsPage({ arg }: { arg?: string }) {
       {editing && byId[editing.preset] && <EditSheet key={editing.id} inbound={editing} preset={byId[editing.preset]} nodes={nodes} onClose={close} onDone={() => { load(); }} />}
     </div>
   );
+}
+
+/** What the last config check found for an inbound (its worst copy). */
+function HealthBadge({ r }: { r: HealthResult & { copies: number; failing: number } }) {
+  const { t, n } = useI18n();
+  if (r.status === "ok")
+    return <Badge color={msColor(r.ms)} icon={<CircleCheck className="size-3" />}><span className="num">{n(r.ms ?? 0)}</span> ms</Badge>;
+  if (r.status === "fail")
+    return <Badge color="var(--color-bad)" icon={<CircleX className="size-3" />}>{t("healthFail")}{r.copies > 1 && <span className="num"> · {n(r.failing)}/{n(r.copies)}</span>}</Badge>;
+  return <span title={r.error}><Badge color="var(--color-ink3)" icon={<CircleSlash className="size-3" />}>{t("healthSkip")}</Badge></span>;
 }
 
 // ---------------------------------------------------------------- add

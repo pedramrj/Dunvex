@@ -10,10 +10,11 @@ import { useI18n, type Key } from "../lib/i18n";
 import { allWidgets, usePrefs, type Widget } from "../lib/prefs";
 import { ArcGauge, Avatar, Badge, Button, Bytes, Dot, ErrorState, EventMsg, Meter, Num, Panel, Ring, ringColor, Segmented, Sheet, Skeleton, StatCard, Timeline, Toggle } from "../components/ui";
 import { NetworkMap } from "../components/NetworkMap";
+import { ConfigHealthPanel } from "../components/ConfigHealth";
 import { LiveChart, Spark, StackBar, UsageChart } from "../components/charts";
 import { NewUserButton, PageHead, can, eventMeta, navigate, useSession } from "../App";
 
-const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", network: "network", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
+const widgetKey: Record<Widget, Key> = { live: "liveTraffic", health: "serverHealth", kpis: "kpis", network: "network", configs: "configHealth", usage: "usageHistory", top: "topUsers", cores: "cores", events: "recentEvents" };
 
 export function OverviewPage() {
   const { t, lang, n, pc } = useI18n();
@@ -163,6 +164,8 @@ export function OverviewPage() {
           </Panel>
           </div>
         )}
+
+        {show("configs") && isAdmin && <ConfigHealthPanel style={order("configs")} />}
 
         <div className="grid gap-[var(--gap)] xl:grid-cols-12" style={rowOrder(["usage", "top", "cores", "events"])}>
           {show("usage") && (

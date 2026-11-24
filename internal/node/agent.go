@@ -294,7 +294,7 @@ func (a *Agent) Apply(s State) error {
 	if err := a.St.SyncUsers(users); err != nil {
 		return err
 	}
-	for _, k := range []string{"block_torrent", "routing"} {
+	for _, k := range []string{"block_torrent", "routing", engine.HealthKeySetting} {
 		if v, ok := s.Settings[k]; ok {
 			a.St.SetSetting(k, v)
 		}
