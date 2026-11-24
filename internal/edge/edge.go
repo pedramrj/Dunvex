@@ -14,6 +14,10 @@ package edge
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/hkdf"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +31,13 @@ import (
 type Target struct {
 	Addr        string // "127.0.0.1:port"
 	ProxyHeader bool   // send a PROXY v1 line first (Xray accepts it, sing-box does not)
+
+	// AuthKey, when set, lets through only ClientHellos whose random carries
+	// this key (TrustTunnel's client_random_auth_key, see ValidAuthRandom).
+	// Every other hello goes to Decoy, the real site of the name ("host:443"),
+	// so a probe sees that site and its real certificate, as with Reality.
+	AuthKey string // the key's bytes (a string keeps Target comparable)
+	Decoy   string
 }
 
 // Fallback is the route key for TLS connections that name no known SNI.
@@ -161,9 +172,10 @@ func (r *Router) handle(c net.Conn) {
 	br := bufio.NewReaderSize(c, 16<<10)
 	c.SetReadDeadline(time.Now().Add(10 * time.Second))
 	sni, isTLS := "", false
+	var random []byte
 	if hdr, err := br.Peek(5); err == nil && hdr[0] == 0x16 && hdr[1] == 0x03 {
 		isTLS = true
-		sni = peekServerName(br)
+		sni, random = peekHello(br)
 	} else if err != nil {
 		c.Close()
 		return
@@ -179,6 +191,14 @@ func (r *Router) handle(c net.Conn) {
 			target, ok = r.routes[Fallback]
 		}
 		r.mu.RUnlock()
+		if ok && target.AuthKey != "" && !ValidAuthRandom([]byte(target.AuthKey), random, sni) {
+			if target.Decoy == "" {
+				c.Close()
+				return
+			}
+			// not one of the apps: the real site answers, untouched
+			target = Target{Addr: target.Decoy}
+		}
 		if ok {
 			r.pipe(c, br, target)
 			return
@@ -248,38 +268,73 @@ func proxyHeader(src, dst net.Addr) string {
 	return fmt.Sprintf("PROXY %s %s %s %d %d\r\n", fam, sip, dip, s.Port, d.Port)
 }
 
-// peekServerName reads the ClientHello's SNI without consuming anything. A
-// client with TLS fragment on (Xray's "tlshello") splits the ClientHello over
-// many small handshake records; they are joined until the message is whole.
+// ValidAuthRandom checks a ClientHello's 32-byte random against TrustTunnel's
+// client_random_auth_key: the first 16 bytes are random, the last 16 must be
+// AES-128 (one block) of SHA-256(SNI)[:16] under the key HKDF-SHA256(secret =
+// key, salt = random[:16], info = "tls13 encryption context"). The same check
+// as the endpoint's rules (lib/src/rules.rs, TrustTunnel 1.3); the ClientHello
+// still looks like any other.
+func ValidAuthRandom(key, random []byte, sni string) bool {
+	if len(key) == 0 || len(random) != 32 || sni == "" {
+		return false
+	}
+	k, err := hkdf.Key(sha256.New, key, random[:16], "tls13 encryption context", 16)
+	if err != nil {
+		return false
+	}
+	b, err := aes.NewCipher(k)
+	if err != nil {
+		return false
+	}
+	h := sha256.Sum256([]byte(sni))
+	var want [16]byte
+	b.Encrypt(want[:], h[:16])
+	return subtle.ConstantTimeCompare(want[:], random[16:]) == 1
+}
+
+// peekServerName reads the ClientHello's SNI without consuming anything.
 func peekServerName(br *bufio.Reader) string {
+	sni, _ := peekHello(br)
+	return sni
+}
+
+// peekHello reads the ClientHello's SNI and random without consuming
+// anything. A client with TLS fragment on (Xray's "tlshello") splits the
+// ClientHello over many small handshake records; they are joined until the
+// message is whole.
+func peekHello(br *bufio.Reader) (string, []byte) {
 	var hello []byte
 	off := 0
 	for records := 0; records < 512; records++ {
 		hdr, err := br.Peek(off + 5)
 		if err != nil {
-			return ""
+			return "", nil
 		}
 		h := hdr[off:]
 		if h[0] != 0x16 || h[1] != 0x03 {
-			return ""
+			return "", nil
 		}
 		n := int(h[3])<<8 | int(h[4])
 		if n == 0 || n > 16<<10 {
-			return ""
+			return "", nil
 		}
 		rec, err := br.Peek(off + 5 + n)
 		if err != nil {
-			return "" // longer than the buffer: no name, the fallback answers
+			return "", nil // longer than the buffer: no name, the fallback answers
 		}
 		hello = append(hello, rec[off+5:]...)
 		off += 5 + n
 		if len(hello) >= 4 {
 			if need := 4 + (int(hello[1])<<16 | int(hello[2])<<8 | int(hello[3])); len(hello) >= need {
-				return ServerName(hello[:need])
+				var random []byte
+				if need >= 38 && hello[0] == 1 {
+					random = append([]byte(nil), hello[6:38]...) // type, length, version, then the random
+				}
+				return ServerName(hello[:need]), random
 			}
 		}
 	}
-	return ""
+	return "", nil
 }
 
 // ServerName reads the SNI from a TLS handshake message (a ClientHello, without the record header).

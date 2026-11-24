@@ -4,6 +4,7 @@ package engine
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/pem"
 	"fmt"
@@ -152,10 +153,11 @@ certificate = """
 %s"""
 upstream_protocol = %q
 anti_dpi = false
+client_random_auth_key = %q
 
 [listener.socks]
 address = "127.0.0.1:%d"
-`, f[0x01][0], f[0x02][0], f[0x05][0], f[0x06][0], pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f[0x08][0]}), proto, socks)
+`, f[0x01][0], f[0x02][0], f[0x05][0], f[0x06][0], pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: f[0x08][0]}), proto, authKey(f), socks)
 		cfile := filepath.Join(dir, "client-"+proto+".toml")
 		os.WriteFile(cfile, []byte(cfg), 0o600)
 		c := exec.Command(clientBin, "--config", cfile)
@@ -186,6 +188,22 @@ address = "127.0.0.1:%d"
 	}
 	run("http2")
 
+	// hiding from probes (on by default): a hello without the apps' key, as a
+	// probe sends, reaches the real www.apple.com and gets its real certificate
+	if !protocol.TTHide(tt, env) {
+		t.Fatal("a new TrustTunnel should hide from probes")
+	}
+	probe, err := tls.Dial("tcp", "127.0.0.1:"+strconv.Itoa(shared), &tls.Config{ServerName: "www.apple.com"})
+	if err != nil {
+		t.Fatalf("probe for www.apple.com: %v", err)
+	}
+	pcs := probe.ConnectionState().PeerCertificates
+	probe.Close()
+	if pcs[0].VerifyHostname("www.apple.com") != nil || len(pcs) < 2 {
+		t.Fatalf("the probe got %v (want the real site's chain)", pcs[0].Subject)
+	}
+	t.Logf("probe for www.apple.com: the real certificate, issued by %s", pcs[0].Issuer.CommonName)
+
 	// HTTP/3: QUIC reaches the endpoint through the shared UDP port
 	if len(quic.Stats()) != 1 || !quic.Stats()[0].Listening {
 		t.Fatalf("UDP not passed on: %+v", quic.Stats())
@@ -197,4 +215,35 @@ address = "127.0.0.1:%d"
 	if s := quic.Stats()[0]; s.Up+s.Down < 1000 {
 		t.Errorf("QUIC did not go through the shared UDP port: %+v", s)
 	}
+
+	// hiding off: the endpoint itself answers, and a request with no sign-in
+	// gets a plain 404, not "407 Proxy Authentication Required"
+	tt.Params["protocol"], tt.Params["ttHide"] = "http2", false
+	st.UpdateInbound(tt)
+	m.Apply()
+	hc := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{ServerName: "www.apple.com", InsecureSkipVerify: true},
+		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, "127.0.0.1:"+strconv.Itoa(shared))
+		}}}
+	var status int
+	for i := 0; i < 8 && status == 0; i++ {
+		if res, err := hc.Get("https://www.apple.com/"); err == nil {
+			status = res.StatusCode
+			res.Body.Close()
+		} else {
+			time.Sleep(time.Second)
+		}
+	}
+	if status != 404 {
+		t.Fatalf("a GET with no sign-in got %d, want 404", status)
+	}
+}
+
+// authKey is the link's client_random_auth_key ("" when it has none).
+func authKey(f map[byte][][]byte) string {
+	if len(f[0x0F]) == 0 {
+		return ""
+	}
+	return string(f[0x0F][0])
 }

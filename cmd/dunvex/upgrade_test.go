@@ -56,3 +56,35 @@ func TestUpgradeInboundsAddsVLESSKeys(t *testing.T) {
 		t.Fatalf("Reality got VLESS Encryption keys: %v", by["Reality"].Params)
 	}
 }
+
+// A TrustTunnel from before v1.31.2 hides from probes when nobody has a link
+// yet, and keeps working as it was when users have one.
+func TestUpgradeInboundsTrustTunnel(t *testing.T) {
+	for _, withUsers := range []bool{false, true} {
+		st, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if withUsers {
+			st.CreateUser(&store.User{Name: "sara", UUID: "11111111-1111-1111-1111-111111111111", Password: "pw", SubToken: "tok", Enabled: true})
+		}
+		tt := &store.Inbound{Preset: "trusttunnel", Remark: "TrustTunnel", Port: 443, Enabled: true,
+			Params: map[string]any{"sni": "www.apple.com", "protocol": "http2", "ttCert": "C", "ttKey": "K", "ttCertFor": "www.apple.com"}}
+		st.CreateInbound(tt)
+		if n := upgradeInbounds(st); n != 1 {
+			t.Fatalf("users=%v: changed %d", withUsers, n)
+		}
+		ins, _ := st.Inbounds()
+		in := ins[0]
+		if in.Bool("ttHide") == withUsers || len(in.Str("ttAuthKey")) != 32 {
+			t.Fatalf("users=%v: %v", withUsers, in.Params)
+		}
+		if in.Str("ttCert") != "C" || in.Str("sni") != "www.apple.com" {
+			t.Fatalf("users=%v: the certificate or hostname changed: %v", withUsers, in.Params)
+		}
+		if n := upgradeInbounds(st); n != 0 {
+			t.Fatalf("users=%v: second start changed %d", withUsers, n)
+		}
+		st.Close()
+	}
+}

@@ -401,6 +401,10 @@ func (m *Manager) build() (b built, err error) {
 			b.tt, b.ttIn = protocol.TrustTunnelServer(in, us, env, filepath.Dir(m.TT.ConfigPath), m.TT.APIPort, router, bind), in.ID
 			if bind != "" && b.tt != nil {
 				b.routes[sni] = edge.Target{Addr: bind}
+				if protocol.TTHide(in, env) {
+					// hellos without the apps' key go to the hostname's real site
+					b.routes[sni] = edge.Target{Addr: bind, AuthKey: string(protocol.TTAuthKey(in)), Decoy: net.JoinHostPort(in.Str("sni"), "443")}
+				}
 				if protocol.UDPHolder(inbounds, in.NodeID, in.Port, in.ID) == "" {
 					if b.udp == nil {
 						b.udp = map[int]string{}

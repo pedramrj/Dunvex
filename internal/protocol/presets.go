@@ -66,6 +66,7 @@ var (
 	fMTU       = Field{Key: "mtu", Label: "MTU", LabelFa: "MTU", Type: "number", Advanced: true}
 	fTTHost    = Field{Key: "sni", Label: "Hostname (the site it looks like; your domain uses its real certificate)", LabelFa: "نام میزبان (سایتی که شبیهش دیده می‌شود؛ دامنهٔ خودتان با گواهی واقعی‌اش)", Type: "text"}
 	fTTProto   = Field{Key: "protocol", Label: "Transport in the apps (HTTP/2 over TCP, HTTP/3 over QUIC)", LabelFa: "انتقال در برنامه‌ها (HTTP/2 روی TCP، HTTP/3 روی QUIC)", Type: "select", Options: TTProtocols}
+	fTTHide    = Field{Key: "ttHide", Label: "Hide from probes: only the apps with this server's key reach it, anyone else sees the hostname's real site (TrustTunnel apps 1.3 or newer)", LabelFa: "پنهان از کاوشگرها: فقط برنامه‌هایی که کلید این سرور را دارند به آن می‌رسند و بقیه سایت واقعی همان نام را می‌بینند (برنامه‌های TrustTunnel نسخهٔ ۱٫۳ یا جدیدتر)", Type: "bool"}
 	fTTAntiDPI = Field{Key: "antiDpi", Label: "Anti-DPI in the apps (splits the first packets)", LabelFa: "ضد DPI در برنامه‌ها (بسته‌های اول را تکه می‌کند)", Type: "bool", Advanced: true}
 	fTTDNS     = Field{Key: "dns", Label: "DNS for the apps (empty: the app's own; e.g. tls://1.1.1.1)", LabelFa: "DNS برای برنامه‌ها (خالی: پیش‌فرض برنامه؛ مثل tls://1.1.1.1)", Type: "text", Advanced: true}
 	fMieruMux  = Field{Key: "multiplexing", Label: "Multiplexing in the apps (LOW suits most networks)", LabelFa: "مالتی‌پلکس در برنامه‌ها (LOW برای بیشتر شبکه‌ها مناسب است)", Type: "select", Options: MieruMux, Advanced: true}
@@ -225,7 +226,7 @@ var presets = []*Preset{
 		Security: "tls", Status: "ready", proto: "trusttunnel", alsoUDP: true,
 		Desc:   "AdGuard's open VPN protocol: HTTP/2 or HTTP/3 that looks like an ordinary HTTPS site, with the official TrustTunnel apps (iOS, Android, desktop) and Shadowrocket. Uses TCP and UDP on its port, and can share 443 with the panel and Reality (by its hostname; HTTP/3 there while no UDP protocol holds UDP 443). One per server; users change with a short restart.",
 		DescFa: "پروتکل باز AdGuard: HTTP/2 یا HTTP/3 که شبیه یک سایت HTTPS معمولی است، با برنامه‌های رسمی TrustTunnel (iOS، اندروید، دسکتاپ) و Shadowrocket. روی پورتش هم TCP و هم UDP دارد و می‌تواند پورت ۴۴۳ را با پنل و Reality شریک شود (با نام میزبان خودش؛ HTTP/3 آنجا وقتی است که پروتکل UDP دیگری روی UDP 443 نباشد). هر سرور یکی؛ تغییر کاربران با یک ری‌استارت کوتاه اعمال می‌شود.",
-		Fields: []Field{fTTHost, fTTProto, fTTAntiDPI, fTTDNS}},
+		Fields: []Field{fTTHost, fTTProto, fTTHide, fTTAntiDPI, fTTDNS}},
 	{ID: "mieru", Name: "Mieru", Engine: "mita", Group: "classic", Network: "tcp", DefaultPort: 0,
 		Security: "none", Status: "ready", proto: "mieru",
 		Desc:   "TCP with no fixed pattern: no handshake to fingerprint, random padding and a key from each user's name, password and the time. For Clash.Meta (mihomo) apps, Karing and Exclave. One Mieru per server, TCP or UDP; the device limit does not apply to it.",

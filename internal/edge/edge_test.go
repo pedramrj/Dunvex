@@ -2,9 +2,12 @@ package edge
 
 import (
 	"bufio"
+	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hkdf"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -322,4 +325,146 @@ func TestFragmentedHello(t *testing.T) {
 	if sni := peekServerName(bufio.NewReaderSize(strings.NewReader(string(bad)), 16<<10)); sni != "" {
 		t.Fatalf("a broken hello gave %q", sni)
 	}
+}
+
+// authRandom makes a ClientHello random the way TrustTunnel apps do for
+// client_random_auth_key: 16 random bytes, then their proof for the name.
+func authRandom(t *testing.T, key []byte, sni string) []byte {
+	t.Helper()
+	r := make([]byte, 32)
+	rand.Read(r[:16])
+	k, err := hkdf.Key(sha256.New, key, r[:16], "tls13 encryption context", 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := aes.NewCipher(k)
+	h := sha256.Sum256([]byte(sni))
+	b.Encrypt(r[16:], h[:16])
+	return r
+}
+
+// withRandom is a ClientHello record with its random replaced.
+func withRandom(rec, random []byte) []byte {
+	out := append([]byte(nil), rec...)
+	copy(out[5+6:5+38], random)
+	return out
+}
+
+func TestValidAuthRandom(t *testing.T) {
+	key := []byte("0123456789abcdef")
+	r := authRandom(t, key, "www.apple.com")
+	if !ValidAuthRandom(key, r, "www.apple.com") {
+		t.Fatal("the apps' random is refused")
+	}
+	bad := append([]byte(nil), r...)
+	bad[31] ^= 1
+	for name, ok := range map[string]bool{
+		"changed byte": ValidAuthRandom(key, bad, "www.apple.com"),
+		"other name":   ValidAuthRandom(key, r, "www.microsoft.com"),
+		"other key":    ValidAuthRandom([]byte("fedcba9876543210"), r, "www.apple.com"),
+		"no name":      ValidAuthRandom(key, r, ""),
+		"short":        ValidAuthRandom(key, r[:31], "www.apple.com"),
+		"no key":       ValidAuthRandom(nil, r, "www.apple.com"),
+	} {
+		if ok {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// A route with a key: hellos that prove it reach the protocol, every other one
+// goes to the name's real site, byte for byte; without a decoy it is dropped.
+func TestAuthKeyRoute(t *testing.T) {
+	r, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	go r.Serve()
+	type delivery struct {
+		to string
+		b  []byte
+	}
+	got := make(chan delivery, 8)
+	backend := func(name string) string {
+		l, _ := net.Listen("tcp", "127.0.0.1:0")
+		t.Cleanup(func() { l.Close() })
+		go func() {
+			for {
+				c, err := l.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					c.SetReadDeadline(time.Now().Add(time.Second))
+					b, _ := io.ReadAll(c)
+					got <- delivery{name, b}
+					c.Close()
+				}()
+			}
+		}()
+		return l.Addr().String()
+	}
+	app, site := backend("app"), backend("site")
+	key := []byte("0123456789abcdef")
+	r.SetRoutes(map[string]Target{
+		"www.apple.com":     {Addr: app, AuthKey: string(key), Decoy: site},
+		"www.samsung.com":   {Addr: app, AuthKey: string(key)},
+		"www.microsoft.com": {Addr: app},
+	})
+	send := func(b []byte) {
+		t.Helper()
+		c, err := net.Dial("tcp", r.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Write(b)
+		time.Sleep(100 * time.Millisecond)
+		c.(*net.TCPConn).CloseWrite()
+		c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		io.ReadAll(c)
+		c.Close()
+	}
+	expect := func(want string, sent []byte) {
+		t.Helper()
+		select {
+		case d := <-got:
+			if d.to != want || string(d.b) != string(sent) {
+				t.Fatalf("went to %s (%d bytes), want %s", d.to, len(d.b), want)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("nothing reached %s", want)
+		}
+	}
+
+	withKey := withRandom(clientHello(t, "www.apple.com"), authRandom(t, key, "www.apple.com"))
+	send(withKey)
+	expect("app", withKey)
+
+	probe := clientHello(t, "www.apple.com")
+	send(probe)
+	expect("site", probe)
+
+	// the apps' TLS fragment: the hello in pieces still proves the key
+	frag := fragmentHello(withRandom(clientHello(t, "www.apple.com"), authRandom(t, key, "www.apple.com")), 60)
+	send(frag)
+	expect("app", frag)
+
+	// a proof made for another name does not count
+	other := withRandom(clientHello(t, "www.apple.com"), authRandom(t, key, "www.microsoft.com"))
+	send(other)
+	expect("site", other)
+
+	// no decoy: dropped, nothing reaches the protocol
+	send(clientHello(t, "www.samsung.com"))
+	select {
+	case d := <-got:
+		t.Fatalf("a hello without the key reached %s", d.to)
+	case <-time.After(500 * time.Millisecond):
+	}
+
+	// routes without a key are unchanged
+	plain := clientHello(t, "www.microsoft.com")
+	send(plain)
+	expect("app", plain)
 }

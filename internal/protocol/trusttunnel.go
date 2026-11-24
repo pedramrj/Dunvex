@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/util"
 )
 
 // TrustTunnel (AdGuard): a VPN over HTTP/2 or HTTP/3 that looks like an HTTPS
@@ -48,6 +49,31 @@ func ttDefaults(params map[string]any, domain string) {
 			params["ttCert"], params["ttKey"], params["ttCertFor"] = c, k, host
 		}
 	}
+	if k, err := hex.DecodeString(str(params["ttAuthKey"])); err != nil || len(k) != 16 {
+		params["ttAuthKey"] = util.RandomHex(16)
+	}
+	if _, ok := params["ttHide"]; !ok {
+		params["ttHide"] = true // new ones hide; older ones keep what they had (upgradeInbounds)
+	}
+}
+
+// TTHide says whether TrustTunnel hides from probes: only apps that carry its
+// key in the TLS ClientHello (client_random_auth_key, TrustTunnel apps 1.3)
+// reach it. On the panel's port the router sends every other hello to the real
+// site of the hostname; on its own port the endpoint drops them. Not when the
+// hostname is this server's own domain: it has a real certificate already,
+// and its real site is this server.
+func TTHide(in *store.Inbound, env Env) bool {
+	return in.Bool("ttHide") && len(TTAuthKey(in)) == 16 && !ttRealCert(in, env)
+}
+
+// TTAuthKey is the 16-byte key the apps prove in their ClientHello.
+func TTAuthKey(in *store.Inbound) []byte {
+	k, err := hex.DecodeString(in.Str("ttAuthKey"))
+	if err != nil {
+		return nil
+	}
+	return k
 }
 
 // ttSelfSigned makes a certificate for host (ECDSA P-256, 10 years), PEM.
@@ -97,6 +123,7 @@ type TTServer struct {
 const (
 	TTHostsFile = "tt-hosts.toml"
 	ttCredsFile = "tt-credentials.toml"
+	ttRulesFile = "tt-rules.toml"
 	ttCertFile  = "tt-cert.pem"
 	ttKeyFile   = "tt-key.pem"
 )
@@ -134,9 +161,17 @@ func TrustTunnelServer(in *store.Inbound, users []*store.User, env Env, dir stri
 	}
 	files[TTHostsFile] = []byte(fmt.Sprintf("[[main_hosts]]\nhostname = %s\ncert_chain_path = %s\nprivate_key_path = %s\n",
 		tomlStr(in.Str("sni")), tomlStr(certPath), tomlStr(keyPath)))
+	rules := ""
+	if TTHide(in, env) {
+		// the apps with the key, nobody else (the router already sent probes
+		// to the real site when it is in front; this holds on any port)
+		files[ttRulesFile] = []byte(fmt.Sprintf("[[rule]]\nclient_random_auth_key = %s\naction = \"allow\"\n\n[[rule]]\naction = \"deny\"\n",
+			tomlStr(in.Str("ttAuthKey"))))
+		rules = "rules_file = " + tomlStr(dir+"/"+ttRulesFile) + "\n"
+	}
 
 	h := sha256.New()
-	for _, name := range []string{ttCredsFile, TTHostsFile, ttCertFile, ttKeyFile} {
+	for _, name := range []string{ttCredsFile, TTHostsFile, ttCertFile, ttKeyFile, ttRulesFile} {
 		h.Write(files[name])
 	}
 	if ttRealCert(in, env) {
@@ -156,6 +191,9 @@ listen_address = %s
 ipv6_available = false
 allow_private_network_connections = false
 credentials_file = %s
+%s# a request that is no proxy request and has no sign-in gets a plain 404 like
+# any web server, not "407 Proxy Authentication Required"
+non_connect_auth_failure_status_code = 404
 
 [listen_protocols.http1]
 [listen_protocols.http2]
@@ -167,7 +205,7 @@ credentials_file = %s
 address = %s
 request_timeout_secs = 3
 per_client_metrics = true
-`, hex.EncodeToString(h.Sum(nil))[:16], tomlStr(listen), tomlStr(dir+"/"+ttCredsFile), fwd, tomlStr("127.0.0.1:"+strconv.Itoa(metricsPort)))
+`, hex.EncodeToString(h.Sum(nil))[:16], tomlStr(listen), tomlStr(dir+"/"+ttCredsFile), rules, fwd, tomlStr("127.0.0.1:"+strconv.Itoa(metricsPort)))
 	return &TTServer{Main: []byte(main), Files: files}
 }
 
@@ -218,6 +256,9 @@ func ttLink(in *store.Inbound, u *store.User, env Env, remark string) string {
 	}
 	if len(dns) > 0 {
 		tlv(0x0D, dns)
+	}
+	if TTHide(in, env) {
+		tlv(0x0F, []byte(in.Str("ttAuthKey"))) // client_random_auth_key, hex
 	}
 	return "tt://?" + base64.RawURLEncoding.EncodeToString(b)
 }
