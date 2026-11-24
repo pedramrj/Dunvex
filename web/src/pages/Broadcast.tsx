@@ -5,7 +5,7 @@ import { ago, cx } from "../lib/format";
 import { useI18n, type Key } from "../lib/i18n";
 import { Badge, Button, Empty, Input, Label, Meter, Panel, Skeleton, Textarea, Toggle, useConfirm, useToast } from "../components/ui";
 import { PageHead, can, navigate, useSession } from "../App";
-import { TagChip, sameTag, tagColor } from "../components/Tags";
+import { TagChip, sameTag } from "../components/Tags";
 
 const MAX = 3500;
 const audiences: { id: Exclude<BroadcastAudience, "selected" | "tag">; key: Key; hint: Key; icon: typeof UsersIcon; color: string }[] = [
@@ -116,8 +116,8 @@ export function BroadcastPage({ arg }: { arg?: string }) {
                     label={t(a.key)} count={info.counts[a.id]} title={t(a.hint)} />
                 ))}
                 {(info.tags?.length ?? 0) > 0 && (
-                  <AudienceCard on={aud === "tag"} onClick={() => setAud("tag")} icon={<Tags className="size-4" />} color={tag ? tagColor(tag) : "var(--color-violet)"}
-                    label={aud === "tag" && tag ? `${t("bcByTag")} · ${tag}` : t("bcByTag")} count={tagCount ?? null} title={t("bcTagHint")} className="col-span-2 sm:col-span-4" />
+                  <AudienceCard on={aud === "tag"} onClick={() => setAud("tag")} icon={<Tags className="size-4" />} color="var(--cyan)"
+                    label={aud === "tag" && tag ? <>{t("bcByTag")} · <bdi className="chip-tag">#{tag}</bdi></> : t("bcByTag")} count={tagCount ?? null} title={t("bcTagHint")} className="col-span-2 sm:col-span-4" />
                 )}
               </div>
               {aud === "tag" && (info.tags?.length ?? 0) > 0 && (
@@ -180,7 +180,7 @@ export function BroadcastPage({ arg }: { arg?: string }) {
 }
 
 function AudienceCard({ on, onClick, icon, color, label, count, title, className }: {
-  on: boolean; onClick: () => void; icon: ReactNode; color: string; label: string; count?: { users: number; linked: number } | null; title?: string; className?: string;
+  on: boolean; onClick: () => void; icon: ReactNode; color: string; label: ReactNode; count?: { users: number; linked: number } | null; title?: string; className?: string;
 }) {
   const { n } = useI18n();
   return (
@@ -305,7 +305,7 @@ function History({ list }: { list: BroadcastRun[] }) {
                   <span>{ago(x.at, lang)}</span>
                   {x.by && <><span>·</span><bdi dir="ltr">{x.by}</bdi></>}
                   {x.audience === "tag" && x.tag ? (
-                    <Badge className="h-5 text-[10.5px] px-2" color={tagColor(x.tag)}>{t("bcByTag")} · <bdi>{x.tag}</bdi></Badge>
+                    <Badge className="h-5 text-[10.5px] px-2" color="var(--cyan)">{t("bcByTag")} · <bdi className="chip-tag">#{x.tag}</bdi></Badge>
                   ) : (
                     <Badge className="h-5 text-[10.5px] px-2" color={aud?.color ?? "var(--color-cyan)"}>{aud ? t(aud.key) : t("bcSelected")}</Badge>
                   )}

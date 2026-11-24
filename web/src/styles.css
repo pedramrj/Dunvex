@@ -324,6 +324,112 @@ select {
   opacity: 0.02;
 }
 
+/* ================================================================= chips
+   One look for every small label and toggle (quick filters, tags, picks): a hairline
+   token, lit in the brand blue when on. Components use Chip / ChipSelect from the kit;
+   restyle them here. */
+:root {
+  --chip-radius: 8px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  max-width: 100%;
+  padding-inline: 10px;
+  border-radius: var(--chip-radius);
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--fg) 3%, transparent);
+  color: var(--text2);
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.chip[data-size="sm"] {
+  height: 21px;
+  gap: 4px;
+  padding-inline: 7px;
+  border-radius: calc(var(--chip-radius) - 2px);
+  font-size: 11px;
+}
+.chip[data-tone="add"] {
+  border-style: dashed;
+  background: transparent;
+}
+button.chip,
+select.chip {
+  cursor: pointer;
+}
+button.chip:not(:disabled):hover,
+select.chip:hover {
+  color: var(--text);
+  border-color: var(--border2);
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+}
+.chip[aria-pressed="true"],
+.chip[data-active] {
+  color: var(--text);
+  border-color: color-mix(in oklab, var(--primary2) 65%, transparent);
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary2) 16%, transparent), 0 0 16px -6px color-mix(in oklab, var(--primary2) 70%, transparent);
+}
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.chip:focus-visible {
+  outline: 2px solid var(--primary2);
+  outline-offset: 2px;
+}
+.chip-icon {
+  display: inline-grid;
+  color: var(--text3);
+}
+.chip-icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.chip[aria-pressed="true"] .chip-icon,
+.chip[data-active] .chip-icon {
+  color: var(--primary2);
+}
+.chip-count {
+  color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+.chip-x {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-inline-end: -4px;
+  border-radius: 5px;
+  color: var(--text3);
+}
+.chip-x:hover {
+  color: var(--text);
+  background: color-mix(in oklab, var(--fg) 10%, transparent);
+}
+.chip-x > svg {
+  width: 12px;
+  height: 12px;
+}
+.chip-select {
+  padding-inline-end: 6px;
+  outline: none;
+}
+/* a tag reads like a code token: a hash mark, then the name in the mono face */
+.chip-tag {
+  font-family: "DVX Mono", var(--font-fa), ui-monospace, monospace;
+  letter-spacing: 0;
+}
+.chip-hash {
+  color: var(--cyan);
+  opacity: 0.85;
+}
+
 /* ================================================================= surfaces
    Elegant borders, restrained shadows, a faint lit top edge. */
 .glass {

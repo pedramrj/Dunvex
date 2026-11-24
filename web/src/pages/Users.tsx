@@ -7,7 +7,7 @@ import { api, money, qrURL, saveText, type ConfigEntry, type Event, type Inbound
 import { TagChip, TagInput, TagList, hasTag, normalizeTag, sameTag } from "../components/Tags";
 import { GB, ago, bytes, copyText, cx, date, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
-import {  Avatar, Badge, Button, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
+import {  Avatar, Badge, Button, Chip, ChipSelect, ConfirmButton, CopyField, Dialog, Dot, Empty, IconButton, Input, KV, Label, Meter, Panel, Ring, ringColor, Segmented, Select, Sheet,
   Skeleton, StatusBadge, Tabs, Toggle, useToast, ContextMenu, useConfirm, type MenuItem, EventMsg } from "../components/ui";
 import { UsageChart } from "../components/charts";
 import { PageHead, can, eventMeta, navigate, useSession } from "../App";
@@ -187,25 +187,21 @@ export function UsersPage({ arg }: { arg?: string }) {
         const summary = (filtersOn || q.trim() || filter) ? (
           <span className="inline-flex items-center gap-1 text-[12.5px] text-ink3">
             <span className="num px-1" aria-live="polite">{t("shownOf").replace("{n}", n(list.length)).replace("{m}", n(users.length))}</span>
-            {filtersOn && (
-              <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 h-7 px-2 rounded-lg hover:bg-fg/[.05] hover:text-ink">
-                <FilterX className="size-3.5" />{t("clearFilters")}
-              </button>
-            )}
+            {filtersOn && <Button size="sm" variant="quiet" icon={<FilterX className="size-4" />} onClick={clearFilters}>{t("clearFilters")}</Button>}
           </span>
         ) : null;
         return <>
         <div className="md:hidden mb-3 flex flex-wrap items-center justify-between gap-2">
           <Button size="sm" icon={<ListFilter className="size-4" />} onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen}>
             {t("filters")}
-            {activeN > 0 && <span className="num grid place-items-center min-w-5 h-5 px-1 rounded-full bg-primary text-white text-[11px]">{n(activeN)}</span>}
+            {activeN > 0 && <Badge color="var(--primary2)" className="h-5 px-2 num">{n(activeN)}</Badge>}
           </Button>
           {summary}
         </div>
         <div className={cx("mb-4 flex-wrap items-center gap-x-2 gap-y-2", filtersOpen ? "flex" : "hidden md:flex")} role="group" aria-label={t("filters")}>
           {quickDefs.map((d) => (
-            <QuickChip key={d.id} on={quick.has(d.id)} icon={<d.icon />} label={t(d.key)} count={quickCounts[d.id]} title={t(d.hint)}
-              onClick={() => setQuick((s) => { const x = new Set(s); x.has(d.id) ? x.delete(d.id) : x.add(d.id); return x; })} />
+            <Chip key={d.id} active={quick.has(d.id)} icon={<d.icon />} count={quickCounts[d.id]} title={t(d.hint)} disabled={!quick.has(d.id) && quickCounts[d.id] === 0}
+              onClick={() => setQuick((s) => { const x = new Set(s); x.has(d.id) ? x.delete(d.id) : x.add(d.id); return x; })}>{t(d.key)}</Chip>
           ))}
           {tagChoices.length > 0 && (
             <>
@@ -215,24 +211,17 @@ export function UsersPage({ arg }: { arg?: string }) {
                 <TagChip key={tc.tag} tag={tc.tag} count={tc.count} active={hasTag(tagSel, tc.tag)} onClick={() => toggleTag(tc.tag)} title={t("tagFilterBy")} />
               ))}
               {tagChoices.length > TAGS_SHOWN && (
-                <button type="button" onClick={() => setTagsOpen((v) => !v)} className="h-7 px-2 rounded-lg text-[12.5px] text-ink3 hover:text-ink hover:bg-fg/[.05]">
+                <Button size="sm" variant="quiet" onClick={() => setTagsOpen((v) => !v)} aria-expanded={tagsOpen}>
                   {tagsOpen ? t("tagsLess") : t("tagsMore").replace("{n}", n(tagChoices.length - shownTags.length))}
-                </button>
+                </Button>
               )}
             </>
           )}
           {isAdmin && owners.length > 0 && (
             <>
               <span className="mx-1 h-5 w-px bg-hair" aria-hidden />
-              <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink3">
-                <UserCog className="size-3.5" /><span className="sr-only">{t("reseller")}</span>
-                <select value={ownerSel} onChange={(e) => setOwnerSel(e.target.value)}
-                  className={cx("h-7 rounded-full border px-2.5 text-[12.5px] outline-none focus:border-primary2/70 cursor-pointer", ownerSel ? "border-primary2/60 bg-primary/15 text-ink" : "border-hair bg-fg/[.025] text-ink2")}>
-                  <option value="" className="bg-panel text-ink">{t("allOwners")}</option>
-                  <option value="0" className="bg-panel text-ink">{t("ownUsers")}</option>
-                  {owners.map(([id, name]) => <option key={id} value={String(id)} className="bg-panel text-ink">{name}</option>)}
-                </select>
-              </label>
+              <ChipSelect value={ownerSel} onChange={setOwnerSel} label={t("reseller")} icon={<UserCog />} active={ownerSel !== ""}
+                options={[{ value: "", label: t("allOwners") }, { value: "0", label: t("ownUsers") }, ...owners.map(([id, name]) => ({ value: String(id), label: name }))]} />
             </>
           )}
           {summary && <span className="hidden md:inline-flex ms-auto">{summary}</span>}
@@ -302,19 +291,6 @@ export function UsersPage({ arg }: { arg?: string }) {
         )}
       </Sheet>
     </div>
-  );
-}
-
-function QuickChip({ on, icon, label, count, title, onClick }: { on: boolean; icon: React.ReactNode; label: string; count: number; title: string; onClick: () => void }) {
-  const { n } = useI18n();
-  return (
-    <button type="button" onClick={onClick} aria-pressed={on} title={title} disabled={!on && count === 0}
-      className={cx("inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[12.5px] transition-[background-color,border-color,color] duration-150 disabled:opacity-45 disabled:cursor-default",
-        on ? "border-primary2/60 bg-primary/15 text-ink" : "border-hair bg-fg/[.025] text-ink2 enabled:hover:text-ink enabled:hover:bg-fg/[.05]")}>
-      <span className={cx("[&>svg]:size-3.5", on ? "text-primary2" : "text-ink3")}>{icon}</span>
-      {label}
-      <span className="num text-ink3">{n(count)}</span>
-    </button>
   );
 }
 

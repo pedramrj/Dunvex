@@ -89,6 +89,11 @@ export function Label({ children, hint }: { children: ReactNode; hint?: ReactNod
 const fieldCls =
   "w-full h-11 rounded-xl bg-rail border border-hair px-3.5 text-ink placeholder:text-ink3/80 outline-none transition-[border-color,box-shadow] duration-150 focus:border-primary2/70 focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_16%,transparent)] focus-visible:outline-none disabled:opacity-50";
 
+/** The look of a field for a box that holds other things (chips and an input):
+ * the same surface as Input, lit when anything inside has focus. */
+export const fieldShellCls =
+  "w-full min-h-11 rounded-xl bg-rail border border-hair px-2 py-1.5 transition-[border-color,box-shadow] duration-150 focus-within:border-primary2/70 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_16%,transparent)]";
+
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   // panel fields are names, addresses, ports and codes: no spellcheck squiggles
   return <input spellCheck={false} {...rest} className={cx(fieldCls, className)} />;
@@ -562,6 +567,53 @@ export function SectionTitle({ children, action, color }: { children: ReactNode;
       </h3>
       {action}
     </div>
+  );
+}
+
+// ================================================================= chips
+
+/** The kit's small label or toggle: quick filters, tags, picks. Its look is the
+ * `.chip` block in styles.css, so a restyle happens there, not here.
+ * With onClick it is a button (a toggle when `active` is given); otherwise a label,
+ * optionally with a remove button. */
+export function Chip({ children, icon, count, active, onClick, onRemove, removeLabel, size = "md", tone, title, disabled, className }: {
+  children: ReactNode; icon?: ReactNode; count?: number; active?: boolean; onClick?: () => void; onRemove?: () => void; removeLabel?: string;
+  size?: "sm" | "md"; tone?: "add"; title?: string; disabled?: boolean; className?: string;
+}) {
+  const { n } = useI18n();
+  const inner = (
+    <>
+      {icon && <span className="chip-icon" aria-hidden>{icon}</span>}
+      {children}
+      {count !== undefined && <span className="chip-count">{n(count)}</span>}
+    </>
+  );
+  if (onClick)
+    return (
+      <button type="button" className={cx("chip", className)} data-size={size} data-tone={tone} aria-pressed={active} title={title} disabled={disabled} onClick={onClick}>
+        {inner}
+      </button>
+    );
+  return (
+    <span className={cx("chip", className)} data-size={size} data-tone={tone} data-active={active || undefined} title={title}>
+      {inner}
+      {onRemove && <button type="button" className="chip-x" onClick={onRemove} aria-label={removeLabel}><X /></button>}
+    </span>
+  );
+}
+
+/** A select that sits in a row of chips (a filter); lit while it narrows something. */
+export function ChipSelect({ value, onChange, options, label, icon, active }: {
+  value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; label: string; icon?: ReactNode; active?: boolean;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5">
+      {icon && <span className="chip-icon" aria-hidden>{icon}</span>}
+      <span className="sr-only">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="chip chip-select" data-active={active || undefined}>
+        {options.map((o) => <option key={o.value} value={o.value} className="bg-panel text-ink">{o.label}</option>)}
+      </select>
+    </label>
   );
 }
 

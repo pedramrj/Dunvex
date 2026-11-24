@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cx } from "../lib/format";
 import { useI18n } from "../lib/i18n";
+import { Chip, fieldShellCls } from "./ui";
 
 // Tags: the owner's own labels on users ("vip", "family", "trial"…). The
 // rules match the server's (store/tags.go): spaces collapsed, commas (Latin
 // or Persian) split tags, at most MAX_TAG_LEN characters and MAX_TAGS a user.
+// Everything here is built from the kit's Chip, so the look lives in styles.css.
 export const MAX_TAG_LEN = 24;
 export const MAX_TAGS = 12;
 
@@ -17,59 +19,17 @@ export function normalizeTag(t: string): string {
 export const sameTag = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export const hasTag = (tags: string[] | undefined, tag: string) => (tags ?? []).some((x) => sameTag(x, tag));
 
-// the theme's own accents, so a tag reads well in every theme
-const palette = [
-  "var(--primary2)",
-  "var(--cyan)",
-  "var(--color-violet)",
-  "var(--color-udp)",
-  "var(--color-classic)",
-  "var(--color-reality)",
-  "color-mix(in oklab, var(--color-violet) 55%, var(--color-reality))",
-  "color-mix(in oklab, var(--cyan) 50%, var(--color-classic))",
-];
-
-/** The same tag always gets the same colour, whatever its case. */
-export function tagColor(tag: string): string {
-  let h = 0;
-  const s = tag.toLowerCase();
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
-}
-
+/** A tag as a code token: "#vip". Clickable when onClick is given, removable with onRemove. */
 export function TagChip({ tag, onRemove, onClick, active, count, size = "md", title }: {
   tag: string; onRemove?: () => void; onClick?: () => void; active?: boolean; count?: number; size?: "sm" | "md"; title?: string;
 }) {
-  const { t, n } = useI18n();
-  const color = tagColor(tag);
-  const cls = cx(
-    "inline-flex items-center gap-1 rounded-full border font-medium whitespace-nowrap max-w-full transition-[background-color,box-shadow] duration-150",
-    size === "sm" ? "h-5 px-2 text-[11px]" : "h-7 px-2.5 text-[12.5px]",
-    onClick && "cursor-pointer hover:brightness-110",
-  );
-  const style = {
-    color,
-    background: `color-mix(in oklab, ${color} ${active ? 26 : 11}%, transparent)`,
-    borderColor: `color-mix(in oklab, ${color} ${active ? 70 : 30}%, transparent)`,
-    boxShadow: active ? `0 0 0 3px color-mix(in oklab, ${color} 14%, transparent)` : undefined,
-  };
-  const body = (
-    <>
-      <span className="size-1.5 rounded-full shrink-0" style={{ background: color }} aria-hidden />
-      <bdi className="truncate">{tag}</bdi>
-      {count !== undefined && <span className="num opacity-70">{n(count)}</span>}
-    </>
-  );
-  if (onClick)
-    return <button type="button" onClick={onClick} aria-pressed={active} title={title} className={cls} style={style}>{body}</button>;
+  const { t } = useI18n();
   return (
-    <span className={cls} style={style} title={title}>
-      {body}
-      {onRemove && (
-        <button type="button" onClick={onRemove} aria-label={`${t("tagRemove")} ${tag}`}
-          className="-me-1 grid place-items-center size-5 rounded-full hover:bg-fg/10"><X className="size-3" /></button>
-      )}
-    </span>
+    <Chip className="chip-tag" size={size} active={active} count={count} title={title} onClick={onClick}
+      onRemove={onRemove} removeLabel={`${t("tagRemove")} ${tag}`}>
+      <span className="chip-hash" aria-hidden>#</span>
+      <bdi className="truncate">{tag}</bdi>
+    </Chip>
   );
 }
 
@@ -81,10 +41,10 @@ export function TagList({ tags, max = 3, onPick, active }: { tags: string[]; max
   return (
     <span className="flex flex-wrap items-center gap-1 min-w-0">
       {shown.map((tag) => (
-        <TagChip key={tag} tag={tag} size="sm" active={hasTag(active, tag)}
+        <TagChip key={tag} tag={tag} size="sm" active={onPick ? hasTag(active, tag) : undefined}
           onClick={onPick ? () => onPick(tag) : undefined} title={onPick ? t("tagFilterBy") : undefined} />
       ))}
-      {more > 0 && <span className="text-[11px] text-ink3 num" title={tags.slice(max).join(", ")}>+{n(more)}</span>}
+      {more > 0 && <span className="chip-count text-[11px] px-0.5" title={tags.slice(max).join(", ")}>+{n(more)}</span>}
     </span>
   );
 }
@@ -107,8 +67,7 @@ export function TagInput({ value, onChange, suggestions, autoFocus }: { value: s
   const sugg = suggestions.filter((s) => !hasTag(value, s) && (!q || s.toLowerCase().includes(q))).slice(0, 8);
   return (
     <div>
-      <div className={cx("flex flex-wrap items-center gap-1.5 min-h-11 rounded-xl bg-rail border border-hair px-2 py-1.5 transition-[border-color,box-shadow] duration-150",
-        "focus-within:border-primary2/70 focus-within:shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_16%,transparent)]")}>
+      <div className={cx(fieldShellCls, "flex flex-wrap items-center gap-1.5")}>
         {value.map((tag) => <TagChip key={tag} tag={tag} onRemove={() => onChange(value.filter((x) => x !== tag))} />)}
         {!full && (
           <input value={draft} maxLength={MAX_TAG_LEN + 1} dir="auto" spellCheck={false} autoFocus={autoFocus} aria-label={t("tags")}
@@ -126,10 +85,7 @@ export function TagInput({ value, onChange, suggestions, autoFocus }: { value: s
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[12px] text-ink3 me-0.5">{t("tagInUse")}</span>
           {sugg.map((s) => (
-            <button key={s} type="button" onClick={() => add(s)}
-              className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full border border-dashed border-hair2 text-[12.5px] text-ink2 hover:text-ink hover:bg-fg/[.05]">
-              <Plus className="size-3" /><bdi>{s}</bdi>
-            </button>
+            <Chip key={s} tone="add" className="chip-tag" icon={<Plus />} onClick={() => add(s)}><bdi>{s}</bdi></Chip>
           ))}
         </div>
       )}
