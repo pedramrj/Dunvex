@@ -147,7 +147,7 @@ func (s *Server) getSupportThread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"thread": s.threadView(r, th, s.Mgr.OnlineUsers(60), s.adminNames(a)), "messages": msgs, "more": more})
 }
 
-// seenSupport marks the person's messages seen (they get 👀 in Telegram).
+// seenSupport marks the person's messages seen (they get the "seen" receipt in Telegram).
 func (s *Server) seenSupport(w http.ResponseWriter, r *http.Request) {
 	th := s.supportThreadFor(w, r)
 	if th == nil {
@@ -155,7 +155,7 @@ func (s *Server) seenSupport(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := s.St.SupportMarkSeen(th.ID)
 	if sp := s.supporter(); sp != nil && len(ids) > 0 {
-		go sp.SupportReact(th.Chat, ids, "👀")
+		go sp.SupportReact(th.Chat, ids, bot.ReceiptSeen)
 	}
 	writeJSON(w, 200, map[string]int{"seen": len(ids)})
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LifeBuoy } from "lucide-react";
+import { RadioTower } from "lucide-react";
 import { api, type SupportSettings } from "../lib/api";
 import { useI18n } from "../lib/i18n";
 import { Badge, Button, Input, Label, Panel, Skeleton, Toggle, useToast } from "./ui";
@@ -27,7 +27,7 @@ export function SupportSettingsPanel() {
   };
 
   return (
-    <Panel icon={<LifeBuoy className="size-4" />} title={t("spsTitle")} sub={t("spsSub")}
+    <Panel icon={<RadioTower className="size-4" />} title={t("spsTitle")} sub={t("spsSub")}
       action={<Badge color={saved.on ? "var(--ok)" : "var(--color-ink3)"}>{saved.on ? t("on") : t("off")}</Badge>}>
       <p className="text-[13px] text-ink2 leading-relaxed max-w-[72ch]">{t("spsHelp")}</p>
       <div className="mt-4 flex flex-col gap-3">

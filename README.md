@@ -79,10 +79,10 @@ and install it offline with `DUNVEX_BINARY=/root/dunvex bash install.sh`.
 - **Tags and filters (v1.29)**: your own labels on users (`vip`, `family`, a city…), added one by one or to many at
   once; filter the Users page by tags, users running out, never connected, unlimited data or reseller, then act on
   exactly that group, or send a broadcast to one tag. See [docs/USERS.md](docs/USERS.md).
-- **Support inbox in the bot (v1.30)**: users tap Support (or send /support) and write text or a photo; every message
-  lands on the panel's Support page, one conversation per person beside their subscription, and your answer goes
-  back through the bot signed "Support". Receipts on their messages (arrived, seen, answered) and "typing…" while you
-  write; answer from Telegram too; close, reopen, search, an unread badge in the menu; resellers see only their own
+- **Support inbox in the bot (v1.30)**: users open the 📡 Support line (or send /support) and write text or a
+  picture; every message lands on the panel's Support page, one conversation per person beside their subscription,
+  and your answer goes back through the bot signed by the support line. Receipts on their messages (⚡ reached the
+  team, 👨‍💻 opened, 💯 answered) and "typing…" while you write; answer from Telegram too; close, reopen, search, an unread badge in the menu; resellers see only their own
   users; a rate limit, a length limit and retention. See [docs/SUPPORT.md](docs/SUPPORT.md).
 - **Webhooks and Prometheus metrics (v1.19)**: every event (users limited or expired, servers offline, core errors,
   sign-ins, orders…) goes to your own code as signed JSON, or to Slack and Discord, with retries and a delivery log;
@@ -203,9 +203,9 @@ bash <(curl -Ls https://raw.githubusercontent.com/pedramrj/Dunvex/main/install.s
 - **برچسب و فیلتر کاربران (نسخهٔ ۱.۲۹)**: برچسب‌های خودتان روی کاربران (`vip`، خانواده، یک شهر و…)، تک‌تک یا برای
   چند کاربر با هم؛ فیلتر صفحهٔ کاربران با برچسب، کاربران رو به اتمام، هرگز وصل‌نشده، حجم نامحدود یا نماینده، و بعد
   عملیات گروهی روی همان دسته، یا پیام همگانی به یک برچسب. راهنما: [docs/USERS.md](docs/USERS.md).
-- **صندوق پشتیبانی در ربات (نسخهٔ ۱.۳۰)**: کاربر «پشتیبانی» را می‌زند (یا ⁦/support⁩ می‌فرستد) و متن یا عکس می‌فرستد؛
-  هر پیام در صفحهٔ پشتیبانی پنل می‌رسد، برای هر نفر یک گفتگو کنار مشخصات اشتراکش، و پاسخ شما با امضای «پشتیبانی» از
-  راه ربات برمی‌گردد. رسید روی پیام‌های کاربر (رسید، دیده شد، پاسخ داده شد) و «در حال نوشتن…» هنگام نوشتن شما؛ پاسخ از
+- **صندوق پشتیبانی در ربات (نسخهٔ ۱.۳۰)**: کاربر «📡 خط پشتیبانی» را باز می‌کند (یا ⁦/support⁩ می‌فرستد) و متن یا عکس
+  می‌فرستد؛ هر پیام در صفحهٔ پشتیبانی پنل می‌رسد، برای هر نفر یک گفتگو کنار مشخصات اشتراکش، و جواب شما با امضای خط
+  پشتیبانی از راه ربات برمی‌گردد. رسید روی پیام‌های کاربر (⚡ به تیم رسید، 👨‍💻 باز شد، 💯 جواب داده شد) و «در حال نوشتن…» هنگام نوشتن شما؛ پاسخ از
   خود تلگرام هم؛ بستن، باز کردن، جستجو و نشان خوانده‌نشده‌ها در منو؛ نماینده‌ها فقط کاربران خودشان را می‌بینند؛ با سقف
   پیام، سقف طول و پاک‌شدن خودکار. راهنما: [docs/SUPPORT.md](docs/SUPPORT.md).
 - **وب‌هوک و آمار Prometheus (نسخهٔ ۱.۱۹)**: هر رویداد (محدود یا منقضی شدن کاربران، قطع شدن سرورها، خطای هسته‌ها، ورودها،

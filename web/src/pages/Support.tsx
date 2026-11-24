@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowLeft, Bot, Check, CheckCheck, Eye, ImagePlus, LifeBuoy, Lock, LockOpen, MessageCircleQuestion, Search, Send, Settings as SettingsIcon, Smartphone, Trash2,
-  UserRound, X,
+  ArrowLeft, Bot, ImagePlus, Lock, LockOpen, MessageCircleQuestion, RadioTower, Send, Settings as SettingsIcon, Smartphone, Trash2, UserRound, X,
 } from "lucide-react";
 import { api, BASE, type SupportInfo, type SupportMessage, type SupportThread } from "../lib/api";
 import { ago, bytes, cx, date, statusMeta } from "../lib/format";
 import { useI18n, type Lang } from "../lib/i18n";
 import { Avatar, Badge, Button, Dot, Empty, IconButton, Meter, Skeleton, StatusBadge, Textarea, useConfirm, useToast } from "../components/ui";
+import { CountTabs, DaySeparator, DetailRow, DetailSection, InboxRow, MessageBubble, MessagePhoto, Receipt, RowTag, SearchField, UnreadCount } from "../components/inbox";
 import { PageHead, can, navigate, useSession } from "../App";
 
 /** Fired when a conversation was read or answered, so the menu badge refreshes at once. */
@@ -23,11 +23,11 @@ const avatarOf = (th: SupportThread) => {
 };
 const clock = (at: number, lang: Lang) =>
   new Intl.DateTimeFormat(lang === "fa" ? "fa-IR" : "en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(at * 1000));
-/** The direction of a text from its first letter, so a preview is cut at its own end. */
-const RTL = /[\p{Script=Arabic}\p{Script=Hebrew}]/u;
+/** The direction of a text from the script most of its letters use, so a preview is cut at its own end. */
 const textDir = (s: string) => {
-  const m = /[A-Za-z\p{Script=Arabic}\p{Script=Hebrew}]/u.exec(s);
-  return m && RTL.test(m[0]) ? "rtl" : "ltr";
+  const rtl = s.match(/[\p{Script=Arabic}\p{Script=Hebrew}]/gu)?.length ?? 0;
+  const ltr = s.match(/[A-Za-z]/g)?.length ?? 0;
+  return rtl > ltr ? "rtl" : "ltr";
 };
 const sameDay = (a: number, b: number) => new Date(a * 1000).toDateString() === new Date(b * 1000).toDateString();
 
@@ -66,7 +66,7 @@ export function SupportPage({ arg }: { arg?: string }) {
     return () => clearInterval(id);
   }, [load]);
 
-  if (!info) return err ? <Empty icon={<LifeBuoy className="size-7" />} title={err} /> : <div className="grid gap-4"><Skeleton className="h-16" /><Skeleton className="h-[480px]" /></div>;
+  if (!info) return err ? <Empty icon={<RadioTower className="size-7" />} title={err} /> : <div className="grid gap-4"><Skeleton className="h-16" /><Skeleton className="h-[480px]" /></div>;
   const c = info.counts;
   const total = c.open + c.closed;
   const configured = info.bot.configured;
@@ -107,7 +107,7 @@ export function SupportPage({ arg }: { arg?: string }) {
             {selected ? (
               <Conversation key={selected} id={selected} maxAnswer={info.maxAnswer} canSend={configured} onChange={load} />
             ) : (
-              <div className="flex-1 grid place-items-center"><Empty icon={<LifeBuoy className="size-7" />} title={t("spPick")} hint={t("spPickHint")} /></div>
+              <div className="flex-1 grid place-items-center"><Empty icon={<RadioTower className="size-7" />} title={t("spPick")} hint={t("spPickHint")} /></div>
             )}
           </section>
         </div>
@@ -121,65 +121,33 @@ export function SupportPage({ arg }: { arg?: string }) {
 function ThreadList({ info, filter, setFilter, q, setQ, selected }: {
   info: SupportInfo; filter: Filter; setFilter: (f: Filter) => void; q: string; setQ: (s: string) => void; selected: number;
 }) {
-  const { t, lang, n } = useI18n();
+  const { t, lang } = useI18n();
   const c = info.counts;
   return (
     <>
       <div className="p-3 flex flex-col gap-2.5 border-b border-hair">
-        <div className="relative">
-          <Search className="size-4 text-ink3 absolute top-1/2 -translate-y-1/2 [inset-inline-start:12px] pointer-events-none" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("spSearch")} aria-label={t("spSearch")} dir="auto" spellCheck={false}
-            className="w-full h-10 rounded-xl bg-rail border border-hair ps-9 pe-3 text-[13px] outline-none focus:border-primary2/60 focus:shadow-[0_0_0_4px_color-mix(in_oklab,var(--primary)_14%,transparent)]" />
-        </div>
-        <div role="tablist" aria-label={t("support")} className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-fg/[.035] border border-hair">
-          {([
-            { id: "open", label: t("spOpen"), count: c.open },
-            { id: "waiting", label: t("spWaiting"), count: c.waiting },
-            { id: "closed", label: t("spClosed"), count: c.closed },
-            { id: "all", label: t("all"), count: c.open + c.closed },
-          ] as const).map((x) => (
-            <button key={x.id} role="tab" aria-selected={filter === x.id} onClick={() => setFilter(x.id)}
-              className={cx("h-11 rounded-lg flex flex-col items-center justify-center leading-tight transition-[background-color,color] duration-150",
-                filter === x.id ? "bg-fg/[.09] text-ink shadow-[inset_0_1px_0_var(--edge)]" : "text-ink3 hover:text-ink2 hover:bg-fg/[.04]")}>
-              <span className={cx("num text-[14px]", filter === x.id ? "font-bold" : "font-semibold", x.id === "waiting" && x.count > 0 && "text-warn")}>{n(x.count)}</span>
-              <span className="text-[11px] truncate max-w-full px-1">{x.label}</span>
-            </button>
-          ))}
-        </div>
+        <SearchField value={q} onChange={setQ} placeholder={t("spSearch")} />
+        <CountTabs label={t("support")} value={filter} onChange={setFilter} items={[
+          { id: "open", label: t("spOpen"), count: c.open },
+          { id: "waiting", label: t("spWaiting"), count: c.waiting, alert: true },
+          { id: "closed", label: t("spClosed"), count: c.closed },
+          { id: "all", label: t("all"), count: c.open + c.closed },
+        ]} />
       </div>
       <ul className="flex-1 overflow-y-auto overscroll-contain p-1.5" aria-label={t("support")}>
         {info.threads.length === 0 && <li className="px-4 py-10 text-center text-[13px] text-ink3">{t("spNoMatch")}</li>}
-        {info.threads.map((th) => {
-          const on = th.id === selected;
-          return (
-            <li key={th.id}>
-              <a href={"#/support/" + th.id} aria-current={on ? "true" : undefined}
-                className={cx("group relative flex gap-3 rounded-2xl px-3 py-2.5 transition-[background-color] duration-150",
-                  on ? "bg-primary/[.13] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--primary)_30%,transparent)]" : "hover:bg-fg/[.045]")}>
-                <Avatar name={avatarOf(th)} size={40} online={th.user ? th.user.online : undefined} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2">
-                    <bdi className={cx("truncate text-[13.5px]", th.unread > 0 ? "font-bold text-ink" : "font-semibold text-ink")}>{whoOf(th)}</bdi>
-                    {!th.user && <span className="shrink-0 text-[10.5px] text-ink3 border border-hair rounded-full px-1.5 leading-4">{t("spGuest")}</span>}
-                    <span className={cx("ms-auto shrink-0 num text-[11.5px]", th.unread > 0 ? "text-primary2 font-semibold" : "text-ink3")}>{when(th.lastAt, lang)}</span>
-                  </span>
-                  <span className="mt-0.5 flex items-center gap-2">
-                    <span dir={textDir(th.lastText)} className={cx("truncate text-[12.5px] flex-1 text-start", th.unread > 0 ? "text-ink2" : "text-ink3")}>
-                      {th.lastStaff && <bdi className="text-ink3">{t("spYou")} </bdi>}{th.lastText || "…"}
-                    </span>
-                    {th.unread > 0 ? (
-                      <span className="shrink-0 num text-[11px] font-semibold rounded-full min-w-5 h-5 px-1.5 grid place-items-center bg-primary text-white shadow-[0_4px_12px_-4px_var(--primary)]">{n(th.unread)}</span>
-                    ) : th.waiting ? (
-                      <span className="shrink-0 size-2 rounded-full bg-warn" title={t("spWaiting")} />
-                    ) : !th.open ? (
-                      <Lock className="shrink-0 size-3.5 text-ink3" aria-label={t("spClosed")} />
-                    ) : null}
-                  </span>
-                </span>
-              </a>
-            </li>
-          );
-        })}
+        {info.threads.map((th) => (
+          <li key={th.id}>
+            <InboxRow href={"#/support/" + th.id} active={th.id === selected} unread={th.unread > 0}
+              avatar={<Avatar name={avatarOf(th)} size={40} online={th.user ? th.user.online : undefined} />}
+              title={whoOf(th)} tag={!th.user && <RowTag>{t("spGuest")}</RowTag>} time={when(th.lastAt, lang)}
+              previewDir={textDir(th.lastText)}
+              preview={<>{th.lastStaff && <><bdi dir={lang === "fa" ? "rtl" : "ltr"} className="text-ink3">{t("spYou")}</bdi>{" "}</>}{th.lastText || "…"}</>}
+              trailing={th.unread > 0 ? <UnreadCount count={th.unread} />
+                : th.waiting ? <Dot color="var(--color-warn)" size={8} />
+                  : !th.open ? <Lock className="shrink-0 size-3.5 text-ink3" aria-label={t("spClosed")} /> : null} />
+          </li>
+        ))}
       </ul>
     </>
   );
@@ -248,7 +216,7 @@ function Conversation({ id, maxAnswer, canSend, onChange }: { id: number; maxAns
 
   if (!data) return err ? (
     <div className="flex-1 grid place-items-center">
-      <Empty icon={<LifeBuoy className="size-7" />} title={err} action={<Button icon={<ArrowLeft className="size-4 rtl:rotate-180" />} onClick={() => navigate("support")}>{t("spBack")}</Button>} />
+      <Empty icon={<RadioTower className="size-7" />} title={err} action={<Button icon={<ArrowLeft className="size-4 rtl:rotate-180" />} onClick={() => navigate("support")}>{t("spBack")}</Button>} />
     </div>
   ) : <div className="p-4 grid gap-3"><Skeleton className="h-14" /><Skeleton className="h-64" /></div>;
   const th = data.thread;
@@ -263,7 +231,7 @@ function Conversation({ id, maxAnswer, canSend, onChange }: { id: number; maxAns
     <div className="flex-1 min-h-0 flex 2xl:grid 2xl:grid-cols-[1fr_290px]">
       <div className="flex-1 min-w-0 min-h-0 flex flex-col">
         <Header th={th} onOpen={setOpen} onDelete={remove} />
-        <div ref={stream} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-5 py-4 bg-[radial-gradient(120%_60%_at_50%_0%,color-mix(in_oklab,var(--primary)_5%,transparent),transparent_70%)]">
+        <div ref={stream} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-5 py-4">
           <div ref={content}>
             {more && (
               <div className="flex justify-center mb-3"><Button size="sm" variant="quiet" onClick={loadOlder}>{t("spOlder")}</Button></div>
@@ -335,41 +303,20 @@ function Header({ th, onOpen, onDelete }: { th: SupportThread; onOpen: (open: bo
 function DaySep({ at }: { at: number }) {
   const { t, lang } = useI18n();
   const now = Date.now() / 1000;
-  const label = sameDay(at, now) ? t("today") : sameDay(at, now - 86400) ? t("spYesterday") : date(at, lang);
-  return (
-    <div className="flex items-center gap-3 my-4 first:mt-0" role="separator">
-      <span className="h-px flex-1 bg-hair" />
-      <span className="text-[11.5px] text-ink3 num">{label}</span>
-      <span className="h-px flex-1 bg-hair" />
-    </div>
-  );
+  return <DaySeparator label={sameDay(at, now) ? t("today") : sameDay(at, now - 86400) ? t("spYesterday") : date(at, lang)} />;
 }
 
 function Bubble({ m, grouped }: { m: SupportMessage; grouped: boolean }) {
   const { t, lang } = useI18n();
-  const staff = m.staff;
-  const receipt = staff ? null : m.answered ? { icon: <CheckCheck className="size-3.5 text-online" />, label: t("spAnsweredR") }
-    : m.seen ? { icon: <Eye className="size-3.5 text-primary2" />, label: t("spSeenR") }
-      : { icon: <Check className="size-3.5" />, label: t("spArrived") };
+  const state = m.answered ? "answered" : m.seen ? "seen" : "arrived";
   return (
-    <div className={cx("flex", staff ? "justify-end" : "justify-start", grouped ? "mt-1" : "mt-3")}>
-      <div className={cx("max-w-[min(560px,85%)] flex flex-col", staff ? "items-end" : "items-start")}>
-        <div className={cx("rounded-2xl border overflow-hidden shadow-[0_8px_22px_-18px_rgba(0,0,0,.7)]",
-          staff ? "bg-primary/[.14] border-primary/30 rounded-ee-md" : "bg-panel2 border-hair rounded-ss-md")}>
-          {m.photo && (
-            <a href={BASE + "support/photos/" + m.photo} target="_blank" rel="noreferrer" className="block">
-              <img src={BASE + "support/photos/" + m.photo} alt={t("spPhoto")} decoding="async" className="block max-h-72 min-h-24 min-w-40 w-auto max-w-full object-contain bg-fg/[.04]" />
-            </a>
-          )}
-          {m.text && <p dir="auto" className="px-3.5 py-2 text-[14px] leading-[1.75] whitespace-pre-wrap [overflow-wrap:anywhere]">{m.text}</p>}
-        </div>
-        <div className="mt-1 px-1 flex items-center gap-1.5 text-[11px] text-ink3">
-          {staff && m.by && <><UserRound className="size-3" /><bdi dir="ltr">{m.by}</bdi><span>·</span></>}
-          <span className="num">{clock(m.at, lang)}</span>
-          {receipt && <span className="inline-flex items-center gap-1" title={receipt.label}>{receipt.icon}<span className="sr-only">{receipt.label}</span></span>}
-        </div>
-      </div>
-    </div>
+    <MessageBubble side={m.staff ? "out" : "in"} grouped={grouped} text={m.text}
+      media={m.photo && <MessagePhoto src={BASE + "support/photos/" + m.photo} alt={t("spPhoto")} />}
+      meta={<>
+        {m.staff && m.by && <><UserRound className="size-3" /><bdi dir="ltr">{m.by}</bdi><span>·</span></>}
+        <span className="num">{clock(m.at, lang)}</span>
+        {!m.staff && <Receipt state={state} label={t(state === "answered" ? "spAnsweredR" : state === "seen" ? "spSeenR" : "spArrived")} />}
+      </>} />
   );
 }
 
@@ -462,16 +409,10 @@ function Composer({ id, maxAnswer, canSend, onSent }: { id: number; maxAnswer: n
 function Details({ th }: { th: SupportThread }) {
   const { t, lang, n } = useI18n();
   const u = th.user;
-  const Row = ({ label, children }: { label: string; children: ReactNode }) => (
-    <div className="flex items-baseline justify-between gap-3 py-2 border-b border-hair last:border-0 text-[12.5px]">
-      <span className="text-ink3 shrink-0">{label}</span>
-      <span className="text-ink text-end min-w-0 truncate">{children}</span>
-    </div>
-  );
+  const Row = DetailRow;
   return (
     <aside className="hidden 2xl:flex flex-col min-h-0 overflow-y-auto border-s border-hair p-4 gap-5">
-      <div>
-        <h3 className="text-[12.5px] font-semibold text-ink2 mb-2">{t("spSubscription")}</h3>
+      <DetailSection title={t("spSubscription")}>
         {u ? (
           <div className="rounded-2xl border border-hair bg-fg/[.025] p-3.5">
             <div className="flex items-center gap-2.5">
@@ -499,15 +440,14 @@ function Details({ th }: { th: SupportThread }) {
         ) : (
           <p className="text-[12.5px] text-ink3 leading-relaxed">{t("spNoUser")}</p>
         )}
-      </div>
-      <div>
-        <h3 className="text-[12.5px] font-semibold text-ink2 mb-1">{t("spTelegram")}</h3>
+      </DetailSection>
+      <DetailSection title={t("spTelegram")}>
         {th.name && <Row label={t("name")}><bdi>{th.name}</bdi></Row>}
         {th.username && <Row label={t("username")}><a className="text-primary2 hover:underline" dir="ltr" href={"https://t.me/" + th.username} target="_blank" rel="noreferrer">@{th.username}</a></Row>}
         <Row label={t("spChatId")}><span className="mono text-[12px]" dir="ltr">{th.chat}</span></Row>
         <Row label={t("spStarted")}>{date(th.createdAt, lang)}</Row>
         <Row label={t("spMessages")}><span className="num">{n(th.messages)}</span></Row>
-      </div>
+      </DetailSection>
     </aside>
   );
 }

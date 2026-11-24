@@ -17,13 +17,25 @@ import (
 	"github.com/pedramrj/dunvex/internal/util"
 )
 
-// Support inbox: a person whose Telegram is linked to their subscription
-// taps "Support" (or sends /support) and writes, text or a photo. Every
-// message lands in the panel's Support page; the answer goes back through
-// the bot, signed "Support" (the person never sees which admin wrote it).
-// The person's messages get receipts as reactions: 🕊 arrived, 👀 seen,
-// 👌 answered. The bot's admins hear about each message and can answer from
-// Telegram too.
+// Support line: a person whose Telegram is linked to their subscription
+// taps "📡 Support line" (or sends /support) and writes, text or a picture.
+// Every message lands in the panel's Support page; the answer goes back
+// through the bot, signed by the support line (the person never sees which
+// admin wrote it). The person's messages get receipts as reactions. The
+// bot's admins hear about each message and can answer from Telegram too.
+
+// Receipts set on the person's messages (Telegram reactions).
+const (
+	ReceiptArrived  = "⚡"   // it reached the team
+	ReceiptSeen     = "👨‍💻" // someone on the team opened it
+	ReceiptAnswered = "💯"   // an answer went out
+)
+
+// How the person's support screen marks who wrote what.
+const (
+	markPerson = "◇"
+	markTeam   = "◆"
+)
 
 // Support settings.
 const (
@@ -226,9 +238,9 @@ func (b *Bot) supportScreen(chat int64) string {
 		if len(msgs) > 0 {
 			sb.WriteString("\n")
 			for _, m := range msgs {
-				who := "🙋 " + b.t("sp_you")
+				who := markPerson + " " + b.t("sp_you")
 				if m.Staff {
-					who = "🛟 " + b.t("sp_staff")
+					who = markTeam + " " + b.t("sp_staff")
 				}
 				body := clip(m.Text, 300)
 				if m.Photo != "" {
@@ -337,7 +349,7 @@ func (b *Bot) supportIncoming(chat int64, from sender, text, file string) {
 		return
 	}
 	b.setWriting(chat, true) // more may follow
-	go b.react(chat, from.msg, "🕊")
+	go b.react(chat, from.msg, ReceiptArrived)
 	if b.once(&b.sp.noted, chat, 3*time.Minute) {
 		b.send(chat, b.t("sp_delivered"), keyboard{{{Text: b.t("b_sp_done"), Data: "hpx"}}})
 	}
@@ -446,7 +458,7 @@ func (b *Bot) SupportReply(thread int64, by, text string, photo []byte) (*store.
 			return nil, err
 		}
 	}
-	head := "🛟 <b>" + b.t("sp_staff") + "</b>"
+	head := "📡 <b>" + b.t("sp_staff") + "</b>"
 	body := head
 	if text != "" {
 		body += "\n\n" + esc(text)
@@ -480,7 +492,7 @@ func (b *Bot) SupportReply(thread int64, by, text string, photo []byte) (*store.
 	if err != nil {
 		return nil, err
 	}
-	go b.SupportReact(th.Chat, answered, "👌")
+	go b.SupportReact(th.Chat, answered, ReceiptAnswered)
 	return msg, nil
 }
 
@@ -630,9 +642,9 @@ func (b *Bot) supportView(chat, msg, thread int64) {
 	sb.WriteString(b.supportHead(th, u) + "\n")
 	msgs, _, _ := b.d.St.SupportMessages(th.ID, 0, 6)
 	for _, m := range msgs {
-		who := "🙋 " + esc(supportWho(th, u))
+		who := markPerson + " " + esc(supportWho(th, u))
 		if m.Staff {
-			who = "🛟 " + esc(m.By)
+			who = markTeam + " " + esc(m.By)
 		}
 		body := clip(m.Text, 400)
 		if m.Photo != "" {
@@ -641,7 +653,7 @@ func (b *Bot) supportView(chat, msg, thread int64) {
 		fmt.Fprintf(&sb, "\n<b>%s</b> · %s\n%s\n", who, stamp(m.At), esc(body))
 	}
 	if ids := b.d.St.SupportMarkSeen(th.ID); len(ids) > 0 {
-		go b.SupportReact(th.Chat, ids, "👀")
+		go b.SupportReact(th.Chat, ids, ReceiptSeen)
 	}
 	id := strconv.FormatInt(th.ID, 10)
 	toggle := button{Text: b.t("b_sp_close"), Data: "hpc:" + id}

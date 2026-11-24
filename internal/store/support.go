@@ -214,7 +214,7 @@ func pendingIDs(tx *sql.Tx, thread int64, field string) []int64 {
 }
 
 // SupportMarkSeen marks the person's messages seen; it returns the Telegram
-// ids of those that were not yet (for the 👀 receipt).
+// ids of those that were not yet (for the "seen" receipt).
 func (s *Store) SupportMarkSeen(thread int64) []int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -234,7 +234,7 @@ func (s *Store) SupportMarkSeen(thread int64) []int64 {
 
 // SupportAnswer keeps an answer that went out. Everything the person wrote
 // before it is now seen and answered; it returns the Telegram ids of the
-// messages that were waiting for an answer (for the 👌 receipt).
+// messages that were waiting for an answer (for the "answered" receipt).
 func (s *Store) SupportAnswer(thread int64, by, text, photo string, at int64) (*SupportMessage, []int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

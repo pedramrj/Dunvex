@@ -157,7 +157,7 @@ func TestSupportAPI(t *testing.T) {
 		t.Fatalf("search by user: %d", len(l))
 	}
 
-	// the reseller opens their thread: seen, 👀 to the person
+	// the reseller opens their thread: seen, and the seen receipt to the person
 	code, out := reseller.do("GET", path(ts1.ID, ""), nil)
 	if code != 200 || len(out["messages"].([]any)) != 1 || out["thread"].(map[string]any)["user"].(map[string]any)["name"] != "sam" {
 		t.Fatalf("reseller thread: %d %v", code, out)
@@ -165,8 +165,8 @@ func TestSupportAPI(t *testing.T) {
 	if code, out := reseller.do("POST", path(ts1.ID, "/seen"), nil); code != 200 || out["seen"] != 1.0 {
 		t.Fatalf("seen: %d %v", code, out)
 	}
-	if !saw("setMessageReaction 600 ") || !saw("👀") {
-		t.Fatal("no 👀 receipt")
+	if !saw("setMessageReaction 600 ") || !saw(bot.ReceiptSeen) {
+		t.Fatal("no seen receipt")
 	}
 
 	// photos: the reseller gets their own, not another's
@@ -178,12 +178,12 @@ func TestSupportAPI(t *testing.T) {
 		t.Fatalf("a path out of the folder: %d", code)
 	}
 
-	// answers: text, then a photo in a form; the person sees "Support", the admin's name stays inside
+	// answers: text, then a photo in a form; the person sees the support line, the admin's name stays inside
 	if code, out := reseller.do("POST", path(ts1.ID, "/reply"), map[string]string{"text": "restart the app"}); code != 200 ||
 		out["message"].(map[string]any)["by"] != "seller" || out["thread"].(map[string]any)["waiting"] != false {
 		t.Fatalf("reply: %d %v", code, out)
 	}
-	if !saw("sendMessage 600 🛟 <b>Support</b>\n\nrestart the app") || !saw("👌") {
+	if !saw("sendMessage 600 📡 <b>Support line</b>\n\nrestart the app") || !saw(bot.ReceiptAnswered) {
 		t.Fatal("the answer did not reach the person")
 	}
 	var form bytes.Buffer
@@ -200,7 +200,7 @@ func TestSupportAPI(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		t.Fatalf("photo reply: %v %s", err, b)
 	}
-	if !saw("sendPhoto 500 🛟 <b>Support</b>\n\nlike this") {
+	if !saw("sendPhoto 500 📡 <b>Support line</b>\n\nlike this") {
 		t.Fatal("the photo answer did not go")
 	}
 	if code, out := owner.do("POST", path(ta.ID, "/reply"), map[string]string{"text": "  "}); code != 400 || !strings.Contains(out["error"].(string), "write the answer") {

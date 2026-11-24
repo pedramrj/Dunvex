@@ -6,7 +6,7 @@ import {
   HeartPulse,
   Megaphone,
   HardDriveDownload,
-  LifeBuoy,
+  RadioTower,
 } from "lucide-react";
 import { api, setUnauthorizedHandler, VERSION_LABEL, type Event, type Me, type Role, type StatusInfo, type User } from "./lib/api";
 import { ago, cx } from "./lib/format";
@@ -56,7 +56,7 @@ export const navItems: NavItem[] = [
   { page: "overview", key: "overview", icon: LayoutDashboard, need: "reseller", group: "main" },
   { page: "users", key: "users", icon: UsersIcon, need: "reseller", group: "main" },
   { page: "broadcast", key: "broadcast", icon: Megaphone, need: "reseller", group: "main" },
-  { page: "support", key: "support", icon: LifeBuoy, need: "reseller", group: "main" },
+  { page: "support", key: "support", icon: RadioTower, need: "reseller", group: "main" },
   { page: "protocols", key: "protocols", icon: RouteIcon, need: "admin", group: "main" },
   { page: "routing", key: "routing", icon: Waypoints, need: "owner", group: "main" },
   { page: "cdn", key: "cdn", icon: Cloud, need: "owner", group: "main" },
@@ -487,7 +487,7 @@ const kindMeta: Record<string, { icon: typeof Bell; color: string; key: Key }> =
   node: { icon: Server, color: "var(--cyan)", key: "nodes" },
   health: { icon: HeartPulse, color: "var(--color-classic)", key: "catHealth" },
   backup: { icon: HardDriveDownload, color: "var(--warn)", key: "catBackup" },
-  support: { icon: LifeBuoy, color: "var(--cyan)", key: "catSupport" },
+  support: { icon: RadioTower, color: "var(--cyan)", key: "catSupport" },
 };
 export const eventMeta = (k: string) => kindMeta[k] ?? { icon: Bell, color: "var(--text2)", key: "events" as Key };
 

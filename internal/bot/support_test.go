@@ -125,13 +125,13 @@ func TestSupportInbox(t *testing.T) {
 		t.Fatalf("no Support button on the card: %s", buttons(card))
 	}
 	press(77, "hp")
-	fake.waitFor(t, "support screen", to("77", "Write your message here"))
+	fake.waitFor(t, "support screen", to("77", "Type your message"))
 
-	// a message: 🕊 on it, one "it arrived" note, the admins hear about it with Answer
+	// a message: the arrived receipt on it, one "sent" note, the admins hear about it with Answer
 	n := mark()
 	say(77, 501, "my config does not connect")
-	fake.waitFor(t, "🕊", reaction("77", "🕊"))
-	fake.waitFor(t, "delivered", to("77", "reached support"))
+	fake.waitFor(t, "arrived receipt", reaction("77", ReceiptArrived))
+	fake.waitFor(t, "delivered", to("77", "Sent to the team"))
 	alert := fake.waitFor(t, "admin alert", to("42", "my config does not connect"))
 	th, err := st.SupportThreadByChat(77)
 	if err != nil || th.UserID != ali.ID || th.OwnerID != 5 || th.Unread != 1 || th.Username != "ali_tg" {
@@ -147,7 +147,7 @@ func TestSupportInbox(t *testing.T) {
 	// a second one right after: stored, no second note
 	say(77, 502, "I use v2rayNG")
 	fake.waitFor(t, "second alert", to("42", "I use v2rayNG"))
-	if got := since(n, to("77", "reached support")); len(got) != 1 {
+	if got := since(n, to("77", "Sent to the team")); len(got) != 1 {
 		t.Fatalf("%d delivered notes", len(got))
 	}
 
@@ -174,41 +174,41 @@ func TestSupportInbox(t *testing.T) {
 	}
 	SaveSupport(st, set)
 	say(77, 504, strings.Repeat("long ", 20))
-	fake.waitFor(t, "too long", to("77", "at most 60"))
+	fake.waitFor(t, "too long", to("77", "the line takes 60"))
 	say(77, 505, "fourth")
 	fake.waitFor(t, "fourth", to("42", "fourth"))
 	n = mark()
 	say(77, 506, "fifth")
-	fake.waitFor(t, "slow down", to("77", "many messages"))
+	fake.waitFor(t, "slow down", to("77", "sent a lot this hour"))
 	say(77, 507, "sixth")
 	quiet("an alert over the rate", n, func(m map[string]any) bool { return to("42", "sixth")(m) || to("42", "fifth")(m) })
-	if got := since(n, to("77", "many messages")); len(got) != 1 {
+	if got := since(n, to("77", "sent a lot this hour")); len(got) != 1 {
 		t.Fatalf("%d slow-down notes", len(got))
 	}
 	if msgs, _, _ := st.SupportMessages(th.ID, 0, 20); len(msgs) != 4 {
 		t.Fatalf("over the rate kept: %d", len(msgs))
 	}
 
-	// the admin answers from Telegram: the person gets it as "Support", with 👌 on what they wrote
+	// the admin answers from Telegram: the person gets it from the support line, with the answered receipt
 	n = mark()
 	press(42, "hpr:"+strconv.FormatInt(th.ID, 10))
-	fake.waitFor(t, "ask the answer", to("42", "Send your answer to"))
+	fake.waitFor(t, "ask the answer", to("42", "Your answer to"))
 	fake.push(msg(42, "try the second config"))
 	answer := fake.waitFor(t, "answer", to("77", "try the second config"))
-	if !strings.Contains(text(answer), "Support") || strings.Contains(text(answer), "bot (42)") || !strings.Contains(buttons(answer), "hpw") {
+	if !strings.Contains(text(answer), "📡 <b>Support line</b>") || strings.Contains(text(answer), "bot (42)") || !strings.Contains(buttons(answer), "hpw") {
 		t.Fatalf("answer: %s %s", text(answer), buttons(answer))
 	}
-	fake.waitFor(t, "👌", reaction("77", "👌"))
-	fake.waitFor(t, "sent note", to("42", "Answer sent to ali"))
+	fake.waitFor(t, "answered receipt", reaction("77", ReceiptAnswered))
+	fake.waitFor(t, "sent note", to("42", "Delivered to ali"))
 	th, _ = st.SupportThreadByID(th.ID)
 	if th.Waiting() || th.Unread != 0 || !th.LastStaff {
 		t.Fatalf("after the answer: %+v", th)
 	}
-	for i := 0; i < 100 && len(since(n, reaction("77", "👌"))) < 4; i++ {
+	for i := 0; i < 100 && len(since(n, reaction("77", ReceiptAnswered))) < 4; i++ {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if got := since(n, reaction("77", "👌")); len(got) != 4 {
-		t.Fatalf("👌 on %d messages", len(got))
+	if got := since(n, reaction("77", ReceiptAnswered)); len(got) != 4 {
+		t.Fatalf("answered receipt on %d messages", len(got))
 	}
 
 	// from the panel: an answer with a photo
@@ -234,16 +234,16 @@ func TestSupportInbox(t *testing.T) {
 
 	// Done ends writing: what follows is not for support
 	press(77, "hpx")
-	fake.waitFor(t, "done", to("77", "whenever you need us"))
+	fake.waitFor(t, "done", to("77", "Line closed"))
 	n = mark()
 	say(77, 510, "hello?")
 	fake.waitFor(t, "a card instead", func(m map[string]any) bool { return chatOf(m) == "77" && m["_method"] == "sendPhoto" })
 	quiet("support took a message after Done", n, to("42", "hello?"))
 
-	// Reply under an answer opens writing again; the admin opening it gives 👀
+	// Write back under an answer opens writing again; the admin opening it gives the seen receipt
 	press(77, "hpw")
 	fake.waitFor(t, "screen again", func(m map[string]any) bool {
-		return to("77", "Write your message here")(m) && strings.Contains(text(m), "here is how") && strings.Contains(text(m), "Answered")
+		return to("77", "Type your message")(m) && strings.Contains(text(m), "here is how") && strings.Contains(text(m), "Answered")
 	})
 	SaveSupport(st, SupportSettings{On: true, Alert: false, Rate: 0, MaxLen: 2000, Keep: 300, Days: 180})
 	n = mark()
@@ -251,14 +251,14 @@ func TestSupportInbox(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	quiet("an alert with alerts off", n, to("42", "thanks, works now"))
 	press(42, "hpv:"+strconv.FormatInt(th.ID, 10))
-	fake.waitFor(t, "👀", reaction("77", "👀"))
+	fake.waitFor(t, "seen receipt", reaction("77", ReceiptSeen))
 
 	// guests may write when the owner allows it; a blocked chat gets nothing
 	SaveSupport(st, SupportSettings{On: true, Guests: true, MaxLen: 2000})
 	fake.push(msg(99, "/support"))
-	fake.waitFor(t, "guest screen", to("99", "Write your message here"))
+	fake.waitFor(t, "guest screen", to("99", "Type your message"))
 	say(99, 600, "how much is a plan?")
-	fake.waitFor(t, "guest delivered", to("99", "reached support"))
+	fake.waitFor(t, "guest delivered", to("99", "Sent to the team"))
 	guest, err := st.SupportThreadByChat(99)
 	if err != nil || guest.UserID != 0 || guest.OwnerID != 0 {
 		t.Fatalf("guest thread: %+v %v", guest, err)
@@ -284,7 +284,7 @@ func TestSupportInbox(t *testing.T) {
 	// off: the button goes and /support says so
 	SaveSupport(st, SupportSettings{On: false, MaxLen: 2000})
 	fake.push(msg(77, "/support"))
-	fake.waitFor(t, "off", to("77", "is off for now"))
+	fake.waitFor(t, "off", to("77", "closed for now"))
 	if kb := b.withSupport(77, nil); len(kb) != 0 {
 		t.Fatal("a Support button while support is off")
 	}
