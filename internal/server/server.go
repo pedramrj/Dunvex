@@ -295,7 +295,8 @@ func (s *Server) Handler() http.Handler {
 // (under the subscription path, so the panel path stays secret).
 // serveBrand exposes the logo files to the public user page.
 func (s *Server) serveBrand(w http.ResponseWriter, name string) {
-	ok := map[string]bool{"dunvex-logo-512.png": true, "favicon-64.png": true, "apple-touch-180.png": true, "icon-192.png": true}
+	// the emblem alone (4.6 KB) is what the user page draws; the 512 logo is 200 KB
+	ok := map[string]bool{"dunvex-logo-512.png": true, "favicon-64.png": true, "apple-touch-180.png": true, "icon-192.png": true, "dunvex-emblem.webp": true}
 	if !ok[name] || s.UI == nil {
 		decoy(w)
 		return
@@ -305,7 +306,11 @@ func (s *Server) serveBrand(w http.ResponseWriter, name string) {
 		decoy(w)
 		return
 	}
-	w.Header().Set("Content-Type", "image/png")
+	if strings.HasSuffix(name, ".webp") {
+		w.Header().Set("Content-Type", "image/webp")
+	} else {
+		w.Header().Set("Content-Type", "image/png")
+	}
 	w.Header().Set("Cache-Control", "public, max-age=2592000")
 	w.Write(b)
 }

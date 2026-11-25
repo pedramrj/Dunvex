@@ -97,7 +97,7 @@ type pageUsage struct {
 	EndsSoon bool   // the data runs out before the time does
 }
 
-func (s *Server) pageUsage(u *store.User, now time.Time) pageUsage {
+func (s *Server) pageUsage(u *store.User, now time.Time, l pageLang) pageUsage {
 	var out pageUsage
 	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, -6)
 	pts, _ := s.St.UsageSeries(u.ID, start.Unix())
@@ -115,7 +115,7 @@ func (s *Server) pageUsage(u *store.User, now time.Time) pageUsage {
 			max = d
 		}
 	}
-	initials := []string{"ی", "د", "س", "چ", "پ", "ج", "ش"} // Sunday first, as time.Weekday counts
+	initials := l.weekdays() // Sunday first, as time.Weekday counts
 	for i, d := range days {
 		h := 0
 		if max > 0 {
@@ -124,20 +124,20 @@ func (s *Server) pageUsage(u *store.User, now time.Time) pageUsage {
 		if d > 0 && h < 4 {
 			h = 4
 		}
-		out.Week = append(out.Week, dayBar{initials[start.AddDate(0, 0, i).Weekday()], h, faBytes(d)})
+		out.Week = append(out.Week, dayBar{initials[start.AddDate(0, 0, i).Weekday()], h, l.bytes(d)})
 	}
 	if sum == 0 {
 		return out
 	}
 	avg := sum / 7
-	out.Avg = faBytes(avg)
+	out.Avg = l.bytes(avg)
 	if u.DataLimit > 0 && avg > 0 {
 		left := u.DataLimit - u.Used()
 		if left <= 0 {
 			return out
 		}
 		d := int(math.Ceil(float64(left) / float64(avg)))
-		out.RunsOut = faDigits(fmt.Sprint(d)) + " روز"
+		out.RunsOut = l.num(d) + " " + l.t("days")
 		if u.ExpireAt > 0 && now.Unix()+int64(d)*86400 < u.ExpireAt {
 			out.EndsSoon = true
 		}
@@ -167,10 +167,10 @@ func faAgo(sec int64) string {
 	}
 }
 
-func (s *Server) pageDevices(u *store.User, now time.Time) []pageDevice {
+func pageDevices(views []deviceView, now time.Time, l pageLang) []pageDevice {
 	out := []pageDevice{}
-	for _, d := range s.deviceViews(u) {
-		p := pageDevice{Addr: maskIP(d.IP), Ago: faAgo(now.Unix() - d.LastSeen), Servers: strings.Join(d.Servers, " · ")}
+	for _, d := range views {
+		p := pageDevice{Addr: maskIP(d.IP), Ago: l.ago(now.Unix() - d.LastSeen), Servers: strings.Join(d.Servers, " · ")}
 		if d.Place != nil {
 			p.City, p.CC = d.Place.City, d.Place.CC
 		}
@@ -183,32 +183,35 @@ func (s *Server) pageDevices(u *store.User, now time.Time) []pageDevice {
 	return out
 }
 
-// pageFacts adds the Persian figures and the extra sections to the page data.
-func (s *Server) pageFacts(data map[string]any, u *store.User, now time.Time) {
-	data["UsedFa"] = faBytes(u.Used())
-	data["LimitFa"] = "نامحدود"
-	data["LeftFa"] = "نامحدود"
+// pageFacts adds the figures in the page's language and the extra sections.
+func (s *Server) pageFacts(data map[string]any, u *store.User, now time.Time, l pageLang) {
+	data["UsedTx"] = l.bytes(u.Used())
+	data["LimitTx"] = l.t("unlimited")
+	data["LeftTx"] = l.t("unlimited")
 	data["LeftPct"] = 100
 	if u.DataLimit > 0 {
-		data["LimitFa"] = faBytes(u.DataLimit)
+		data["LimitTx"] = l.bytes(u.DataLimit)
 		left := u.DataLimit - u.Used()
 		if left < 0 {
 			left = 0
 		}
-		data["LeftFa"] = faBytes(left)
+		data["LeftTx"] = l.bytes(left)
 		data["LeftPct"] = int(math.Round(float64(left) * 100 / float64(u.DataLimit)))
 	}
-	data["ExpireFa"] = ""
+	data["ExpireTx"] = ""
 	if u.ExpireAt > 0 {
-		data["ExpireFa"] = faDate(time.Unix(u.ExpireAt, 0))
+		data["ExpireTx"] = l.date(time.Unix(u.ExpireAt, 0))
 	}
 	if d, ok := data["Days"].(string); ok {
-		data["DaysFa"] = faDigits(d)
+		data["DaysTx"] = l.num(d)
 	}
-	data["Usage"] = s.pageUsage(u, now)
-	data["Devices"] = s.pageDevices(u, now)
+	data["Usage"] = s.pageUsage(u, now, l)
+	views := s.deviceViews(u)
+	data["Devices"] = pageDevices(views, now, l)
+	data["Map"] = s.pageMapFor(views)
+	data["DevLimitTx"] = ""
 	if u.IPLimit > 0 {
-		data["DevLimitFa"] = faDigits(fmt.Sprint(u.IPLimit))
+		data["DevLimitTx"] = l.num(u.IPLimit)
 	}
-	data["DevCountFa"] = faDigits(fmt.Sprint(len(s.Mgr.Devices(u.Name))))
+	data["DevCountTx"] = l.num(len(s.Mgr.Devices(u.Name)))
 }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"compress/gzip"
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
@@ -125,15 +126,15 @@ func blockedReason(u *store.User, now int64) string {
 	return ""
 }
 
-// pageReason is blockedReason for the Persian user page.
-func pageReason(u *store.User, now int64) string {
+// pageReason is blockedReason for the user page, in its language.
+func pageReason(u *store.User, now int64, l pageLang) string {
 	switch u.Status(now) {
 	case store.StatusLimited:
-		return "حجم اشتراک تمام شده"
+		return l.t("limited")
 	case store.StatusExpired:
-		return "مدت اشتراک تمام شده"
+		return l.t("expired")
 	case store.StatusDisabled:
-		return "حساب غیرفعال است"
+		return l.t("disabled")
 	}
 	return ""
 }
@@ -410,6 +411,7 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	now := time.Now().Unix()
 	sub := s.SubURL(r, u)
 	title := s.St.GetSetting("sub_title", "Dunvex")
+	l := s.pageLangFor(w, r)
 	v := s.view(r, u, s.Mgr.OnlineUsers(60))
 	pct := 0.0
 	if u.DataLimit > 0 {
@@ -442,9 +444,9 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 			}
 			hint := ""
 			if strings.HasPrefix(c.Link, "slipnet://") {
-				hint = "در برنامهٔ SlipNet لینک را وارد کنید (Import) یا کد QR را اسکن کنید."
+				hint = l.t("slipHint")
 				if c.Note != "" {
-					hint += " در DNSTT.XYZ هم می‌توانید این مشخصات را دستی وارد کنید:"
+					hint += l.t("slipByHand")
 				}
 			}
 			cfgs = append(cfgs, cfg{c.Name, c.Link, template.HTML(QRSVG(c.Link)), "", "", hint, c.Note})
@@ -453,17 +455,17 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 	data := map[string]any{
 		"Title": title, "User": u, "View": v, "Sub": sub, "SubQR": template.HTML(QRSVG(sub)),
 		"Used": util.HumanBytes(u.Used()), "Limit": limitText(u.DataLimit), "Pct": fmt.Sprintf("%.1f", pct),
-		"Expire": expire, "Reason": pageReason(u, now), "Configs": cfgs, "Apps": appLinks(sub, title),
+		"Expire": expire, "Reason": pageReason(u, now, l), "Configs": cfgs, "Apps": appLinks(sub, title),
 		"Support": s.St.GetSetting("support_url", ""), "Announce": s.St.GetSetting("announce", ""),
 		"Days": daysText(v.DaysLeft), "Pending": v.Status == store.StatusPending,
 		"FontBase": s.SubPath() + "_font/", "RingColor": template.CSS(ringColor(pct)), "PctCSS": template.CSS(fmt.Sprintf("%.1f", pct)),
 		"Brand": s.SubPath() + "_brand/", "Paused": "", "DevLimit": "", "Bot": "", "Renew": "",
-		"Accent": template.CSS(accentOr(s.St.GetSetting("sub_accent", ""))),
+		"L": l.code(), "Dir": l.dir(), "T": l.texts(), "Accent": template.CSS(accentOr(s.St.GetSetting("sub_accent", ""))),
 	}
 	if u.PausedUntil > now {
-		data["Paused"] = time.Unix(u.PausedUntil, 0).Format("15:04")
+		data["Paused"] = l.num(time.Unix(u.PausedUntil, 0).Format("15:04"))
 	}
-	s.pageFacts(data, u, time.Unix(now, 0))
+	s.pageFacts(data, u, time.Unix(now, 0), l)
 	if billing.LoadSettings(s.St).Shop {
 		if plans, _ := s.St.Plans(true); len(plans) > 0 {
 			data["Renew"] = s.ShopPath() + "?renew=" + u.SubToken
@@ -477,11 +479,24 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 			data["Bot"] = "https://t.me/" + name + "?start=" + u.SubToken
 		}
 	}
+	var page bytes.Buffer
+	if err := subTmpl.Execute(&page, data); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
-	if err := subTmpl.Execute(w, data); err != nil {
-		http.Error(w, err.Error(), 500)
+	w.Header().Set("Vary", "Accept-Encoding")
+	// the QR codes make the page large; compressed it is about a fifth, which
+	// matters on slow mobile networks
+	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		zw := gzip.NewWriter(w)
+		zw.Write(page.Bytes())
+		zw.Close()
+		return
 	}
+	w.Write(page.Bytes())
 }
 
 // accentOr returns a safe CSS colour for the portal accent.
