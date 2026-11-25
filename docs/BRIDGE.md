@@ -82,6 +82,19 @@ Each carrier is a small, independent driver that only moves opaque frames
 best-effort; the encryption, health, pacing and failover all sit above it. Turn
 on any set.
 
+A carrier never learns its peer on its own. It hands every inbound frame up with
+the source it came from, and only the Transport — once that frame authenticates
+(a valid Init with a fresh ephemeral, or a record that opens under the session
+key) — binds where the carrier sends. So one spoofed or junk packet to a carrier
+port can neither redirect the relay's traffic nor draw an answer: the ICMP
+answerer replies with data only to the authenticated peer, the fake-TCP server
+SYN-ACKs any SYN (as a normal host would) but binds its data peer only on an
+authenticated segment, and the CDN listener makes a new WebSocket the active link
+only after a frame on it opens (dropping the rest silently, and answering a wrong
+path with an ordinary nginx-style 404). Values that would otherwise be constant
+across every install — the ICMP echo id, the CDN path — are derived from the
+pre-shared key, so there is no fixed marker for a scanner to look for.
+
 | Carrier | Why | Weak point |
 | --- | --- | --- |
 | **ICMP** (raw sockets) | On the worst days reported, echo was the only thing crossing (net4people #676). A `server-sends-requests` option follows #676's workaround for one-way echo blocks. | ~50k pps cap and a reroute above ~30 MB/s, so it is paced well under (default 22 MB/s). Linux only. |
@@ -140,24 +153,25 @@ fake-TCP, UDP and TLS-CDN; the DNS carrier is covered by the Go tests.)
 
 | Scenario | What the border did | Carried by | Throughput | Max reorder |
 | --- | --- | --- | --- | --- |
-| **Baseline** | nothing | fake-TCP | 78.9 MB/s | 58 |
+| **Baseline** | nothing | fake-TCP | 79.7 MB/s | 45 |
 | **Only ICMP passes** | TCP and UDP cut | ICMP, paced to its cap | 21.4 MB/s | 3 |
-| **UDP blocked** | UDP dropped | fake-TCP | 74.5 MB/s | 73 |
-| **RST after the TLS handshake** | the CDN carrier's port cut | fake-TCP (+ UDP) | 89.1 MB/s | 15 |
-| **Loss + rate cap** (≈40 Mbit/s, 3% loss on the download path) | shaped link | fake-TCP / UDP | 3.4 MB/s | 3 |
+| **UDP blocked** | UDP dropped | fake-TCP | 88.7 MB/s | 48 |
+| **RST after the TLS handshake** | the CDN carrier's port cut | fake-TCP (+ UDP) | 89.2 MB/s | 54 |
+| **Loss + rate cap** (≈40 Mbit/s, 3% loss on the download path) | shaped link | fake-TCP / UDP | 3.2 MB/s | 2 |
 
 In **only ICMP**, every other carrier is down (100% probe loss) and ICMP alone
-carries the download, held at **21.4 MB/s** — its 22 MB/s cap biting, so the
-carrier stays under the ~30 MB/s volume-reroute trigger the research reports
-(net4people #676). In **RST after the TLS handshake**, the CDN carrier is dead
-but the others never notice. The loss+cap row shows the Bridge delivering a
-steady 3.4 MB/s through a 40 Mbit/s link with 3% loss.
+carries the download — handshake included — held at **21.4 MB/s**: its 22 MB/s cap
+biting, so the carrier stays under the ~30 MB/s volume-reroute trigger the
+research reports (net4people #676). In **RST after the TLS handshake**, the CDN
+carrier is dead but the others never notice. The loss+cap row shows the Bridge
+delivering a steady 3.2 MB/s through a 40 Mbit/s link with 3% loss.
 
 The **max reorder** column is how far out of order a frame arrived and was still
 accepted (the replay window's high-water mark). With several carriers of very
-different RTT active at once, it reached **101** in the resilience run — above the
-64 a narrow window would allow, so the replay window is sized at 4096 to avoid
-dropping legitimate frames and forcing needless kcp retransmits.
+different RTT active at once it reached the 40s–70s here and over 100 in other
+runs — always past the 64 a narrow window would allow, so the replay window is
+sized at 4096 to avoid dropping legitimate frames and forcing needless kcp
+retransmits.
 
 **Resilience — one long download while carriers die and come back** (40 s,
 carriers ICMP + fake-TCP + UDP): 2.7 GB delivered, **68.9 MB/s average** across

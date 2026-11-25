@@ -11,7 +11,7 @@ import (
 type pipeCarrier struct {
 	out    chan []byte
 	in     chan []byte
-	recv   func([]byte)
+	recv   func(frame []byte, src any)
 	up     atomic.Bool
 	closed chan struct{}
 	once   sync.Once
@@ -27,8 +27,9 @@ func newPipeCarrierPair() (server, client *pipeCarrier) {
 
 func (p *pipeCarrier) Name() string { return "pipe" }
 func (p *pipeCarrier) Up() bool     { return p.up.Load() }
+func (p *pipeCarrier) SetPeer(any)  {}
 
-func (p *pipeCarrier) Start(recv func([]byte)) error {
+func (p *pipeCarrier) Start(recv func(frame []byte, src any)) error {
 	p.recv = recv
 	p.up.Store(true)
 	go func() {
@@ -38,7 +39,7 @@ func (p *pipeCarrier) Start(recv func([]byte)) error {
 				return
 			case b := <-p.in:
 				if p.recv != nil {
-					p.recv(b)
+					p.recv(b, p) // the pipe is point-to-point; the source token is unused
 				}
 			}
 		}
@@ -68,12 +69,21 @@ func (p *pipeCarrier) Close() error {
 // countingCarrier is a stub that only counts the frames Send is asked to move,
 // for handshake/replay tests that feed frames in by hand.
 type countingCarrier struct {
-	recv func([]byte)
+	recv func(frame []byte, src any)
 	sent atomic.Int64
+	peer atomic.Pointer[string] // the last authenticated source bound via SetPeer
 }
 
-func (c *countingCarrier) Name() string               { return "count" }
-func (c *countingCarrier) Up() bool                   { return true }
-func (c *countingCarrier) Start(r func([]byte)) error { c.recv = r; return nil }
-func (c *countingCarrier) Send(frame []byte) error    { c.sent.Add(1); return nil }
-func (c *countingCarrier) Close() error               { return nil }
+func (c *countingCarrier) Name() string { return "count" }
+func (c *countingCarrier) Up() bool     { return true }
+func (c *countingCarrier) Start(r func(frame []byte, src any)) error {
+	c.recv = r
+	return nil
+}
+func (c *countingCarrier) Send(frame []byte) error { c.sent.Add(1); return nil }
+func (c *countingCarrier) SetPeer(src any) {
+	if s, ok := src.(string); ok {
+		c.peer.Store(&s)
+	}
+}
+func (c *countingCarrier) Close() error { return nil }

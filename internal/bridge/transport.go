@@ -133,7 +133,7 @@ func (tr *Transport) ReorderDepth() int64 {
 func (tr *Transport) start() error {
 	for i, cs := range tr.carriers {
 		i := i
-		if err := cs.c.Start(func(frame []byte) { tr.feed(i, frame) }); err != nil {
+		if err := cs.c.Start(func(frame []byte, src any) { tr.feed(i, frame, src) }); err != nil {
 			return err
 		}
 	}
@@ -142,15 +142,18 @@ func (tr *Transport) start() error {
 	return nil
 }
 
-// feed routes one inbound frame from carrier i.
-func (tr *Transport) feed(i int, frame []byte) {
+// feed routes one inbound frame from carrier i. The carrier never learns its
+// peer on its own; the Transport binds it with SetPeer only once a frame from
+// src has authenticated, so an unauthenticated packet can neither redirect the
+// carrier nor draw an answer.
+func (tr *Transport) feed(i int, frame []byte, src any) {
 	cs := tr.carriers[i]
 	cs.ct.recv.Add(1)
 	cs.ct.recvB.Add(int64(len(frame)))
 	s := tr.sess.Load()
 	if s == nil {
 		if tr.role == roleServer {
-			tr.tryInit(i, frame)
+			tr.tryInit(i, frame, src)
 		} else {
 			tr.tryResp(frame)
 		}
@@ -162,10 +165,11 @@ func (tr *Transport) feed(i int, frame []byte) {
 			return
 		}
 		if tr.role == roleServer {
-			tr.tryInit(i, frame) // maybe the client restarted with a new session
+			tr.tryInit(i, frame, src) // maybe the client restarted with a new session
 		}
 		return
 	}
+	cs.c.SetPeer(src) // authenticated record: bind (or refresh, e.g. NAT rebind) the peer
 	tr.handleInner(i, pt)
 }
 
@@ -216,10 +220,10 @@ func (tr *Transport) handleInner(i int, pt []byte) {
 
 // ---------------------------------------------------------------- handshake
 
-func (tr *Transport) tryInit(i int, frame []byte) {
+func (tr *Transport) tryInit(i int, frame []byte, src any) {
 	sid, key, eph, err := parseInit(tr.psk, tr.static, frame)
 	if err != nil {
-		return // silence
+		return // silence: an unauthenticated packet never binds the peer or draws a Resp
 	}
 	now := time.Now()
 	tr.hsMu.Lock()
@@ -228,9 +232,11 @@ func (tr *Transport) tryInit(i int, frame []byte) {
 	if seen {
 		// This ephemeral was already used. Never install a second session from
 		// it: that would reset sendSeq and the replay window under the same key
-		// (nonce reuse, and old frames replayed into a fresh window). Only
-		// re-answer the genuine client still re-sending its Init before it saw
-		// our Resp — same sid, same carrier, still fresh, session already live.
+		// (nonce reuse, and old frames replayed into a fresh window). And never
+		// SetPeer here — a captured Init can be replayed from a spoofed source,
+		// so a replay must not redirect the carrier. Only re-answer the genuine
+		// client still re-sending its Init before it saw our Resp, and send that
+		// Resp to the peer bound by the FIRST Init, not to this packet's source.
 		live := tr.sess.Load()
 		resend := e.sid == sid && e.carrier == i && now.Sub(e.first) <= respFresh && live != nil && live.sid == sid
 		tr.hsMu.Unlock()
@@ -244,6 +250,9 @@ func (tr *Transport) tryInit(i int, frame []byte) {
 	tr.seenEph[eph] = seenInit{sid: sid, first: now, carrier: i}
 	tr.hsMu.Unlock()
 
+	// First time we see this ephemeral: a valid Init with a fresh ephemeral can
+	// only come from someone holding the PSK, so bind the peer to it.
+	tr.carriers[i].c.SetPeer(src)
 	s, err := newSession(sid, key, false)
 	if err != nil {
 		return

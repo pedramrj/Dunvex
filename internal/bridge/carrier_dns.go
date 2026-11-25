@@ -27,8 +27,8 @@ type DNSServer struct {
 
 	udp    net.PacketConn
 	ln     net.Listener
-	conn   atomic.Pointer[net.Conn]
-	recv   func([]byte)
+	conn   atomic.Pointer[net.Conn] // the active stream, set only after a frame on it authenticates
+	recv   func(frame []byte, src any)
 	up     atomic.Bool
 	closed chan struct{}
 	once   sync.Once
@@ -43,7 +43,14 @@ func NewDNSServer(bind, privHex, domain string) *DNSServer {
 func (s *DNSServer) Name() string { return "dns" }
 func (s *DNSServer) Up() bool     { return s.up.Load() }
 
-func (s *DNSServer) Start(recv func([]byte)) error {
+// SetPeer makes a dnstt stream the active one once a frame on it authenticates.
+func (s *DNSServer) SetPeer(src any) {
+	if c, ok := src.(net.Conn); ok && c != nil {
+		s.conn.Store(&c)
+	}
+}
+
+func (s *DNSServer) Start(recv func(frame []byte, src any)) error {
 	s.recv = recv
 	key, err := dnstt.DecodeKey(s.privHex)
 	if err != nil {
@@ -77,8 +84,7 @@ func (s *DNSServer) accept() {
 			}
 			return
 		}
-		s.conn.Store(&c)
-		go s.read(c)
+		go s.read(c) // not the active stream until a frame on it authenticates (SetPeer)
 	}
 }
 
@@ -89,7 +95,7 @@ func (s *DNSServer) read(c net.Conn) {
 			return
 		}
 		if s.recv != nil && len(b) > 0 {
-			s.recv(b)
+			s.recv(b, c)
 		}
 	}
 }
@@ -121,7 +127,7 @@ type DNSClient struct {
 
 	cl     atomic.Pointer[dnsttclient.Client]
 	stream atomic.Pointer[io.ReadWriteCloser]
-	recv   func([]byte)
+	recv   func(frame []byte, src any)
 	up     atomic.Bool
 	closed chan struct{}
 	once   sync.Once
@@ -136,7 +142,10 @@ func NewDNSClient(resolver, domain, pubHex string) *DNSClient {
 func (c *DNSClient) Name() string { return "dns" }
 func (c *DNSClient) Up() bool     { return c.up.Load() }
 
-func (c *DNSClient) Start(recv func([]byte)) error {
+// SetPeer is a no-op: the client opened the dnstt stream itself.
+func (c *DNSClient) SetPeer(any) {}
+
+func (c *DNSClient) Start(recv func(frame []byte, src any)) error {
 	c.recv = recv
 	go c.keep()
 	return nil
@@ -183,7 +192,7 @@ func (c *DNSClient) read(st io.Reader) {
 			return
 		}
 		if c.recv != nil && len(b) > 0 {
-			c.recv(b)
+			c.recv(b, st)
 		}
 	}
 }

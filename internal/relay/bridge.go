@@ -359,6 +359,9 @@ func (bc *bclient) setErr(s string) {
 // ---------------------------------------------------------------- carrier builders
 
 func serverCarriers(cfg *BridgeServerConfig, cert *tls.Certificate) ([]bridge.CarrierOpt, error) {
+	psk := []byte(cfg.PSK)
+	icmpID := bridge.DeriveICMPID(psk)
+	cdnPath := bridge.DeriveCDNPath(psk)
 	var opts []bridge.CarrierOpt
 	for _, s := range cfg.Carriers {
 		var c bridge.Carrier
@@ -366,14 +369,14 @@ func serverCarriers(cfg *BridgeServerConfig, cert *tls.Certificate) ([]bridge.Ca
 		case "udp":
 			c = bridge.NewUDPServer(":" + strconv.Itoa(s.Port))
 		case "icmp":
-			c = bridge.NewICMPServer(s.ServerRequests)
+			c = bridge.NewICMPServer(s.ServerRequests, icmpID)
 		case "faketcp":
 			c = bridge.NewFakeTCPServer(s.Port)
 		case "tls-cdn":
 			if cert == nil {
 				continue // no certificate for the wss listener yet
 			}
-			c = bridge.NewTLSCDNServer(":"+strconv.Itoa(s.Port), s.Path, *cert)
+			c = bridge.NewTLSCDNServer(":"+strconv.Itoa(s.Port), cdnPath, *cert)
 		case "dns":
 			c = bridge.NewDNSServer(":"+strconv.Itoa(s.Port), cfg.DNSPriv, s.Zone)
 		default:
@@ -403,6 +406,9 @@ func clientCarriers(cfg BridgeClientConfig) ([]bridge.CarrierOpt, error) {
 			ip = v.String()
 		}
 	}
+	psk := []byte(cfg.PSK)
+	icmpID := bridge.DeriveICMPID(psk)
+	cdnPath := bridge.DeriveCDNPath(psk)
 	var opts []bridge.CarrierOpt
 	for _, s := range cfg.Carriers {
 		var c bridge.Carrier
@@ -414,7 +420,7 @@ func clientCarriers(cfg BridgeClientConfig) ([]bridge.CarrierOpt, error) {
 			if ip == "" {
 				continue
 			}
-			c, err = bridge.NewICMPClient(ip, s.ServerRequests)
+			c, err = bridge.NewICMPClient(ip, s.ServerRequests, icmpID)
 		case "faketcp":
 			if ip == "" {
 				continue
@@ -425,7 +431,7 @@ func clientCarriers(cfg BridgeClientConfig) ([]bridge.CarrierOpt, error) {
 			if name == "" {
 				name = host
 			}
-			url := "wss://" + net.JoinHostPort(name, strconv.Itoa(s.Port)) + firstNonEmpty(s.Path, "/dvxb")
+			url := "wss://" + net.JoinHostPort(name, strconv.Itoa(s.Port)) + cdnPath
 			c, err = bridge.NewTLSCDNClient(url, name, s.ECH, s.PinSHA)
 		case "dns":
 			c = bridge.NewDNSClient(net.JoinHostPort(host, strconv.Itoa(s.Port)), s.Zone, cfg.DNSPub)

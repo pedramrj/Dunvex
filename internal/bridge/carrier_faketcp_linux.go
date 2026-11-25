@@ -44,15 +44,21 @@ type faketcpCarrier struct {
 	seq  atomic.Uint32
 	ack  atomic.Uint32
 	up   atomic.Bool
-	recv func([]byte)
+	recv func(frame []byte, src any)
 
 	ruleArgs [][]string // firewall rules we added, to remove on close
 	closed   chan struct{}
 	once     sync.Once
 }
 
+// faketcpSrc is a fake-TCP peer: the IP and TCP source port a segment came from.
+type faketcpSrc struct {
+	ip   net.IP
+	port int
+}
+
 // NewFakeTCPClient makes the target side; targetIP is the relay's IP.
-func NewFakeTCPClient(targetIP string, port int) (*faketcpCarrier, error) {
+func NewFakeTCPClient(targetIP string, port int) (Carrier, error) {
 	ip := net.ParseIP(targetIP)
 	if ip == nil {
 		return nil, &net.AddrError{Err: "bad relay IP for the fake-TCP carrier", Addr: targetIP}
@@ -65,7 +71,7 @@ func NewFakeTCPClient(targetIP string, port int) (*faketcpCarrier, error) {
 }
 
 // NewFakeTCPServer makes the Iran relay side, bound to port.
-func NewFakeTCPServer(port int) *faketcpCarrier {
+func NewFakeTCPServer(port int) Carrier {
 	c := &faketcpCarrier{port: port, srcPrt: port, closed: make(chan struct{})}
 	c.seq.Store(rand.Uint32())
 	return c
@@ -74,7 +80,7 @@ func NewFakeTCPServer(port int) *faketcpCarrier {
 func (c *faketcpCarrier) Name() string { return "faketcp" }
 func (c *faketcpCarrier) Up() bool     { return c.up.Load() }
 
-func (c *faketcpCarrier) Start(recv func([]byte)) error {
+func (c *faketcpCarrier) Start(recv func(frame []byte, src any)) error {
 	c.recv = recv
 	sfd, err := unix.Socket(unix.AF_INET, unix.SOCK_RAW, unix.IPPROTO_RAW)
 	if err != nil {
@@ -168,25 +174,24 @@ func (c *faketcpCarrier) read() {
 		if !c.mine(srcPort, dstPort) {
 			continue
 		}
-		var peer net.IP
+		var srcIP net.IP
 		if sa, ok := from.(*unix.SockaddrInet4); ok {
-			ip := net.IPv4(sa.Addr[0], sa.Addr[1], sa.Addr[2], sa.Addr[3])
-			peer = ip.To4()
-			c.peerIP.Store(&peer)
+			srcIP = net.IPv4(sa.Addr[0], sa.Addr[1], sa.Addr[2], sa.Addr[3]).To4()
 		}
 		dataOff := int(tcp[12]>>4) * 4
 		if dataOff < 20 || dataOff > len(tcp) {
 			continue
 		}
 		seq := binary.BigEndian.Uint32(tcp[4:8])
-		c.ack.Store(seq + uint32(len(tcp)-dataOff))
-		if flags&flagSYN != 0 { // SYN or SYN-ACK: answer, learn the peer
+		if flags&flagSYN != 0 {
 			if !c.client {
-				c.srcPrt = c.port
-				c.dstPrt = srcPort
-				c.sendSeg(flagSYN|flagACK, nil)
+				// A SYN from anyone draws a stateless SYN-ACK, exactly as a real
+				// TCP host would — but it does NOT bind the data peer, so a
+				// prober's SYN can neither redirect us nor get data.
+				c.replySynAck(srcIP, srcPort, seq)
 			} else {
-				c.sendSeg(flagACK, nil)
+				c.ack.Store(seq + 1)
+				c.sendSeg(flagACK, nil) // the client acks the server's SYN-ACK; its peer is fixed
 			}
 			continue
 		}
@@ -197,7 +202,9 @@ func (c *faketcpCarrier) read() {
 		if c.recv != nil {
 			b := make([]byte, len(payload))
 			copy(b, payload)
-			c.recv(b)
+			// hand the frame up with its source; the Transport binds the peer
+			// (SetPeer) only if it authenticates.
+			c.recv(b, faketcpSrc{ip: srcIP, port: srcPort})
 		}
 	}
 }
@@ -208,6 +215,37 @@ func (c *faketcpCarrier) mine(srcPort, dstPort int) bool {
 		return dstPort == c.srcPrt && srcPort == c.port
 	}
 	return dstPort == c.port
+}
+
+// SetPeer binds the server carrier's data peer to an authenticated source
+// (no-op on the client, whose target is fixed).
+func (c *faketcpCarrier) SetPeer(src any) {
+	if c.client {
+		return
+	}
+	if s, ok := src.(faketcpSrc); ok && s.ip != nil {
+		p := s.ip.To4()
+		c.peerIP.Store(&p)
+		c.dstPrt = s.port
+		c.srcPrt = c.port
+	}
+}
+
+// replySynAck answers a SYN to its source without binding the data peer.
+func (c *faketcpCarrier) replySynAck(dstIP net.IP, dstPort int, synSeq uint32) {
+	if dstIP == nil {
+		return
+	}
+	seq := c.seq.Load()
+	pkt := buildIPv4TCP(c.localIP(dstIP), dstIP, c.port, dstPort, seq, synSeq+1, flagSYN|flagACK, nil)
+	c.rawSend(dstIP, pkt)
+}
+
+// rawSend writes a prepared IP packet to dstIP.
+func (c *faketcpCarrier) rawSend(dstIP net.IP, pkt []byte) {
+	var a [4]byte
+	copy(a[:], dstIP.To4())
+	_ = unix.Sendto(c.sendFD, pkt, 0, &unix.SockaddrInet4{Addr: a})
 }
 
 func (c *faketcpCarrier) Send(frame []byte) error {
@@ -231,9 +269,7 @@ func (c *faketcpCarrier) sendSeg(flags byte, payload []byte) {
 	}
 	seq := c.seq.Add(uint32(len(payload)))
 	pkt := buildIPv4TCP(src, dst, sp, dp, seq-uint32(len(payload)), c.ack.Load(), flags, payload)
-	var a [4]byte
-	copy(a[:], dst.To4())
-	_ = unix.Sendto(c.sendFD, pkt, 0, &unix.SockaddrInet4{Addr: a})
+	c.rawSend(dst, pkt)
 }
 
 // localIP finds our source IP toward dst (cached once learned).

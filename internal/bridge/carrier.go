@@ -46,10 +46,11 @@ type unsupportedCarrier struct{ name string }
 
 func (u unsupportedCarrier) Name() string { return u.name }
 func (u unsupportedCarrier) Up() bool     { return false }
-func (u unsupportedCarrier) Start(func([]byte)) error {
+func (u unsupportedCarrier) Start(func(frame []byte, src any)) error {
 	return errors.New("bridge: the " + u.name + " carrier needs Linux with raw sockets")
 }
 func (u unsupportedCarrier) Send([]byte) error { return errCarrierBusy }
+func (u unsupportedCarrier) SetPeer(any)       {}
 func (u unsupportedCarrier) Close() error      { return nil }
 
 // Carrier is one way to move opaque frames to the single peer. Each driver is
@@ -57,18 +58,28 @@ func (u unsupportedCarrier) Close() error      { return nil }
 // pacing and failover all sit above it, so a carrier only has to move bytes
 // best-effort, in whatever disguise it wears on the wire.
 //
-// A carrier is point to point. On the server it is bound and learns its peer
-// from the first valid frame; on the client it is aimed at the server. Frames
-// may be dropped, reordered or duplicated: the kcp layer above copes.
+// A carrier never learns its peer on its own. It hands every inbound frame up
+// with the source it came from, and only the Transport — after the frame
+// authenticates (a valid Init, or a record that opens under the session key) —
+// calls SetPeer to bind where the carrier sends. So an unauthenticated packet
+// can neither redirect the carrier's traffic nor draw an answer: the Bridge
+// stays silent to anyone without the key. Frames may be dropped, reordered or
+// duplicated; the kcp layer above copes.
 type Carrier interface {
 	// Name is the carrier kind, e.g. "icmp" or "udp".
 	Name() string
-	// Send moves one frame toward the peer, best-effort. It may block briefly
-	// for pacing but must not block forever.
+	// Send moves one frame toward the bound peer, best-effort. It may block
+	// briefly for pacing but must not block forever. It fails until a peer is
+	// bound (on a dialer carrier the peer is the dial target).
 	Send(frame []byte) error
-	// Start begins receiving; every inbound frame is handed to recv. It
-	// returns once the carrier is ready (listening or connected).
-	Start(recv func(frame []byte)) error
+	// Start begins receiving; every inbound frame is handed to recv with the
+	// carrier-specific source it arrived from (opaque to the Transport, passed
+	// straight back to SetPeer). It returns once the carrier is ready.
+	Start(recv func(frame []byte, src any)) error
+	// SetPeer binds the carrier's send target to an authenticated source. The
+	// Transport calls it only after a frame from src authenticates. On a dialer
+	// (client) carrier the target is fixed, so it is a no-op.
+	SetPeer(src any)
 	// Up reports whether the carrier can move frames right now (bound/dialed
 	// and not in a backoff after an error). The scheduler also tracks liveness
 	// with probes; Up is the carrier's own view.

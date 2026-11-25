@@ -117,6 +117,8 @@ func runServer(psk, privB64, carriers, certFile, keyFile string, seconds int) {
 			log.Fatalf("tls-cdn cert: %v", err)
 		}
 	}
+	icmpID := bridge.DeriveICMPID([]byte(psk))
+	cdnPath := bridge.DeriveCDNPath([]byte(psk))
 	var opts []bridge.CarrierOpt
 	for _, cs := range parseCarriers(carriers) {
 		var c bridge.Carrier
@@ -124,11 +126,11 @@ func runServer(psk, privB64, carriers, certFile, keyFile string, seconds int) {
 		case "udp":
 			c = bridge.NewUDPServer(":" + strconv.Itoa(cs.port))
 		case "icmp":
-			c = bridge.NewICMPServer(false)
+			c = bridge.NewICMPServer(false, icmpID)
 		case "faketcp":
 			c = bridge.NewFakeTCPServer(cs.port)
 		case "tls-cdn":
-			c = bridge.NewTLSCDNServer(":"+strconv.Itoa(cs.port), "/dvxb", cert)
+			c = bridge.NewTLSCDNServer(":"+strconv.Itoa(cs.port), cdnPath, cert)
 		default:
 			continue
 		}
@@ -206,6 +208,8 @@ func runClient(psk, pubB64, relay, carriers, tlsPin string) {
 	}
 	var pub [32]byte
 	copy(pub[:], raw)
+	icmpID := bridge.DeriveICMPID([]byte(psk))
+	cdnPath := bridge.DeriveCDNPath([]byte(psk))
 	var opts []bridge.CarrierOpt
 	for _, cs := range parseCarriers(carriers) {
 		var c bridge.Carrier
@@ -213,11 +217,11 @@ func runClient(psk, pubB64, relay, carriers, tlsPin string) {
 		case "udp":
 			c, err = bridge.NewUDPClient(relay + ":" + strconv.Itoa(cs.port))
 		case "icmp":
-			c, err = bridge.NewICMPClient(relay, false)
+			c, err = bridge.NewICMPClient(relay, false, icmpID)
 		case "faketcp":
 			c, err = bridge.NewFakeTCPClient(relay, cs.port)
 		case "tls-cdn":
-			url := "wss://" + relay + ":" + strconv.Itoa(cs.port) + "/dvxb"
+			url := "wss://" + relay + ":" + strconv.Itoa(cs.port) + cdnPath
 			c, err = bridge.NewTLSCDNClient(url, relay, "", tlsPin)
 		default:
 			continue

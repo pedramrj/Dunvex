@@ -91,8 +91,9 @@ func TestReplayedInitDoesNotReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// first Init on carrier 0: installs the session and answers once
-	tr.feed(0, initFrame)
+	// first Init on carrier 0 from source "A": installs the session, binds the
+	// peer to A, answers once
+	tr.feed(0, initFrame, "A")
 	s := tr.sess.Load()
 	if s == nil {
 		t.Fatal("first Init did not install a session")
@@ -100,29 +101,72 @@ func TestReplayedInitDoesNotReset(t *testing.T) {
 	if c0.sent.Load() != 1 {
 		t.Fatalf("first Init: want 1 Resp on carrier 0, got %d", c0.sent.Load())
 	}
+	if p := c0.peer.Load(); p == nil || *p != "A" {
+		t.Fatalf("first Init did not bind the peer to A: %v", p)
+	}
 	// advance the send counter as if the server sent some records
 	s.protect([]byte("x"))
 	s.protect([]byte("y"))
 	seqBefore := s.sendSeq.Load()
 
-	// replay the SAME Init on another carrier: no new session, no reset, no answer
-	tr.feed(1, initFrame)
+	// replay the SAME Init on carrier 0 from a DIFFERENT source "EVIL": no new
+	// session, no reset, no answer, and crucially the peer must NOT move to EVIL.
+	tr.feed(0, initFrame, "EVIL")
 	if tr.sess.Load() != s {
 		t.Fatal("a replayed Init replaced the live session")
 	}
 	if s.sendSeq.Load() != seqBefore {
 		t.Fatalf("a replayed Init reset the send counter: %d -> %d", seqBefore, s.sendSeq.Load())
 	}
+	if p := c0.peer.Load(); p == nil || *p != "A" {
+		t.Fatalf("a replayed Init moved the peer to %v; it must stay A", p)
+	}
+	// replay on another carrier gets silence
+	tr.feed(1, initFrame, "EVIL")
 	if c1.sent.Load() != 0 {
 		t.Fatalf("a replayed Init from another carrier was answered (%d Resp); a replay prober must get silence", c1.sent.Load())
 	}
 
 	// a genuinely new client (new ephemeral) still installs a fresh session
 	initFrame2, _, _ := makeInit(psk, srv.Pub)
-	tr.feed(0, initFrame2)
+	tr.feed(0, initFrame2, "B")
 	if tr.sess.Load() == s {
 		t.Fatal("a new client handshake did not install a new session")
 	}
+}
+
+// Junk from an unknown source must not bind the peer, answer, or install a
+// session; the authenticated client keeps working.
+func TestJunkCannotHijackPeer(t *testing.T) {
+	psk := []byte("junk-hijack-test-shared-key-00001")
+	srv, _ := GenerateKey()
+	c0 := &countingCarrier{}
+	tr := newTransport(roleServer, psk, srv, [32]byte{}, []*carrierState{{c: c0}})
+
+	// a real client handshakes from "A"
+	initFrame, _, _ := makeInit(psk, srv.Pub)
+	tr.feed(0, initFrame, "A")
+	if p := c0.peer.Load(); p == nil || *p != "A" {
+		t.Fatalf("peer not bound to the real client: %v", p)
+	}
+	sent := c0.sent.Load()
+
+	// junk and random bytes from "EVIL": no peer change, no answer
+	for _, junk := range [][]byte{[]byte("not a bridge frame at all"), randBytes(120), randBytes(400)} {
+		tr.feed(0, junk, "EVIL")
+	}
+	if p := c0.peer.Load(); p == nil || *p != "A" {
+		t.Fatalf("junk moved the peer to %v; it must stay A", p)
+	}
+	if c0.sent.Load() != sent {
+		t.Fatalf("junk drew %d answer(s); it must be silent", c0.sent.Load()-sent)
+	}
+}
+
+func randBytes(n int) []byte {
+	b := make([]byte, n)
+	randFill(b)
+	return b
 }
 
 func TestReplayWindow(t *testing.T) {

@@ -7,7 +7,9 @@ package bridge
 // run Linux in production.
 
 // NewICMPClient is unsupported off Linux.
-func NewICMPClient(_ string, _ bool) (Carrier, error) { return unsupportedCarrier{name: "icmp"}, nil }
+func NewICMPClient(_ string, _ bool, _ uint16) (Carrier, error) {
+	return unsupportedCarrier{name: "icmp"}, nil
+}
 
 // NewICMPServer is unsupported off Linux.
-func NewICMPServer(_ bool) Carrier { return unsupportedCarrier{name: "icmp"} }
+func NewICMPServer(_ bool, _ uint16) Carrier { return unsupportedCarrier{name: "icmp"} }

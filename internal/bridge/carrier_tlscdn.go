@@ -19,6 +19,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -36,7 +37,7 @@ type TLSCDNDialer struct {
 	serverName string
 	echList    []byte // decoded ECH config list ("" = none)
 	pinSHA     string // hex SHA-256 of the relay cert to pin ("" = verify with system roots, for a real CDN)
-	recv       func([]byte)
+	recv       func(frame []byte, src any)
 	ws         atomic.Pointer[websocket.Conn]
 	up         atomic.Bool
 	closed     chan struct{}
@@ -78,7 +79,10 @@ func NewTLSCDNClient(wssURL, serverName, echB64, pinSHA string) (*TLSCDNDialer, 
 func (d *TLSCDNDialer) Name() string { return "tls-cdn" }
 func (d *TLSCDNDialer) Up() bool     { return d.up.Load() }
 
-func (d *TLSCDNDialer) Start(recv func([]byte)) error {
+// SetPeer is a no-op: the client dialled a fixed, certificate-pinned server.
+func (d *TLSCDNDialer) SetPeer(any) {}
+
+func (d *TLSCDNDialer) Start(recv func(frame []byte, src any)) error {
 	d.recv = recv
 	go d.keep()
 	return nil
@@ -146,7 +150,7 @@ func (d *TLSCDNDialer) readLoop(ws *websocket.Conn) {
 			return
 		}
 		if d.recv != nil && len(b) > 0 {
-			d.recv(b)
+			d.recv(b, ws)
 		}
 	}
 }
@@ -173,10 +177,10 @@ type TLSCDNListener struct {
 	bind string
 	path string
 	cert tls.Certificate
-	recv func([]byte)
+	recv func(frame []byte, src any)
 	srv  *http.Server
 	ln   net.Listener
-	ws   atomic.Pointer[websocket.Conn]
+	ws   atomic.Pointer[websocket.Conn] // the active link, set only once a frame on it authenticates
 	up   atomic.Bool
 	once sync.Once
 }
@@ -192,7 +196,16 @@ func NewTLSCDNServer(bind, path string, cert tls.Certificate) *TLSCDNListener {
 func (l *TLSCDNListener) Name() string { return "tls-cdn" }
 func (l *TLSCDNListener) Up() bool     { return l.up.Load() }
 
-func (l *TLSCDNListener) Start(recv func([]byte)) error {
+// SetPeer makes a websocket the active link once a frame on it authenticates.
+func (l *TLSCDNListener) SetPeer(src any) {
+	if ws, ok := src.(*websocket.Conn); ok && ws != nil {
+		l.ws.Store(ws)
+	}
+}
+
+const cdnAuthTimeout = 10 * time.Second
+
+func (l *TLSCDNListener) Start(recv func(frame []byte, src any)) error {
 	l.recv = recv
 	ln, err := tls.Listen("tcp", l.bind, &tls.Config{Certificates: []tls.Certificate{l.cert}, MinVersion: tls.VersionTLS12, NextProtos: []string{"http/1.1"}})
 	if err != nil {
@@ -201,21 +214,45 @@ func (l *TLSCDNListener) Start(recv func([]byte)) error {
 	l.ln = ln
 	mux := http.NewServeMux()
 	mux.Handle(l.path, websocket.Handler(func(ws *websocket.Conn) {
-		l.ws.Store(ws)
+		// A new connection is NOT the active link until a frame on it opens under
+		// the session key (SetPeer). If none does within the timeout, drop it
+		// silently — a prober that merely completes TLS gets nothing.
+		done := make(chan struct{})
+		defer close(done)
+		go func() {
+			select {
+			case <-time.After(cdnAuthTimeout):
+				if l.ws.Load() != ws {
+					ws.Close()
+				}
+			case <-done:
+			}
+		}()
 		for {
 			var b []byte
 			if err := websocket.Message.Receive(ws, &b); err != nil {
 				return
 			}
 			if l.recv != nil && len(b) > 0 {
-				l.recv(b)
+				l.recv(b, ws)
 			}
 		}
 	}))
+	// Any other path answers like an ordinary nginx site, not Go's default 404.
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeNginx404(w) })
 	l.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 15 * time.Second}
 	l.up.Store(true)
 	go l.srv.Serve(ln)
 	return nil
+}
+
+// writeNginx404 mimics nginx's default 404, so a wrong path looks like a normal
+// web server rather than a Go service.
+func writeNginx404(w http.ResponseWriter) {
+	w.Header().Set("Server", "nginx")
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusNotFound)
+	io.WriteString(w, "<html>\r\n<head><title>404 Not Found</title></head>\r\n<body>\r\n<center><h1>404 Not Found</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n")
 }
 
 func (l *TLSCDNListener) Send(frame []byte) error {

@@ -30,21 +30,19 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// icmpID tags our echo packets so other ICMP on the host is ignored.
-const icmpID = 0x4258 // "BX"
-
 // ICMPPollIdle is how often the requesting side sends an empty request while it
 // has nothing to send, so the answering side can push queued frames back.
 var ICMPPollIdle = 4 * time.Millisecond
 
 type icmpCarrier struct {
 	client         bool
-	serverRequests bool // the Iran relay sends the requests instead of the target
-	targetIP       net.IP
+	serverRequests bool   // the Iran relay sends the requests instead of the target
+	id             int    // echo ID, derived from the PSK, so no two installs share it
+	targetIP       net.IP // requester: where to send (fixed)
 
 	conn   *icmp.PacketConn
-	peer   atomic.Pointer[net.IPAddr]
-	recv   func([]byte)
+	peer   atomic.Pointer[net.IPAddr] // answerer: the client, bound only after a frame authenticates
+	recv   func(frame []byte, src any)
 	up     atomic.Bool
 	sendq  chan []byte
 	seq    atomic.Uint32
@@ -52,20 +50,21 @@ type icmpCarrier struct {
 	once   sync.Once
 }
 
-// NewICMPClient makes the target side; target is the relay's IP (no port).
-func NewICMPClient(targetIP string, serverRequests bool) (*icmpCarrier, error) {
+// NewICMPClient makes the target side; target is the relay's IP (no port). id
+// is the PSK-derived echo ID both sides share.
+func NewICMPClient(targetIP string, serverRequests bool, id uint16) (Carrier, error) {
 	ip := net.ParseIP(targetIP)
 	if ip == nil {
 		return nil, &net.AddrError{Err: "bad relay IP for the ICMP carrier", Addr: targetIP}
 	}
-	c := &icmpCarrier{client: true, serverRequests: serverRequests, targetIP: ip.To4(), sendq: make(chan []byte, 1024), closed: make(chan struct{})}
+	c := &icmpCarrier{client: true, serverRequests: serverRequests, id: int(id), targetIP: ip.To4(), sendq: make(chan []byte, 1024), closed: make(chan struct{})}
 	c.peer.Store(&net.IPAddr{IP: c.targetIP})
 	return c, nil
 }
 
 // NewICMPServer makes the Iran relay side.
-func NewICMPServer(serverRequests bool) *icmpCarrier {
-	return &icmpCarrier{serverRequests: serverRequests, sendq: make(chan []byte, 1024), closed: make(chan struct{})}
+func NewICMPServer(serverRequests bool, id uint16) Carrier {
+	return &icmpCarrier{serverRequests: serverRequests, id: int(id), sendq: make(chan []byte, 1024), closed: make(chan struct{})}
 }
 
 func (c *icmpCarrier) Name() string { return "icmp" }
@@ -79,7 +78,7 @@ func (c *icmpCarrier) requester() bool {
 	return c.client // default: the target abroad sends requests
 }
 
-func (c *icmpCarrier) Start(recv func([]byte)) error {
+func (c *icmpCarrier) Start(recv func(frame []byte, src any)) error {
 	c.recv = recv
 	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
@@ -117,32 +116,43 @@ func (c *icmpCarrier) read() {
 			continue
 		}
 		echo, ok := msg.Body.(*icmp.Echo)
-		if !ok || echo.ID != icmpID {
+		if !ok || echo.ID != c.id {
 			continue
 		}
 		isReply := msg.Type == ipv4.ICMPTypeEchoReply
 		if isReply != wantReply {
 			continue // ignore our own direction echoed by anything in the middle
 		}
-		if ip, ok := peer.(*net.IPAddr); ok {
-			c.peer.Store(ip)
-		}
 		frame := echo.Data
-		if len(frame) <= 1 { // a bare poll/keepalive
-			if !c.requester() {
-				c.answer(peer) // answer a poll with a queued frame (or empty)
+		if c.requester() {
+			// we read replies from the server; the peer is fixed (the target).
+			if len(frame) > 1 && c.recv != nil {
+				b := make([]byte, len(frame))
+				copy(b, frame)
+				c.recv(b, peer)
 			}
 			continue
 		}
-		if c.recv != nil {
+		// answerer: hand real frames up for authentication; the Transport binds
+		// the peer (SetPeer) only if a frame opens. We answer with a queued
+		// frame ONLY to the already-bound peer — a prober's request draws
+		// nothing, so our ciphertext never goes to anyone without the key.
+		if len(frame) > 1 && c.recv != nil {
 			b := make([]byte, len(frame))
 			copy(b, frame)
-			c.recv(b)
+			c.recv(b, peer)
 		}
-		if !c.requester() {
-			c.answer(peer) // every request earns one reply, carrying a queued frame if any
+		if c.isPeer(peer) { // bound = authenticated; polls from the bound peer pump downstream
+			c.answer(peer)
 		}
 	}
+}
+
+// isPeer reports whether addr is the currently bound (authenticated) peer.
+func (c *icmpCarrier) isPeer(addr net.Addr) bool {
+	p := c.peer.Load()
+	ip, ok := addr.(*net.IPAddr)
+	return ok && p != nil && ip != nil && p.IP.Equal(ip.IP)
 }
 
 // answer pops one queued frame and sends it as an echo reply (empty if none).
@@ -154,6 +164,17 @@ func (c *icmpCarrier) answer(peer net.Addr) {
 		payload = []byte{0} // empty reply keeps the pairing alive
 	}
 	c.write(ipv4.ICMPTypeEchoReply, payload, peer)
+}
+
+// SetPeer binds the answerer's peer to an authenticated source (no-op on the
+// requester, whose target is fixed).
+func (c *icmpCarrier) SetPeer(src any) {
+	if c.requester() {
+		return
+	}
+	if ip, ok := src.(*net.IPAddr); ok && ip != nil {
+		c.peer.Store(ip)
+	}
 }
 
 // pollLoop (requester only) sends queued frames at once and empty polls while
@@ -188,7 +209,7 @@ func (c *icmpCarrier) request(payload []byte) {
 
 func (c *icmpCarrier) write(typ ipv4.ICMPType, payload []byte, peer net.Addr) {
 	seq := int(c.seq.Add(1) & 0xffff)
-	msg := icmp.Message{Type: typ, Code: 0, Body: &icmp.Echo{ID: icmpID, Seq: seq, Data: payload}}
+	msg := icmp.Message{Type: typ, Code: 0, Body: &icmp.Echo{ID: c.id, Seq: seq, Data: payload}}
 	b, err := msg.Marshal(nil)
 	if err != nil {
 		return

@@ -20,9 +20,9 @@ type UDPCarrier struct {
 	bind   string       // server: listen address
 
 	conn atomic.Pointer[net.UDPConn]
-	peer atomic.Pointer[net.UDPAddr] // server: the client's address, learned
+	peer atomic.Pointer[net.UDPAddr] // server: the client's address, bound only after a frame authenticates
 	up   atomic.Bool
-	recv func([]byte)
+	recv func(frame []byte, src any)
 
 	mu     sync.Mutex
 	closed bool
@@ -43,7 +43,7 @@ func NewUDPServer(bind string) *UDPCarrier { return &UDPCarrier{bind: bind} }
 func (u *UDPCarrier) Name() string { return "udp" }
 func (u *UDPCarrier) Up() bool     { return u.up.Load() }
 
-func (u *UDPCarrier) Start(recv func([]byte)) error {
+func (u *UDPCarrier) Start(recv func(frame []byte, src any)) error {
 	u.recv = recv
 	var c *net.UDPConn
 	var err error
@@ -78,14 +78,21 @@ func (u *UDPCarrier) read(c *net.UDPConn) {
 			u.up.Store(false)
 			return
 		}
-		if !u.client && from != nil {
-			u.peer.Store(from)
-		}
 		if u.recv != nil && n > 0 {
 			b := make([]byte, n)
 			copy(b, buf[:n])
-			u.recv(b)
+			u.recv(b, from) // the Transport binds the peer (SetPeer) only if this frame authenticates
 		}
+	}
+}
+
+// SetPeer binds the server carrier's send target to an authenticated source.
+func (u *UDPCarrier) SetPeer(src any) {
+	if u.client {
+		return // the client dialled a fixed target
+	}
+	if a, ok := src.(*net.UDPAddr); ok && a != nil {
+		u.peer.Store(a)
 	}
 }
 
