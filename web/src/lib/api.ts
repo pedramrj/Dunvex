@@ -443,6 +443,8 @@ export interface NodeStatus {
   forwards?: RelayStat[];
   tunnel?: { port: number; listening: boolean; error?: string; links: number; peer?: string; since?: number } | null;
   tunnelLinks?: { name: string; addr: string; links: number; error?: string; since?: number; streams: number }[];
+  bridge?: BridgeStat | null; // a bridge relay's carriers
+  bridgeLinks?: BridgeClientStat[]; // this server's Bridge sessions to relays
   time: number;
   os?: string;
   arch?: string;
@@ -451,6 +453,56 @@ export interface NodeStatus {
   certExpiry?: number;
   certError?: string;
   certBusy?: boolean;
+}
+
+/** One Bridge carrier's live state. */
+export interface CarrierStat {
+  name: string; // udp, icmp, faketcp, tls-cdn, dns
+  up: boolean;
+  rttMs: number; // -1 no answer, 0 not measured
+  lossPct: number;
+  sentB: number;
+  recvB: number;
+  rateUp: number;
+  rateDown: number;
+  lastErr?: string;
+  lastFail?: number;
+  capMBps?: number;
+}
+
+/** A bridge relay's side of its Bridge. */
+export interface BridgeStat {
+  links: number;
+  since?: number;
+  carriers: CarrierStat[];
+}
+
+/** A target's Bridge session to one relay. */
+export interface BridgeClientStat {
+  name: string;
+  relayHost: string;
+  links: number;
+  since?: number;
+  error?: string;
+  streams: number;
+  carriers?: CarrierStat[];
+}
+
+/** One carrier's panel-side setting on a bridge relay. */
+export interface BridgeCarrierPref {
+  kind: string; // udp, icmp, faketcp, tls-cdn, dns
+  on: boolean;
+  priority?: number;
+  capMBps?: number;
+  port?: number;
+  serverRequests?: boolean; // icmp
+}
+
+/** A bridge relay's carriers and options. */
+export interface BridgeSettings {
+  carriers: BridgeCarrierPref[];
+  tlsDomain?: string;
+  dnsZone?: string;
 }
 
 /** One port a relay forwards to its target server. */
@@ -489,11 +541,13 @@ export interface NodeView {
   relayTarget: number; // 0 = this panel's server
   relayOnly: boolean;
   relayShift: number;
-  relayMode: "forward" | "reverse";
+  relayMode: "forward" | "reverse" | "bridge";
   relayPort: number; // a reverse relay's tunnel port
   targetName?: string;
   tunnelLinks: number; // this server's links to a reverse relay in front of it
   tunnelError?: string;
+  bridge?: BridgeSettings; // a bridge relay's carriers (for the edit dialog)
+  bridgeClient?: BridgeClientStat; // this server's own Bridge session to the relay (target == this server)
   domain: string; // the server's own domain ("" = none)
   realCert: boolean;
   // the server runs another version than the panel: via "panel" (its binary)

@@ -20,6 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -251,13 +252,37 @@ func (r *Relay) TunnelStat() *TunnelStat {
 	return nil
 }
 
-// tunnelOpen opens a stream through the tunnel (for reverse forwards).
+// tunnelOpen opens a stream through the tunnel (for reverse and bridge
+// forwards): the Bridge when one is up, otherwise the reverse tunnel's port.
 func (r *Relay) tunnelOpen(kind byte, port int) (net.Conn, error) {
+	if b := r.br.Load(); b != nil && b.hasLinks() {
+		return b.open(kind, port)
+	}
 	t := r.tun.Load()
 	if t == nil || t.ln == nil {
-		return nil, errors.New("the relay has no tunnel port")
+		return nil, errors.New("the relay has no tunnel")
 	}
 	return t.open(kind, port)
+}
+
+var (
+	errNoBridge   = errors.New("the target has not connected the Bridge")
+	errNoCarriers = errors.New("the Bridge has no carriers configured")
+)
+
+// hashBridgeServer is a stable key for a Bridge server config, so ApplyBridgeServer
+// only rebuilds the listener when it really changed.
+func hashBridgeServer(cfg *BridgeServerConfig) string {
+	if cfg == nil {
+		return ""
+	}
+	b, _ := json.Marshal(cfg)
+	return string(b)
+}
+
+func marshalInts(v []int) (string, error) {
+	b, err := json.Marshal(v)
+	return string(b), err
 }
 
 // ---------------------------------------------------------------- server side
@@ -270,6 +295,8 @@ type Tunnels struct {
 	local   string // where the server's own protocols listen
 	mu      sync.Mutex
 	clients map[string]*tclient
+	bmu     sync.Mutex          // guards bridges
+	bridges map[string]*bclient // Bridge relays this server keeps sessions to
 }
 
 type tclient struct {
@@ -349,7 +376,10 @@ func (t *Tunnels) Stats() []ClientStat {
 }
 
 // Close drops every link.
-func (t *Tunnels) Close() { t.Apply(nil) }
+func (t *Tunnels) Close() {
+	t.Apply(nil)
+	t.ApplyBridges(nil)
+}
 
 // keep holds one link up, reconnecting with growing pauses.
 func (t *Tunnels) keep(ctx context.Context, c *tclient) {
@@ -432,6 +462,13 @@ func dialTunnel(ctx context.Context, c TunnelClient) (*smux.Session, error) {
 
 // serve connects one carried connection to the server's own protocol.
 func (t *Tunnels) serve(st *smux.Stream, c *tclient) {
+	t.serveStream(st, c.allowed, c.Name)
+}
+
+// serveStream is the shared body for a carried connection, used by both the
+// TLS tunnel and the Bridge: it reads the one-byte kind and port, checks the
+// port is one the relay is allowed to reach, and splices it to the protocol.
+func (t *Tunnels) serveStream(st net.Conn, allowed map[int]bool, name string) {
 	defer st.Close()
 	hdr := make([]byte, 3)
 	st.SetReadDeadline(time.Now().Add(15 * time.Second))
@@ -440,8 +477,8 @@ func (t *Tunnels) serve(st *smux.Stream, c *tclient) {
 	}
 	st.SetReadDeadline(time.Time{})
 	port := int(binary.BigEndian.Uint16(hdr[1:]))
-	if !c.allowed[port] {
-		log.Printf("tunnel %s: refused port %d", c.Name, port) // only the relayed protocols
+	if !allowed[port] {
+		log.Printf("tunnel %s: refused port %d", name, port) // only the relayed protocols
 		return
 	}
 	addr := net.JoinHostPort(t.local, strconv.Itoa(port))

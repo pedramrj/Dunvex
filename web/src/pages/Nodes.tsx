@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRightLeft, CircleArrowUp, Cpu, Globe, HardDrive, LayoutGrid, List, MemoryStick, Network, Pencil, Plus, Power, RefreshCw, Server, Settings2, ShieldCheck, Trash2, TriangleAlert, Users as UsersIcon } from "lucide-react";
-import { api, type Geo, type NodeView, type Overview, type RelayStat } from "../lib/api";
+import { api, type BridgeCarrierPref, type BridgeSettings, type CarrierStat, type Geo, type NodeView, type Overview, type RelayStat } from "../lib/api";
 import { ago, bytes, cx, date, duration, speed } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { Badge, Button, ConfirmButton, CopyField, Dialog, Dot, ErrorState, IconButton, Input, KV, Label, Meter, Panel, Segmented, Select, Skeleton, Textarea, Toggle, useToast } from "../components/ui";
@@ -205,7 +205,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
           <div className="text-[12.5px] text-ink3"><span className="mono sensitive" dir="ltr">{x.address}</span>{x.domain ? <> · <span className="mono" dir="ltr">{x.domain}</span></> : null}{ns ? <> · <span dir="ltr">Dunvex {ns.version}</span></> : null}</div>
         </div>
         <div className="ms-auto flex flex-wrap items-center gap-1.5">
-          {isRelay && <Badge color="var(--color-violet)">{t("relayTo")} <bdi dir="ltr">{x.relayTarget ? x.targetName : t("thisServer")}</bdi>{x.relayMode === "reverse" ? ` · ${t("relayModeReverse")}` : ""}</Badge>}
+          {isRelay && <Badge color="var(--color-violet)">{t("relayTo")} <bdi dir="ltr">{x.relayTarget ? x.targetName : t("thisServer")}</bdi>{x.relayMode === "reverse" ? ` · ${t("relayModeReverse")}` : x.relayMode === "bridge" ? ` · ${t("relayModeBridge")}` : ""}</Badge>}
           <Badge color={st.c}><Dot color={st.c} size={6} pulse={x.online} />{t(st.k)}</Badge>
           {owner && (
             <>
@@ -270,6 +270,7 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
                   : <span className="text-ink2">{t("nodeCertSelf")} <span className="mono text-[11px] text-ink3" dir="ltr">{ns.certSha256 ? ns.certSha256.slice(0, 8) + "…" : ""}</span></span>}</KV>}
           </div>
           {isRelay && x.relayMode === "reverse" && <TunnelState x={x} />}
+          {isRelay && x.relayMode === "bridge" && <BridgeSection x={x} />}
           {isRelay ? <RelayPorts list={ns.forwards ?? []} /> : (
             <div className="flex flex-wrap gap-2">
               {ns.cores.map((c) => (
@@ -309,6 +310,31 @@ function NodeCard({ node: x, servers, owner, onChange }: { node: NodeView; serve
         </label>
       </Dialog>
     </Panel>
+  );
+}
+
+/** A bridge relay: whether the target has connected the Bridge, and every
+ *  carrier live in the Signal Console style. */
+function BridgeSection({ x }: { x: NodeView }) {
+  const { t, lang, n } = useI18n();
+  const br = x.status?.bridge;
+  const links = br?.links ?? x.bridgeClient?.links ?? 0;
+  const carriers = br?.carriers ?? x.bridgeClient?.carriers ?? [];
+  const since = br?.since ?? x.bridgeClient?.since;
+  const err = x.tunnelError || x.bridgeClient?.error;
+  return (
+    <div className="mb-4 flex flex-col gap-3">
+      <div className={cx("flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border px-4 py-3 text-[13px]",
+        links > 0 ? "border-online/30 bg-online/[.06]" : "border-warn/40 bg-warn/[.08]")}>
+        <Network className={cx("size-4 shrink-0", links > 0 ? "text-online" : "text-warn")} />
+        <span className="font-semibold">{t("bridge")}</span>
+        {links > 0
+          ? <span className="num">{n(links)} {t("bridgeUp")}{since ? <span className="text-ink3"> · {ago(since, lang)}</span> : null}</span>
+          : <span className="text-warn">{t("bridgeDown")}</span>}
+        {err && links === 0 && <bdi dir="ltr" className="basis-full text-[12px] text-bad break-words">{err}</bdi>}
+      </div>
+      <BridgeConsole carriers={carriers} />
+    </div>
   );
 }
 
@@ -387,16 +413,29 @@ function RelaySettings({ open, node: x, servers, onClose, onDone }: { open: bool
 }
 
 /** What a relay form edits. */
-interface RelayForm { target: string; shift: string; only: boolean; mode: "forward" | "reverse"; port: string }
+interface RelayForm { target: string; shift: string; only: boolean; mode: "forward" | "reverse" | "bridge"; port: string; bridge: BridgeSettings }
+
+const defaultBridge = (): BridgeSettings => ({
+  carriers: [
+    { kind: "faketcp", on: true, priority: 30, port: 8443 },
+    { kind: "udp", on: true, priority: 25, port: 8444 },
+    { kind: "tls-cdn", on: false, priority: 20, port: 8445 },
+    { kind: "icmp", on: true, priority: 15, capMBps: 22 },
+    { kind: "dns", on: false, priority: 5, capMBps: 1, port: 5300 },
+  ],
+});
 
 const relayForm = (x?: NodeView): RelayForm => ({
   target: String(x?.relayTarget ?? 0), shift: String(x?.relayShift ?? 0), only: x?.relayOnly ?? false,
-  mode: x?.relayMode === "reverse" ? "reverse" : "forward", port: x?.relayPort ? String(x.relayPort) : "8443",
+  mode: x?.relayMode === "reverse" ? "reverse" : x?.relayMode === "bridge" ? "bridge" : "forward",
+  port: x?.relayPort ? String(x.relayPort) : "8443",
+  bridge: x?.bridge && x.bridge.carriers?.length ? x.bridge : defaultBridge(),
 });
 
 const relayBody = (f: RelayForm) => ({
   relayTarget: Number(f.target), relayShift: Number(f.shift) || 0, relayOnly: f.only, relayMode: f.mode,
   ...(f.mode === "reverse" ? { relayPort: Number(f.port) || 0 } : {}),
+  ...(f.mode === "bridge" ? { bridge: f.bridge } : {}),
 });
 
 function RelayFields({ servers, f, set }: { servers: NodeView[]; f: RelayForm; set: (f: RelayForm) => void }) {
@@ -408,16 +447,101 @@ function RelayFields({ servers, f, set }: { servers: NodeView[]; f: RelayForm; s
         <Select value={f.target} onChange={(v) => up("target", v)} options={[{ value: "0", label: t("thisServer") }, ...servers.map((s) => ({ value: String(s.id), label: s.name }))]} /></label>
       <div>
         <Label>{t("relayMode")}</Label>
-        <Segmented value={f.mode} onChange={(v) => up("mode", v)} options={[{ value: "forward", label: t("relayModeForward") }, { value: "reverse", label: t("relayModeReverse") }]} />
-        <p className="text-[12.5px] text-ink3 mt-2">{f.mode === "reverse" ? t("relayModeReverseHint") : t("relayModeForwardHint")}</p>
+        <Segmented value={f.mode} onChange={(v) => up("mode", v)} options={[{ value: "forward", label: t("relayModeForward") }, { value: "reverse", label: t("relayModeReverse") }, { value: "bridge", label: t("relayModeBridge") }]} />
+        <p className="text-[12.5px] text-ink3 mt-2">{f.mode === "reverse" ? t("relayModeReverseHint") : f.mode === "bridge" ? t("relayModeBridgeHint") : t("relayModeForwardHint")}</p>
       </div>
       {f.mode === "reverse" && (
         <label><Label hint={t("relayTunnelPortHint")}>{t("relayTunnelPort")}</Label>
           <Input type="number" min={1} max={65535} dir="ltr" className="num max-w-40" value={f.port} onChange={(e) => up("port", e.target.value)} /></label>
       )}
+      {f.mode === "bridge" && <BridgeFields bridge={f.bridge} set={(b) => up("bridge", b)} />}
       <label><Label hint={t("relayShiftHint")}>{t("relayShift")}</Label>
         <Input type="number" min={-60000} max={60000} dir="ltr" className="num max-w-40" value={f.shift} onChange={(e) => up("shift", e.target.value)} /></label>
       <Toggle checked={f.only} onChange={(v) => up("only", v)} label={t("relayOnlyLabel")} hint={t("relayOnlyHint")} />
+    </div>
+  );
+}
+
+/** The i18n key for a carrier kind's label, e.g. tls-cdn -> carrierTlscdn. */
+function carrierLabelKey(kind: string): string {
+  const c = kind.replace(/-/g, "");
+  return "carrier" + c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+/** The carrier labels and which fields each carrier takes. */
+const carrierMeta: Record<string, { label: () => string; port?: boolean; cap?: boolean; icmp?: boolean }> = {
+  faketcp: { label: () => "Fake-TCP", port: true, cap: true },
+  udp: { label: () => "UDP", port: true, cap: true },
+  "tls-cdn": { label: () => "CDN+ECH", port: true, cap: true },
+  icmp: { label: () => "ICMP", cap: true, icmp: true },
+  dns: { label: () => "DNS", port: true, cap: true },
+};
+
+/** Which Bridge carriers are on, their priorities and caps, and the CDN/DNS names. */
+function BridgeFields({ bridge, set }: { bridge: BridgeSettings; set: (b: BridgeSettings) => void }) {
+  const { t } = useI18n();
+  const upCarrier = (i: number, patch: Partial<BridgeCarrierPref>) => {
+    const carriers = bridge.carriers.map((c, j) => (j === i ? { ...c, ...patch } : c));
+    set({ ...bridge, carriers });
+  };
+  const label = (kind: string) => t(carrierLabelKey(kind) as never) || kind;
+  return (
+    <div className="flex flex-col gap-3">
+      <Label hint={t("bridgeNote")}>{t("bridgeCarriers")}</Label>
+      <div className="flex flex-col gap-2">
+        {bridge.carriers.map((c, i) => {
+          const m = carrierMeta[c.kind] ?? {};
+          return (
+            <div key={c.kind} className={cx("rounded-xl border border-hair p-3 flex flex-wrap items-center gap-x-4 gap-y-2", c.on ? "" : "opacity-60")}>
+              <div className="min-w-32"><Toggle checked={c.on} onChange={(v) => upCarrier(i, { on: v })} label={label(c.kind)} /></div>
+              {m.port && (
+                <label className="flex items-center gap-1.5 text-[12.5px] text-ink2">{t("bridgePort")}
+                  <Input type="number" min={1} max={65535} dir="ltr" className="num w-24 h-8" value={String(c.port ?? 0)} onChange={(e) => upCarrier(i, { port: Number(e.target.value) || 0 })} /></label>
+              )}
+              {m.cap && (
+                <label className="flex items-center gap-1.5 text-[12.5px] text-ink2">{t("bridgeCap")}
+                  <Input type="number" min={0} max={1000} dir="ltr" className="num w-20 h-8" value={String(c.capMBps ?? 0)} onChange={(e) => upCarrier(i, { capMBps: Number(e.target.value) || 0 })} /><span className="text-ink3">MB/s</span></label>
+              )}
+              {m.icmp && <Toggle checked={!!c.serverRequests} onChange={(v) => upCarrier(i, { serverRequests: v })} label={t("bridgeIcmpServerReq")} hint={t("bridgeIcmpServerReqHint")} />}
+            </div>
+          );
+        })}
+      </div>
+      <label><Label hint={t("bridgeTlsDomainHint")}>{t("bridgeTlsDomain")}</Label>
+        <Input dir="ltr" className="mono" value={bridge.tlsDomain ?? ""} placeholder="cdn.example.com" onChange={(e) => set({ ...bridge, tlsDomain: e.target.value })} /></label>
+      <label><Label hint={t("bridgeDnsZoneHint")}>{t("bridgeDnsZone")}</Label>
+        <Input dir="ltr" className="mono" value={bridge.dnsZone ?? ""} placeholder="t.example.com" onChange={(e) => set({ ...bridge, dnsZone: e.target.value })} /></label>
+    </div>
+  );
+}
+
+/** A bridge relay's carriers, live: an LED, throughput, RTT, loss and the last
+ *  failure per carrier, in the Signal Console style. */
+function BridgeConsole({ carriers }: { carriers: CarrierStat[] }) {
+  const { t, lang, n, pc } = useI18n();
+  const label = (kind: string) => t(carrierLabelKey(kind) as never) || kind;
+  if (!carriers || carriers.length === 0) return <p className="text-ink3 text-[13px] py-3">{t("bridgeNoCarriers")}</p>;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {carriers.map((c) => {
+        const tone = c.up ? (c.lossPct >= 30 ? "var(--warn)" : "var(--ok)") : "var(--bad)";
+        return (
+          <div key={c.name} className="field-recess p-3">
+            <div className="flex items-center gap-2">
+              <Dot color={tone} size={7} pulse={c.up && c.rateDown + c.rateUp > 1024} />
+              <b className="text-[13px]" dir="ltr">{label(c.name)}</b>
+              <span className="text-[11.5px] text-ink3">{c.up ? t("bridgeCarrierUp") : t("bridgeCarrierDown")}</span>
+              {!!c.capMBps && <span className="ms-auto text-[11px] text-ink3 num">{t("bridgeCap")} {n(c.capMBps)} MB/s</span>}
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 text-[11.5px]">
+              <KV label={t("bridgeThroughput")}><span className="num whitespace-nowrap">↓{speed(c.rateDown, lang)} ↑{speed(c.rateUp, lang)}</span></KV>
+              <KV label={t("bridgeRtt")}><span className="num">{c.rttMs > 0 ? `${n(c.rttMs)} ms` : c.rttMs < 0 ? <span className="text-bad">—</span> : "—"}</span></KV>
+              <KV label={t("bridgeLoss")}><span className="num" style={c.lossPct >= 30 ? { color: "var(--warn)" } : undefined}>{pc(c.lossPct, 0)}</span></KV>
+            </div>
+            {c.lastErr && <div className="mt-2 text-[11px] text-bad"><bdi dir="ltr" className="break-words">{t("bridgeLastFail")}: {c.lastErr}</bdi></div>}
+          </div>
+        );
+      })}
     </div>
   );
 }

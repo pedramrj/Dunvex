@@ -72,6 +72,9 @@ func (s *Server) KickNodes() {
 // RunNodes syncs every server every 10 seconds, and right after changes.
 func (s *Server) RunNodes(stop <-chan struct{}) {
 	h := s.hub()
+	if seedNodes != nil {
+		seedNodes(s)
+	}
 	t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
 	for {
@@ -145,7 +148,7 @@ func (h *nodeHub) round() {
 	}
 	var wg sync.WaitGroup
 	for _, n := range list {
-		if !n.Enabled {
+		if !n.Enabled || skipSync(n) {
 			continue
 		}
 		wg.Add(1)
@@ -172,9 +175,13 @@ func (s *Server) desired(n *store.Node) node.State {
 		if n.Reverse() {
 			st.Tunnel = &relay.TunnelServer{Port: n.RelayPort, Secret: n.RelaySecret}
 		}
+		if n.IsBridge() {
+			st.BridgeServer = s.bridgeServer(n)
+		}
 		return st
 	}
 	st.Tunnels = s.tunnelLinks(n.ID)
+	st.Bridges = s.bridgeLinks(n.ID)
 	if st.Domain = n.Domain; st.Domain != "" {
 		st.ACMEEmail = s.St.GetSetting("acme_email", "")
 	}
@@ -207,7 +214,7 @@ func (s *Server) desired(n *store.Node) node.State {
 
 func stateHash(st node.State) string {
 	// counters change all the time and say nothing about what to serve
-	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards, Tunnel: st.Tunnel, Tunnels: st.Tunnels, Domain: st.Domain, ACMEEmail: st.ACMEEmail}
+	clean := node.State{Users: st.Users, Settings: st.Settings, Forwards: st.Forwards, Tunnel: st.Tunnel, Tunnels: st.Tunnels, BridgeServer: st.BridgeServer, Bridges: st.Bridges, Domain: st.Domain, ACMEEmail: st.ACMEEmail}
 	for _, in := range st.Inbounds {
 		c := *in
 		c.Up, c.Down = 0, 0
@@ -399,17 +406,21 @@ type nodeView struct {
 	*store.Node
 	TargetName string `json:"targetName,omitempty"` // a relay's target ("" = this server)
 	// a reverse relay to this server: how this server's links to it are doing
-	TunnelLinks int          `json:"tunnelLinks"`
-	TunnelError string       `json:"tunnelError,omitempty"`
-	Paired      bool         `json:"paired"`
-	Online      bool         `json:"online"`
-	Error       string       `json:"error"`
-	LastTry     int64        `json:"lastTry"`
-	Status      *node.Status `json:"status"`
-	Inbounds    int          `json:"inbounds"`
-	RateUp      int64        `json:"rateUp"`
-	RateDown    int64        `json:"rateDown"`
-	Update      *nodeUpdate  `json:"update,omitempty"` // the node runs another version than the panel
+	TunnelLinks int    `json:"tunnelLinks"`
+	TunnelError string `json:"tunnelError,omitempty"`
+	// a bridge relay: its carrier settings, and (target == this server) how this
+	// server's own Bridge session to it is doing
+	Bridge       *store.BridgeSettings   `json:"bridge,omitempty"`
+	BridgeClient *relay.BridgeClientStat `json:"bridgeClient,omitempty"`
+	Paired       bool                    `json:"paired"`
+	Online       bool                    `json:"online"`
+	Error        string                  `json:"error"`
+	LastTry      int64                   `json:"lastTry"`
+	Status       *node.Status            `json:"status"`
+	Inbounds     int                     `json:"inbounds"`
+	RateUp       int64                   `json:"rateUp"`
+	RateDown     int64                   `json:"rateDown"`
+	Update       *nodeUpdate             `json:"update,omitempty"` // the node runs another version than the panel
 }
 
 func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
@@ -439,6 +450,21 @@ func (s *Server) viewNode(n *store.Node, inbounds []*store.Inbound) nodeView {
 			}
 		}
 	}
+	if n.IsBridge() {
+		bs := n.Bridge()
+		v.Bridge = &bs
+		if n.RelayTarget == 0 && s.Tunnels != nil {
+			for _, c := range s.Tunnels.BridgeStats() {
+				if c.Name == n.Name || c.RelayHost == n.Address {
+					cc := c
+					v.BridgeClient = &cc
+					if c.Links == 0 {
+						v.TunnelError = c.Error
+					}
+				}
+			}
+		}
+	}
 	return v
 }
 
@@ -458,15 +484,16 @@ func (s *Server) listNodes(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name        string `json:"name"`
-		Token       string `json:"token"`
-		Role        string `json:"role"`
-		RelayTarget int64  `json:"relayTarget"`
-		RelayOnly   bool   `json:"relayOnly"`
-		RelayShift  int    `json:"relayShift"`
-		RelayMode   string `json:"relayMode"`
-		RelayPort   int    `json:"relayPort"`
-		Domain      string `json:"domain"`
+		Name        string                `json:"name"`
+		Token       string                `json:"token"`
+		Role        string                `json:"role"`
+		RelayTarget int64                 `json:"relayTarget"`
+		RelayOnly   bool                  `json:"relayOnly"`
+		RelayShift  int                   `json:"relayShift"`
+		RelayMode   string                `json:"relayMode"`
+		RelayPort   int                   `json:"relayPort"`
+		Bridge      *store.BridgeSettings `json:"bridge"`
+		Domain      string                `json:"domain"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -511,6 +538,13 @@ func (s *Server) createNode(w http.ResponseWriter, r *http.Request) {
 			fail(w, 400, msg)
 			return
 		}
+		if n.IsBridge() && in.Bridge != nil {
+			n.SetBridge(*in.Bridge)
+		}
+		if msg := checkBridge(n); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
 	}
 	if err := s.St.CreateNode(n); err != nil {
 		fail(w, 400, err.Error())
@@ -534,16 +568,17 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name        *string `json:"name"`
-		Address     *string `json:"address"`
-		Enabled     *bool   `json:"enabled"`
-		Role        *string `json:"role"`
-		RelayTarget *int64  `json:"relayTarget"`
-		RelayOnly   *bool   `json:"relayOnly"`
-		RelayShift  *int    `json:"relayShift"`
-		RelayMode   *string `json:"relayMode"`
-		RelayPort   *int    `json:"relayPort"`
-		Domain      *string `json:"domain"`
+		Name        *string               `json:"name"`
+		Address     *string               `json:"address"`
+		Enabled     *bool                 `json:"enabled"`
+		Role        *string               `json:"role"`
+		RelayTarget *int64                `json:"relayTarget"`
+		RelayOnly   *bool                 `json:"relayOnly"`
+		RelayShift  *int                  `json:"relayShift"`
+		RelayMode   *string               `json:"relayMode"`
+		RelayPort   *int                  `json:"relayPort"`
+		Bridge      *store.BridgeSettings `json:"bridge"`
+		Domain      *string               `json:"domain"`
 	}
 	if err := readJSON(r, &in); err != nil {
 		fail(w, 400, "bad request")
@@ -618,6 +653,19 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if in.Bridge != nil && n.IsBridge() {
+		n.SetBridge(*in.Bridge)
+	}
+	if n.IsBridge() {
+		if err := ensureBridgeKeys(n); err != nil {
+			fail(w, 400, "could not set up the Bridge keys: "+err.Error())
+			return
+		}
+		if msg := checkBridge(n); msg != "" {
+			fail(w, 400, msg)
+			return
+		}
+	}
 	if in.Domain != nil || n.IsRelay() {
 		want := n.Domain
 		if in.Domain != nil {
@@ -660,8 +708,9 @@ func (s *Server) updateNode(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, s.viewNode(n, inbounds))
 }
 
-// setRelayMode sets how a relay reaches its target: "forward" (the relay
-// dials it) or "reverse" (the target keeps links to the relay's tunnel port).
+// setRelayMode sets how a relay reaches its target: "forward" (the relay dials
+// it), "reverse" (the target keeps links to the relay's tunnel port) or
+// "bridge" (the multi-carrier Bridge across the border).
 func setRelayMode(n *store.Node, mode string, port int) string {
 	switch mode {
 	case "", store.RelayForward:
@@ -677,8 +726,13 @@ func setRelayMode(n *store.Node, mode string, port int) string {
 		if n.RelaySecret == "" {
 			n.RelaySecret = util.RandomString(32)
 		}
+	case store.RelayBridge:
+		n.RelayMode = store.RelayBridge
+		if err := ensureBridgeKeys(n); err != nil {
+			return "could not set up the Bridge keys: " + err.Error()
+		}
 	default:
-		return "the relay mode is forward or reverse"
+		return "the relay mode is forward, reverse or bridge"
 	}
 	return ""
 }

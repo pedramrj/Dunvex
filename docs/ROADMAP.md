@@ -156,3 +156,17 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       again by itself; an IP certificate for a server without a domain; warnings before a certificate or a domain
       registration ends; copies of the configs at a second direct name and several CDN names; the CDN helper inside
       each CDN name. See [DOMAINS.md](DOMAINS.md)
+
+## Phase 5: Dunvex engine
+- [x] The Dunvex Bridge: a resilient, encrypted, multi-carrier tunnel across the border between two servers we own (a
+      relay inside Iran and the server abroad), as a new relay mode `bridge`. It keeps the reverse tunnel's shape (the
+      relay opens smux streams for the forwarded ports, the target abroad connects them to its protocols, the real
+      client IP is kept) but replaces the one TLS link with a multi-carrier session: smux over kcp over ICMP (raw
+      sockets, with a server-sends-requests option), fake-TCP (raw sockets, paqet-style, with a kernel-RST drop), UDP,
+      a CDN with ECH (WebSocket), and DNS (dnstt). Probe-resistant (no answer without the pre-shared key), forward
+      secret (X25519 + PSK, ChaCha20-Poly1305), replay-protected; each carrier is probed every second, paced under the
+      reported volume triggers, and the stream fails over to the healthy ones within ~3 s when one is blocked. The
+      Servers page shows every carrier live in the Signal Console style. Tested in hostile-network namespaces
+      (only-ICMP, UDP blocked, RST after TLS, loss + rate cap, carriers dying and returning). See [BRIDGE.md](BRIDGE.md)
+- [ ] ISP-aware subscriptions: Dunvex knows a user's operator from their IP and tunes the configs for it
+- [ ] A Dunvex app (Android first): the Bridge carriers down to the phone, plus a whitelisted-WebRTC carrier

@@ -1,15 +1,19 @@
 package server
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/pedramrj/dunvex/internal/bridge"
+	"github.com/pedramrj/dunvex/internal/dnstt"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/relay"
 	"github.com/pedramrj/dunvex/internal/store"
+	"github.com/pedramrj/dunvex/internal/util"
 )
 
 // relayable reports whether users can reach an inbound through a relay: the
@@ -71,7 +75,7 @@ func (s *Server) relayForwards(n *store.Node) []relay.Forward {
 		network := protocol.Networks(p)
 		f := byPort[in.Port]
 		if f == nil {
-			f = &relay.Forward{Listen: listen, Network: network, Target: net.JoinHostPort(host, strconv.Itoa(in.Port)), Reverse: n.Reverse()}
+			f = &relay.Forward{Listen: listen, Network: network, Target: net.JoinHostPort(host, strconv.Itoa(in.Port)), Reverse: n.Tunneled()}
 			byPort[in.Port] = f
 		} else if f.Network != network {
 			f.Network = "tcp+udp" // e.g. Reality on TCP 443 and Hysteria2 on UDP 443
@@ -114,11 +118,159 @@ func (s *Server) tunnelLinks(target int64) []relay.TunnelClient {
 	return out
 }
 
-// applyTunnels brings this server's own links to its reverse relays in line.
+// applyTunnels brings this server's own links to its reverse relays and its
+// Bridge sessions to its bridge relays in line.
 func (s *Server) applyTunnels() {
 	if s.Tunnels != nil {
 		s.Tunnels.Apply(s.tunnelLinks(0))
+		s.Tunnels.ApplyBridges(s.bridgeLinks(0))
 	}
+}
+
+// ---------------------------------------------------------------- Bridge
+
+// bridgeServer is the listener config a bridge relay runs: its carriers, its
+// pre-shared key and its own keys.
+func (s *Server) bridgeServer(n *store.Node) *relay.BridgeServerConfig {
+	if !n.IsBridge() {
+		return nil
+	}
+	cfg := &relay.BridgeServerConfig{PSK: n.RelaySecret, StaticPriv: n.BridgePriv, DNSPriv: n.BridgeDNSPriv,
+		Carriers: bridgeSpecs(n, false)}
+	return cfg
+}
+
+// bridgeLinks are the Bridge sessions server `target` (0 = this one) keeps to
+// the bridge relays in front of it, each allowed to reach only its ports.
+func (s *Server) bridgeLinks(target int64) []relay.BridgeClientConfig {
+	list, _ := s.St.Nodes()
+	var out []relay.BridgeClientConfig
+	for _, n := range list {
+		if !n.IsBridge() || !n.Enabled || !n.Paired() || n.RelayTarget != target || n.BridgePriv == "" {
+			continue
+		}
+		pub, dnsPub, ok := bridgePub(n)
+		if !ok {
+			continue
+		}
+		c := relay.BridgeClientConfig{Name: n.Name, RelayHost: n.Address, PSK: n.RelaySecret, StaticPub: pub, DNSPub: dnsPub,
+			Carriers: bridgeSpecs(n, true)}
+		for _, f := range s.relayForwards(n) {
+			_, p, _ := net.SplitHostPort(f.Target)
+			port, _ := strconv.Atoi(p)
+			c.Ports = append(c.Ports, port)
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// bridgeSpecs turns a relay's carrier preferences into the wire specs. For the
+// client side (target) the tls-cdn carrier is pinned to the relay's agent
+// certificate when it has no CDN-fronted domain of its own.
+func bridgeSpecs(n *store.Node, client bool) []relay.BridgeCarrierSpec {
+	bs := n.Bridge()
+	var specs []relay.BridgeCarrierSpec
+	for _, c := range bs.Carriers {
+		if !c.On {
+			continue
+		}
+		spec := relay.BridgeCarrierSpec{Kind: c.Kind, Priority: c.Priority, CapMBps: c.CapMBps, Port: c.Port, ServerRequests: c.ServerRequests}
+		switch c.Kind {
+		case "tls-cdn":
+			spec.Path = "/dvxb"
+			if bs.TLSDomain != "" {
+				spec.ServerName = bs.TLSDomain // a real CDN in front: verify its certificate
+			} else if client {
+				spec.PinSHA = n.CertSHA256 // no CDN: dial the relay and pin its agent certificate
+			}
+		case "dns":
+			spec.Zone = bs.DNSZone
+		}
+		specs = append(specs, spec)
+	}
+	return specs
+}
+
+// bridgePub derives a bridge relay's public keys from its stored private ones.
+func bridgePub(n *store.Node) (staticPub, dnsPub string, ok bool) {
+	raw, err := base64.StdEncoding.DecodeString(n.BridgePriv)
+	if err != nil || len(raw) != 32 {
+		return "", "", false
+	}
+	var priv [32]byte
+	copy(priv[:], raw)
+	pub, err := bridge.PubFromPriv(priv)
+	if err != nil {
+		return "", "", false
+	}
+	return base64.StdEncoding.EncodeToString(pub[:]), dnstt.PublicKey(n.BridgeDNSPriv), true
+}
+
+// checkBridge validates a bridge relay's carrier ports: each in range, none on
+// the agent's own port, and no two carriers on the same port.
+func checkBridge(n *store.Node) string {
+	if !n.IsBridge() {
+		return ""
+	}
+	bs := n.Bridge()
+	any := false
+	seen := map[int]string{}
+	for _, c := range bs.Carriers {
+		if !c.On {
+			continue
+		}
+		any = true
+		if c.Kind == "icmp" { // raw sockets, no port
+			continue
+		}
+		if c.Port < 1 || c.Port > 65535 {
+			return fmt.Sprintf("the %s carrier needs a port between 1 and 65535", c.Kind)
+		}
+		if c.Port == n.AgentPort {
+			return fmt.Sprintf("port %d is the relay's Dunvex agent; give the %s carrier another port", c.Port, c.Kind)
+		}
+		if other, ok := seen[c.Port]; ok {
+			return fmt.Sprintf("the %s and %s carriers both use port %d", other, c.Kind, c.Port)
+		}
+		seen[c.Port] = c.Kind
+	}
+	if !any {
+		return "turn on at least one Bridge carrier"
+	}
+	if bs.DNSZone == "" {
+		for _, c := range bs.Carriers {
+			if c.Kind == "dns" && c.On {
+				return "the DNS carrier needs a tunnel zone (a domain whose NS points at the relay)"
+			}
+		}
+	}
+	return ""
+}
+
+// ensureBridgeKeys gives a bridge relay its keys the first time it needs them.
+func ensureBridgeKeys(n *store.Node) error {
+	if !n.IsBridge() {
+		return nil
+	}
+	if n.RelaySecret == "" {
+		n.RelaySecret = util.RandomString(32)
+	}
+	if n.BridgePriv == "" {
+		kp, err := bridge.GenerateKey()
+		if err != nil {
+			return err
+		}
+		n.BridgePriv = base64.StdEncoding.EncodeToString(kp.Priv[:])
+	}
+	if n.BridgeDNSPriv == "" {
+		priv, _, err := dnstt.NewKey()
+		if err != nil {
+			return err
+		}
+		n.BridgeDNSPriv = priv
+	}
+	return nil
 }
 
 // relaysFor lists the relays users can reach an inbound through.

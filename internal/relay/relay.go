@@ -61,12 +61,14 @@ var (
 
 // Relay runs a set of forwards.
 type Relay struct {
-	mu       sync.Mutex
-	fwds     map[string]*fwd
-	reserved map[int]string // ports the relay must not take (its own agent)
-	stop     chan struct{}
-	cert     *tls.Certificate
-	tun      atomic.Pointer[tunnelServer] // the reverse tunnel's port, if any
+	mu        sync.Mutex
+	fwds      map[string]*fwd
+	reserved  map[int]string // ports the relay must not take (its own agent)
+	stop      chan struct{}
+	cert      *tls.Certificate
+	tun       atomic.Pointer[tunnelServer] // the reverse tunnel's port, if any
+	br        atomic.Pointer[bridgeTunnel] // the Bridge listener, if any
+	brCfgHash string                       // the Bridge server config last applied
 }
 
 type fwd struct {
@@ -160,6 +162,9 @@ func (r *Relay) Close() {
 	}
 	if t := r.tun.Swap(nil); t != nil {
 		t.close()
+	}
+	if b := r.br.Swap(nil); b != nil {
+		b.close()
 	}
 }
 

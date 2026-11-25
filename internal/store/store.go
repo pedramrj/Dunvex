@@ -127,6 +127,9 @@ var addedColumns = []struct{ table, column, def string }{
 	{"nodes", "relay_secret", "TEXT NOT NULL DEFAULT ''"},
 	{"nodes", "domain", "TEXT NOT NULL DEFAULT ''"},
 	{"nodes", "cert_real", "INTEGER NOT NULL DEFAULT 0"},
+	{"nodes", "bridge_json", "TEXT NOT NULL DEFAULT ''"},     // the Bridge carriers and options (panel side)
+	{"nodes", "bridge_priv", "TEXT NOT NULL DEFAULT ''"},     // the relay's static X25519 private key (base64)
+	{"nodes", "bridge_dns_priv", "TEXT NOT NULL DEFAULT ''"}, // the relay's dnstt private key (hex) for the DNS carrier
 }
 
 func (s *Store) migrate() error {

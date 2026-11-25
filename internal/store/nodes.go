@@ -43,16 +43,80 @@ type Node struct {
 	// it, and TLS protocols (NaiveProxy, the CDN ones) can run on it.
 	Domain   string `json:"domain"`
 	RealCert bool   `json:"realCert"` // the node serves a real certificate (links do not pin it)
+
+	// The Bridge (relay mode "bridge"): the multi-carrier tunnel's carriers and
+	// options, and the relay's own keys (kept secret, never sent to clients).
+	BridgeJSON    string `json:"-"`
+	BridgePriv    string `json:"-"` // static X25519 private key (base64)
+	BridgeDNSPriv string `json:"-"` // dnstt private key (hex)
 }
 
 // Relay modes.
 const (
 	RelayForward = "forward"
 	RelayReverse = "reverse"
+	RelayBridge  = "bridge" // the multi-carrier Bridge across the border
 )
 
-// Reverse reports whether the relay's target dials it.
+// Reverse reports whether the relay's target dials it over the reverse tunnel.
 func (n *Node) Reverse() bool { return n.IsRelay() && n.RelayMode == RelayReverse }
+
+// IsBridge reports whether the relay reaches its target over the Bridge.
+func (n *Node) IsBridge() bool { return n.IsRelay() && n.RelayMode == RelayBridge }
+
+// Tunneled reports whether the relay's forwards ride a tunnel the target keeps
+// open (reverse tunnel or Bridge), rather than the relay dialing the target.
+func (n *Node) Tunneled() bool { return n.Reverse() || n.IsBridge() }
+
+// BridgeCarrierPref is one carrier's panel-side setting.
+type BridgeCarrierPref struct {
+	Kind           string `json:"kind"` // udp, icmp, faketcp, tls-cdn, dns
+	On             bool   `json:"on"`
+	Priority       int    `json:"priority,omitempty"`
+	CapMBps        int    `json:"capMBps,omitempty"`
+	Port           int    `json:"port,omitempty"`
+	ServerRequests bool   `json:"serverRequests,omitempty"` // icmp: the relay sends the echo requests
+}
+
+// BridgeSettings is the panel-side Bridge configuration kept on a bridge relay.
+type BridgeSettings struct {
+	Carriers  []BridgeCarrierPref `json:"carriers"`
+	TLSDomain string              `json:"tlsDomain,omitempty"` // the relay's CDN-fronted domain for the tls-cdn carrier
+	DNSZone   string              `json:"dnsZone,omitempty"`   // the tunnel zone for the dns carrier
+}
+
+// DefaultBridgeSettings turns on the carriers that need no extra setup, with
+// sensible priorities and the ICMP cap kept under the reported volume trigger.
+func DefaultBridgeSettings() BridgeSettings {
+	return BridgeSettings{Carriers: []BridgeCarrierPref{
+		{Kind: "faketcp", On: true, Priority: 30, Port: 8443},
+		{Kind: "udp", On: true, Priority: 25, Port: 8444},
+		{Kind: "tls-cdn", On: false, Priority: 20, Port: 8445},
+		{Kind: "icmp", On: true, Priority: 15, CapMBps: 22},
+		{Kind: "dns", On: false, Priority: 5, CapMBps: 1, Port: 5300},
+	}}
+}
+
+// Bridge parses the node's stored Bridge settings, filling defaults.
+func (n *Node) Bridge() BridgeSettings {
+	bs := DefaultBridgeSettings()
+	if n.BridgeJSON != "" {
+		var got BridgeSettings
+		if json.Unmarshal([]byte(n.BridgeJSON), &got) == nil && len(got.Carriers) > 0 {
+			bs.Carriers = got.Carriers
+			bs.TLSDomain, bs.DNSZone = got.TLSDomain, got.DNSZone
+		} else if json.Unmarshal([]byte(n.BridgeJSON), &got) == nil {
+			bs.TLSDomain, bs.DNSZone = got.TLSDomain, got.DNSZone
+		}
+	}
+	return bs
+}
+
+// SetBridge stores Bridge settings.
+func (n *Node) SetBridge(bs BridgeSettings) {
+	b, _ := json.Marshal(bs)
+	n.BridgeJSON = string(b)
+}
 
 // Node roles.
 const (
@@ -83,13 +147,13 @@ var nodeTables = []string{
 	)`,
 }
 
-const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real`
+const nodeCols = `id,name,address,agent_port,fingerprint,secret,enabled,cert_sha256,stats_seq,epoch,last_seen,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real,bridge_json,bridge_priv,bridge_dns_priv`
 
 func scanNode(r scanner) (*Node, error) {
 	n := &Node{}
 	var en, only, real int
 	err := r.Scan(&n.ID, &n.Name, &n.Address, &n.AgentPort, &n.Fingerprint, &n.Secret, &en, &n.CertSHA256, &n.StatsSeq, &n.Epoch, &n.LastSeen, &n.CreatedAt,
-		&n.Role, &n.RelayTarget, &only, &n.RelayShift, &n.RelayMode, &n.RelayPort, &n.RelaySecret, &n.Domain, &real)
+		&n.Role, &n.RelayTarget, &only, &n.RelayShift, &n.RelayMode, &n.RelayPort, &n.RelaySecret, &n.Domain, &real, &n.BridgeJSON, &n.BridgePriv, &n.BridgeDNSPriv)
 	n.Enabled, n.RelayOnly, n.RealCert = en == 1, only == 1, real == 1
 	return n, err
 }
@@ -131,9 +195,9 @@ func (s *Store) CreateNode(n *Node) error {
 	if n.Role == "" {
 		n.Role = RoleServer
 	}
-	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+	res, err := s.DB.Exec(`INSERT INTO nodes(name,address,agent_port,fingerprint,secret,enabled,cert_sha256,created_at,role,relay_target,relay_only,relay_shift,relay_mode,relay_port,relay_secret,domain,cert_real,bridge_json,bridge_priv,bridge_dns_priv) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.CreatedAt, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift,
-		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert))
+		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert), n.BridgeJSON, n.BridgePriv, n.BridgeDNSPriv)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return fmt.Errorf("a server named %q already exists", n.Name)
@@ -151,9 +215,9 @@ func (s *Store) UpdateNode(n *Node) error {
 	if n.Role == "" {
 		n.Role = RoleServer
 	}
-	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=?,role=?,relay_target=?,relay_only=?,relay_shift=?,relay_mode=?,relay_port=?,relay_secret=?,domain=?,cert_real=? WHERE id=?`,
+	_, err := s.DB.Exec(`UPDATE nodes SET name=?,address=?,agent_port=?,fingerprint=?,secret=?,enabled=?,cert_sha256=?,last_seen=?,role=?,relay_target=?,relay_only=?,relay_shift=?,relay_mode=?,relay_port=?,relay_secret=?,domain=?,cert_real=?,bridge_json=?,bridge_priv=?,bridge_dns_priv=? WHERE id=?`,
 		n.Name, n.Address, n.AgentPort, n.Fingerprint, n.Secret, b2i(n.Enabled), n.CertSHA256, n.LastSeen, n.Role, n.RelayTarget, b2i(n.RelayOnly), n.RelayShift,
-		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert), n.ID)
+		or(n.RelayMode, RelayForward), n.RelayPort, n.RelaySecret, n.Domain, b2i(n.RealCert), n.BridgeJSON, n.BridgePriv, n.BridgeDNSPriv, n.ID)
 	if err != nil && strings.Contains(err.Error(), "UNIQUE") {
 		return fmt.Errorf("a server named %q already exists", n.Name)
 	}

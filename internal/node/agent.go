@@ -216,10 +216,11 @@ func (a *Agent) Status() Status {
 	}
 	a.certStatus(&st, env)
 	if a.Relay != nil {
-		st.Forwards, st.Tunnel = a.Relay.Stats(), a.Relay.TunnelStat()
+		st.Forwards, st.Tunnel, st.Bridge = a.Relay.Stats(), a.Relay.TunnelStat(), a.Relay.BridgeStat()
 	}
 	if a.Tunnels != nil {
 		st.TunnelLinks = a.Tunnels.Stats()
+		st.BridgeLinks = a.Tunnels.BridgeStats()
 	}
 	if st.CoreErrors == nil {
 		st.CoreErrors = map[string]string{}
@@ -301,14 +302,18 @@ func (a *Agent) Apply(s State) error {
 	}
 	a.setDomain(s.Domain, s.ACMEEmail)
 	if a.Relay != nil {
-		a.Relay.ApplyTunnel(s.Tunnel) // first: forwards must know the tunnel's port
+		a.Relay.ApplyTunnel(s.Tunnel)             // first: forwards must know the tunnel's port
+		a.Relay.ApplyBridgeServer(s.BridgeServer) // and the Bridge, before forwards route through it
 		a.Relay.Apply(s.Forwards)
 		a.saveJSON(keyForwards, s.Forwards) // brought back at the next start
 		a.saveJSON(keyTunnel, s.Tunnel)
+		a.saveJSON(keyBridgeServer, s.BridgeServer)
 	}
 	if a.Tunnels != nil {
 		a.Tunnels.Apply(s.Tunnels)
+		a.Tunnels.ApplyBridges(s.Bridges)
 		a.saveJSON(keyTunnels, s.Tunnels)
+		a.saveJSON(keyBridges, s.Bridges)
 	}
 	a.Mgr.ClearPortErrors()
 	if err := a.Mgr.Apply(); err != nil {
@@ -321,9 +326,11 @@ func (a *Agent) Apply(s State) error {
 
 // What a relay and its targets keep across restarts.
 const (
-	keyForwards = "relay_forwards"
-	keyTunnel   = "relay_tunnel"
-	keyTunnels  = "relay_tunnels"
+	keyForwards     = "relay_forwards"
+	keyTunnel       = "relay_tunnel"
+	keyTunnels      = "relay_tunnels"
+	keyBridgeServer = "relay_bridge_server"
+	keyBridges      = "relay_bridges"
 )
 
 // RestoreForwards starts the forwards, tunnel port and tunnel links the
@@ -332,17 +339,27 @@ func (a *Agent) RestoreForwards() {
 	var list []relay.Forward
 	var tun *relay.TunnelServer
 	var links []relay.TunnelClient
+	var brSrv *relay.BridgeServerConfig
+	var bridges []relay.BridgeClientConfig
 	a.loadJSON(keyForwards, &list)
 	a.loadJSON(keyTunnel, &tun)
 	a.loadJSON(keyTunnels, &links)
+	a.loadJSON(keyBridgeServer, &brSrv)
+	a.loadJSON(keyBridges, &bridges)
 	if a.Relay != nil {
 		a.Relay.ApplyTunnel(tun)
+		a.Relay.ApplyBridgeServer(brSrv)
 		if len(list) > 0 {
 			a.Relay.Apply(list)
 		}
 	}
-	if a.Tunnels != nil && len(links) > 0 {
-		a.Tunnels.Apply(links)
+	if a.Tunnels != nil {
+		if len(links) > 0 {
+			a.Tunnels.Apply(links)
+		}
+		if len(bridges) > 0 {
+			a.Tunnels.ApplyBridges(bridges)
+		}
 	}
 }
 

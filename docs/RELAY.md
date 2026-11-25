@@ -16,12 +16,15 @@ target server. Usage, limits and expiry are still counted on the target, exactly
 
 The panel and the relay talk over mutual TLS with pinned certificates, as with any node.
 
-## Forward or reverse
+## Forward, reverse or bridge
 
 - **Forward** (default): the relay connects to the target server for each user connection.
 - **Reverse**: the target server connects to the relay instead and keeps a few links open to the relay's **tunnel
   port**; user connections travel back over those links. Nothing ever connects from the relay to the server abroad,
   which helps when connections from Iran to abroad are blocked or slow while the other direction still works.
+- **Bridge**: the same shape as reverse, but the one TLS link is replaced by the **Dunvex Bridge**, a resilient
+  multi-carrier tunnel (ICMP, fake-TCP, UDP, a CDN with ECH, DNS) that probes every second and fails over on its own.
+  For the worst conditions, when no single protocol survives the border. See [BRIDGE.md](BRIDGE.md).
 
 The reverse links are TLS 1.3 to the relay's own certificate (the same one the panel pins for the relay), plus a
 32-character secret the panel makes for each relay. Many user connections share each link (multiplexed with
@@ -70,5 +73,7 @@ bytes in each direction and the delay from the relay to the target (or that the 
 ## API
 
 `POST /nodes` and `PUT /nodes/{id}` take `"role": "relay"`, `"relayTarget"` (0 = this server, else a node id),
-`"relayShift"`, `"relayOnly"`, `"relayMode"` (`forward` or `reverse`) and `"relayPort"` (the tunnel port in reverse
-mode). A relay's status lists its `forwards` and, in reverse mode, its `tunnel`.
+`"relayShift"`, `"relayOnly"`, `"relayMode"` (`forward`, `reverse` or `bridge`) and `"relayPort"` (the tunnel port in
+reverse mode). In bridge mode they also take `"bridge"`: `{ "carriers": [{ "kind", "on", "priority", "capMBps",
+"port", "serverRequests" }], "tlsDomain", "dnsZone" }`. A relay's status lists its `forwards`, in reverse mode its
+`tunnel`, and in bridge mode its `bridge` (every carrier's live state). See [BRIDGE.md](BRIDGE.md).
