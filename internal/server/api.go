@@ -862,30 +862,46 @@ func (s *Server) configsFor(u *store.User) []ConfigEntry {
 		if !onlyViaRelay(relays) && cl.direct(in, p) {
 			name := remarkFor(in, p, u, title, nodes)
 			if l := protocol.Link(p, in, u, directEnv(in, env), name); l != "" {
-				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, Note: protocol.TunnelDetails(p, in, env)}
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, Note: protocol.Details(p, in, u, directEnv(in, env))}
 				if strings.HasPrefix(l, "[Interface]") {
 					c.File, c.QR = confName(title, in.ID), QRSVG(l)
 				}
 				out = append(out, c)
+				out = append(out, sshExtras(c, p, in, u, directEnv(in, env))...)
 			}
 		}
 		for _, v := range cl.variants(in, p, title, env) {
 			if l := protocol.Link(p, v.in, u, v.env, v.name); l != "" {
-				out = append(out, ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: v.name, Link: l, Via: v.via})
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: v.name, Link: l, Via: v.via, Note: protocol.Details(p, v.in, u, v.env)}
+				out = append(out, c)
+				out = append(out, sshExtras(c, p, v.in, u, v.env)...)
 			}
 		}
 		for _, r := range relays {
 			name := relayRemark(in, p, title, r)
 			if l := protocol.Link(p, viaRelay(in, r), u, env, name); l != "" {
-				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, RelayID: r.ID}
+				c := ConfigEntry{InboundID: in.ID, Preset: in.Preset, Name: name, Link: l, RelayID: r.ID, Note: protocol.Details(p, viaRelay(in, r), u, env)}
 				if strings.HasPrefix(l, "[Interface]") {
 					c.File, c.QR = confNameVia(title, in.ID, r.ID), QRSVG(l)
 				}
 				out = append(out, c)
+				out = append(out, sshExtras(c, p, viaRelay(in, r), u, env)...)
 			}
 		}
 	}
 	return out
+}
+
+// sshExtras is what an SSH config has besides its ssh:// link (the Hiddify
+// app's, and the details other SSH apps take typed in): SlipNet's own
+// profile, as one more entry. It stays out of the subscriptions like every
+// slipnet:// link.
+func sshExtras(c ConfigEntry, p *protocol.Preset, in *store.Inbound, u *store.User, env protocol.Env) []ConfigEntry {
+	if !protocol.IsSSH(p) {
+		return nil
+	}
+	return []ConfigEntry{{InboundID: c.InboundID, Preset: c.Preset, Name: c.Name + " · SlipNet", RelayID: c.RelayID,
+		Link: protocol.SSHSlipNetLink(in, u, env, c.Name)}}
 }
 
 func (s *Server) userConfigs(w http.ResponseWriter, r *http.Request) {
@@ -1113,6 +1129,14 @@ func (s *Server) createInbound(w http.ResponseWriter, r *http.Request) {
 		if in.NodeID == 0 && !s.Mgr.Mita.Installed() {
 			if _, err := coremgr.InstallMita(s.Mgr.Mita.BinDir); err != nil {
 				fail(w, 502, "could not download mita (the Mieru server): "+err.Error())
+				return
+			}
+		}
+	}
+	if protocol.IsSSH(p) {
+		for _, x := range s.inboundsOn(in.NodeID) {
+			if x.Preset == p.ID {
+				fail(w, 400, "this server already has an SSH; one per server, because it serves every user on its port")
 				return
 			}
 		}
@@ -1502,6 +1526,8 @@ func (s *Server) core(name string) interface{ Logs() []string } {
 		return s.Mgr.AWG
 	case "dnstt":
 		return engine.DnsttLogger
+	case "ssh":
+		return engine.SSHLogger
 	}
 	return s.Mgr.CoreByName(name)
 }
@@ -1534,6 +1560,9 @@ func (s *Server) coreConfig(w http.ResponseWriter, r *http.Request) {
 	case "slipstream-server":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Write(s.Mgr.SlipConfig())
+	case "ssh":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(s.Mgr.SSHConfig())
 	default:
 		w.Write(orEmpty(x))
 	}

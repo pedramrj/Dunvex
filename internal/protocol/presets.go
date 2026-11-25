@@ -28,7 +28,7 @@ type Field struct {
 type Preset struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
-	Engine      string  `json:"engine"` // xray | singbox
+	Engine      string  `json:"engine"` // xray | singbox | the engine of a sidecar or built-in server
 	Group       string  `json:"group"`  // reality | cdn | udp | classic
 	Desc        string  `json:"desc"`
 	DescFa      string  `json:"descFa"`
@@ -84,6 +84,8 @@ var (
 	fAWGVer    = Field{Key: "version", Label: "Version (3.1: newest apps · 2.0: older apps)", LabelFa: "نسخه (۳٫۱: برنامه‌های جدید · ۲٫۰: برنامه‌های قدیمی‌تر)", Type: "select", Options: []string{"3.1", "2.0"}}
 	fAWGDNS    = Field{Key: "dns", Label: "DNS for clients", LabelFa: "DNS برای کاربران", Type: "text", Advanced: true}
 	fAWGI1     = Field{Key: "i1", Label: "I1 signature packet (client side, optional)", LabelFa: "بستهٔ امضای I1 (سمت کاربر، اختیاری)", Type: "text", Advanced: true}
+	fSSHPub    = Field{Key: "hostKeyPub", Label: "Host key (apps pin it; it is made once, from the private key below)", LabelFa: "کلید میزبان (برنامه‌ها آن را ثابت نگه می‌دارند؛ یک بار از کلید خصوصی زیر ساخته می‌شود)", Type: "text", Advanced: true}
+	fSSHKey    = Field{Key: "hostKey", Label: "Host private key (clear it to make a new one; users then update their links)", LabelFa: "کلید خصوصی میزبان (برای ساخت کلید تازه خالی‌اش کنید؛ آن‌وقت کاربران لینکشان را به‌روز کنند)", Type: "secret", Advanced: true}
 )
 
 var presets = []*Preset{
@@ -227,6 +229,11 @@ var presets = []*Preset{
 		Desc:   "AdGuard's open VPN protocol: HTTP/2 or HTTP/3 that looks like an ordinary HTTPS site, with the official TrustTunnel apps (iOS, Android, desktop) and Shadowrocket. Uses TCP and UDP on its port, and can share 443 with the panel and Reality (by its hostname; HTTP/3 there while no UDP protocol holds UDP 443). One per server; users change with a short restart.",
 		DescFa: "پروتکل باز AdGuard: HTTP/2 یا HTTP/3 که شبیه یک سایت HTTPS معمولی است، با برنامه‌های رسمی TrustTunnel (iOS، اندروید، دسکتاپ) و Shadowrocket. روی پورتش هم TCP و هم UDP دارد و می‌تواند پورت ۴۴۳ را با پنل و Reality شریک شود (با نام میزبان خودش؛ HTTP/3 آنجا وقتی است که پروتکل UDP دیگری روی UDP 443 نباشد). هر سرور یکی؛ تغییر کاربران با یک ری‌استارت کوتاه اعمال می‌شود.",
 		Fields: []Field{fTTHost, fTTProto, fTTHide, fTTAntiDPI, fTTDNS}},
+	{ID: "ssh", Name: "SSH", Engine: "ssh", Group: "classic", Network: "tcp", DefaultPort: 2222,
+		Security: "none", Status: "ready", proto: "ssh",
+		Desc:   "Port forwarding over SSH, built into Dunvex. It looks like an ordinary server login and often keeps its speed where TLS-based protocols are slowed down. Each user signs in with their name and password; the links pin the server's host key. For the Hiddify app (ssh:// link or the subscription; UDP too), SlipNet (its own link), Clash.Meta and sing-box apps, and NetMod, HTTP Injector or any SSH tunnel app with the details typed in. One per server, on its own port (22 is the server's own SSH).",
+		DescFa: "فوروارد پورت روی SSH، داخل خود Dunvex. شبیه ورود معمولی به یک سرور است و اغلب جایی که پروتکل‌های مبتنی بر TLS کند می‌شوند سرعتش را نگه می‌دارد. هر کاربر با نام و رمز خودش وارد می‌شود و کلید میزبان سرور در لینک‌ها ثابت است. برای برنامهٔ Hiddify (لینک ssh:// یا لینک اشتراک؛ UDP هم)، SlipNet (لینک خودش)، برنامه‌های Clash.Meta و sing-box، و NetMod، HTTP Injector یا هر برنامهٔ تونل SSH با واردکردن دستی مشخصات. هر سرور یکی، روی پورت خودش (پورت ۲۲ مال SSH خود سرور است).",
+		Fields: []Field{fSSHPub, fSSHKey}},
 	{ID: "mieru", Name: "Mieru", Engine: "mita", Group: "classic", Network: "tcp", DefaultPort: 0,
 		Security: "none", Status: "ready", proto: "mieru",
 		Desc:   "TCP with no fixed pattern: no handshake to fingerprint, random padding and a key from each user's name, password and the time. For Clash.Meta (mihomo) apps, Karing and Exclave. One Mieru per server, TCP or UDP; the device limit does not apply to it.",
@@ -371,6 +378,8 @@ func Defaults(p *Preset, params map[string]any, domain string) map[string]any {
 		awgDefaults(params)
 	case "mieru", "mieru-udp":
 		mieruDefaults(params)
+	case "ssh":
+		sshDefaults(params)
 	case "trusttunnel":
 		ttDefaults(params, domain)
 	case "mtproto":

@@ -148,6 +148,7 @@ var pageText = map[string][2]string{
 	"configs":      {"کانفیگ‌ها", "Configs"},
 	"download":     {"دانلود", "Download"},
 	"amneziaHint":  {"در برنامهٔ AmneziaVPN یا AmneziaWG فایل را وارد کنید یا کد QR را اسکن کنید.", "Import the file in AmneziaVPN or AmneziaWG, or scan the QR code."},
+	"sshHint":      {"در برنامهٔ Hiddify این لینک را وارد کنید (یا لینک اشتراک را). در NetMod، HTTP Injector و برنامه‌های دیگر SSH این مشخصات را دستی وارد کنید:", "Import this link in the Hiddify app (or the subscription link). In NetMod, HTTP Injector and other SSH apps, type these details in by hand:"},
 	"slipHint":     {"در برنامهٔ SlipNet لینک را وارد کنید (Import) یا کد QR را اسکن کنید.", "Import the link in SlipNet or scan the QR code."},
 	"slipByHand":   {" در DNSTT.XYZ هم می‌توانید این مشخصات را دستی وارد کنید:", " You can also type these details into DNSTT.XYZ by hand:"},
 	"botTitle":     {"هشدار حجم و تاریخ در تلگرام", "Data and date alerts in Telegram"},

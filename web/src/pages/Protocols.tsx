@@ -10,7 +10,7 @@ import { shortName } from "../components/NetworkMap";
 import { ErrText } from "../components/ErrText";
 
 /** the program that serves each engine, as shown on the cards */
-const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", trusttunnel: "TrustTunnel", dnstt: "dnstt", slipstream: "Slipstream", xray: "Xray" };
+const engineName: Record<string, string> = { singbox: "sing-box", mtg: "mtg", awg: "AmneziaWG", mita: "mita", trusttunnel: "TrustTunnel", dnstt: "dnstt", slipstream: "Slipstream", ssh: "SSH (built in)", xray: "Xray" };
 
 export function ProtocolsPage({ arg }: { arg?: string }) {
   const { t, lang, n } = useI18n();
@@ -157,7 +157,7 @@ function HealthBadge({ r }: { r: HealthResult & { copies: number; failing: numbe
 /** Setup steps some protocols need before they work. */
 function PresetHelp({ id }: { id: string }) {
   const { t } = useI18n();
-  const key = id === "vless-xdns" ? "xdnsHelp" : id === "vless-xicmp" ? "xicmpHelp" : id === "dnstt" || id === "slipstream" ? "dnsTunnelHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : null;
+  const key = id === "vless-xdns" ? "xdnsHelp" : id === "vless-xicmp" ? "xicmpHelp" : id === "dnstt" || id === "slipstream" ? "dnsTunnelHelp" : id === "mtproto" ? "mtprotoHelp" : id === "amneziawg" ? "amneziawgHelp" : id === "mieru" || id === "mieru-udp" ? "mieruHelp" : id === "trusttunnel" ? "trusttunnelHelp" : id === "ssh" ? "sshHelp" : null;
   if (!key) return null;
   return <p className="rounded-xl border border-hair bg-fg/[.03] px-3.5 py-3 text-[12.5px] text-ink2 leading-relaxed">{t(key)}</p>;
 }

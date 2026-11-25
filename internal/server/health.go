@@ -154,6 +154,14 @@ func healthClient(t *health.Target, it profileItem, hu *store.User) {
 		} else {
 			t.Singbox = items
 		}
+	case "ssh":
+		// the sing-box ssh outbound, as in the users' sing-box profile
+		_, items := protocol.SingboxOutbound(p, in, hu, it.env, "proxy")
+		if len(items) == 0 {
+			t.Broken = "no SSH outbound could be made"
+			return
+		}
+		t.Kind, t.Singbox = health.KindSingbox, items
 	case "dnstt":
 		d := &health.DNSTT{Domain: protocol.XDNSDomain(in), PublicKey: in.Str("publicKey"), Resolver: dnsttResolver(in, it.env)}
 		if !protocol.OpenSignIn(in) {

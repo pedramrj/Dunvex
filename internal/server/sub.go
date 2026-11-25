@@ -443,7 +443,10 @@ func (s *Server) subPage(w http.ResponseWriter, r *http.Request, u *store.User) 
 				continue
 			}
 			hint := ""
-			if strings.HasPrefix(c.Link, "slipnet://") {
+			switch {
+			case strings.HasPrefix(c.Link, "ssh://"):
+				hint = l.t("sshHint")
+			case strings.HasPrefix(c.Link, "slipnet://"):
 				hint = l.t("slipHint")
 				if c.Note != "" {
 					hint += l.t("slipByHand")

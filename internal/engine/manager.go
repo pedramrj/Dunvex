@@ -18,6 +18,7 @@ import (
 	"github.com/pedramrj/dunvex/internal/edge"
 	"github.com/pedramrj/dunvex/internal/protocol"
 	"github.com/pedramrj/dunvex/internal/routing"
+	"github.com/pedramrj/dunvex/internal/sshproxy"
 	"github.com/pedramrj/dunvex/internal/store"
 	"github.com/pedramrj/dunvex/internal/util"
 	"github.com/pedramrj/dunvex/internal/warp"
@@ -102,6 +103,10 @@ type Manager struct {
 	dns     dnsState            // shared DNS ports and dnstt servers (guarded by applyMu)
 	dnsNow  map[int]*dnsmux.Mux // a copy of dns.mux for status calls (guarded by mu)
 	dnsttOn int                 // dnstt servers running (guarded by mu)
+
+	ssh    *sshRun          // the built-in SSH server (guarded by applyMu)
+	sshNow *sshproxy.Server // the same, for the collector and status calls (guarded by mu)
+	sshIn  int64            // its inbound (guarded by mu)
 }
 
 // NewManager wires a manager for the given home directory.
@@ -205,6 +210,7 @@ func (m *Manager) Run(stop <-chan struct{}) {
 			m.Slip.Stop()
 			m.AWG.Stop()
 			m.stopDNS()
+			m.stopSSH()
 			return
 		case <-m.applyCh:
 			time.Sleep(1500 * time.Millisecond) // coalesce bursts of edits
@@ -256,8 +262,9 @@ type built struct {
 	udp           map[int]string     // public UDP port → loopback address (TrustTunnel's QUIC behind the router)
 	dns           map[int]*dnsPort   // shared DNS ports
 	dnstt         map[int64]dnsttPlan
-	slip          []byte // Slipstream's command line, one argument per line (one per server)
-	slipIn        int64  // its inbound
+	slip          []byte   // Slipstream's command line, one argument per line (one per server)
+	slipIn        int64    // its inbound
+	ssh           *sshPlan // the built-in SSH server (one per server)
 	errs          map[int64]string
 	active        map[string]bool
 	routes        map[string]edge.Target
@@ -479,6 +486,22 @@ func (m *Manager) build() (b built, err error) {
 				b.slipIn = in.ID
 			}
 			xin = append(xin, protocol.TunnelSocks(in, us, socks))
+		case "ssh":
+			if b.ssh != nil {
+				b.errs[in.ID] = "only one SSH can run on a server: it serves every user on its port"
+				continue
+			}
+			if len(us) == 0 {
+				continue // nobody may use it: it stays off
+			}
+			socks := m.internalPort(in.ID, used)
+			pw := make(map[string]string, len(us))
+			for _, u := range us {
+				pw[u.Name] = u.Password
+			}
+			b.ssh = &sshPlan{inbound: in.ID, listen: net.JoinHostPort(env.Listen, strconv.Itoa(in.Port)), hostKey: in.Str("hostKey"),
+				upstream: "127.0.0.1:" + strconv.Itoa(socks), users: pw}
+			xin = append(xin, protocol.SSHSocks(in, socks))
 		case "xray":
 			if protocol.IsXICMP(p) {
 				if xicmpIn != 0 {
@@ -708,6 +731,9 @@ func (m *Manager) Apply() error {
 	for id, e := range m.dnsttApply(b.dnstt) {
 		ierrs[id] = e
 	}
+	if e := m.sshApply(b.ssh); e != "" {
+		ierrs[b.ssh.inbound] = e
+	}
 	for id, e := range m.dnsApply(b.dns, true) {
 		ierrs[id] = e
 	}
@@ -848,6 +874,7 @@ func (m *Manager) collect() bool {
 	m.awgCollect(ud, id)
 	m.mitaCollect(byName, ud, id)
 	m.ttCollect(byName, ud, id)
+	m.sshCollect(byName, ud)
 	for _, t := range id {
 		totUp, totDown = totUp+t.Up, totDown+t.Down
 	}

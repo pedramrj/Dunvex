@@ -66,6 +66,9 @@ func (m *Manager) CoreStatuses() []Status {
 	if s, ok := m.dnsttStatus(); ok {
 		out = append(out, s)
 	}
+	if s, ok := m.sshStatus(); ok {
+		out = append(out, s)
+	}
 	return out
 }
 

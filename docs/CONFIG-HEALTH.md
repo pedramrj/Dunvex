@@ -20,6 +20,7 @@ Each one is tested on its own, with the client a user's app would use:
 | Xray protocols (VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, SOCKS, HTTP, XHTTP, gRPC, WS, mKCP, XDNS, xICMP…) | Xray | The exact share link users import, read the way v2rayNG, v2rayN and Hiddify read it, with what the Xray JSON subscription adds (the [TLS fragment](XRAY-JSON.md), Mux.Cool) and every [anti-censorship option](ANTI-CENSORSHIP.md) that is on |
 | sing-box protocols (Reality universal, TUIC, Hysteria2 masquerade, AnyTLS, ShadowTLS) | sing-box | The same outbound the sing-box subscription has |
 | dnstt | dnstt's own client (inside Dunvex) | Through the inbound's resolver, then the user's SOCKS sign-in |
+| SSH | sing-box | The `ssh` outbound of the sing-box subscription, host key pinned, with the check's own user |
 | Mieru, TrustTunnel, AmneziaWG, Slipstream, the Telegram proxy | — | Not tested yet: the server has no client for them. They show as "Not tested" with the reason |
 
 NaiveProxy is tested only when the server's sing-box has its client built in; the usual build does not, so it shows
