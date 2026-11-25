@@ -52,7 +52,11 @@ triggers.
 - **Probe resistance.** The client's opening frame is sealed with a key derived
   from the pre-shared key alone, so without the PSK no valid handshake can be
   forged and the server answers **nothing at all** — no error, no RST, no packet.
-  A scanner sees a silent host.
+  A scanner sees a silent host. A **replayed** handshake is handled too: the
+  server remembers the ephemeral keys it has seen and never installs a second
+  session from one (which would reset the counter and reuse record nonces), and
+  it re-answers only the genuine client still re-sending its Init (same carrier,
+  a few seconds), so a replay prober — the kind the GFW runs — gets silence.
 - **Authentication + forward secrecy.** The session key mixes the PSK with
   X25519(client ephemeral, relay static). The PSK authenticates; the ephemeral
   gives forward secrecy against a later PSK leak. (A static-key compromise is not
@@ -60,12 +64,17 @@ triggers.
   Noise IK; a later hardening.)
 - **Records.** Each frame is ChaCha20-Poly1305 with a per-direction counter nonce
   (never repeats under one key), and the 16-byte sid+seq header is masked
-  QUIC-style from the ciphertext, so frames look like random bytes end to end.
-- **Replay protection.** A sliding window drops replays; a different session has a
-  different key, so a captured frame can never be replayed into another session.
-- **Shaping.** Frames are padded to a few size buckets and a full data frame lands
-  on the top bucket, so bulk packets are not padded while small ones hide among a
-  handful of sizes.
+  QUIC-style from the ciphertext, so frames look like random bytes end to end. The
+  handshake reply is sealed under a separately derived key, so it never shares the
+  record nonce space.
+- **Replay protection.** A wide sliding window (4096) drops replays while
+  tolerating the deep reordering of frames striped across carriers of very
+  different RTT; a different session has a different key, so a captured frame can
+  never be replayed into another session.
+- **Shaping.** Data frames are padded to a few size buckets (a full data frame
+  lands on the top bucket, so bulk packets are not padded while small ones hide
+  among a handful of sizes), and the Init and Resp are padded too, so the
+  handshake has no fixed size to fingerprint.
 
 ## The carriers (`internal/bridge/carrier_*.go`)
 
@@ -129,37 +138,43 @@ long download runs abroad→iran, and we watch the Bridge keep it going on whate
 still gets through. (`internal/bridge/lab` + the test script; carriers ICMP,
 fake-TCP, UDP and TLS-CDN; the DNS carrier is covered by the Go tests.)
 
-| Scenario | What the border did | Carried by | Throughput |
-| --- | --- | --- | --- |
-| **Baseline** | nothing | fake-TCP | 87.8 MB/s |
-| **Only ICMP passes** | TCP and UDP cut | ICMP, paced to its cap | 21.4 MB/s |
-| **UDP blocked** | UDP dropped | fake-TCP | 87.1 MB/s |
-| **RST after the TLS handshake** | the CDN carrier's port cut | fake-TCP (+ UDP) | 89.5 MB/s |
-| **Loss + rate cap** (≈40 Mbit/s, 3% loss on the download path) | shaped link | fake-TCP / UDP | 3.2 MB/s |
+| Scenario | What the border did | Carried by | Throughput | Max reorder |
+| --- | --- | --- | --- | --- |
+| **Baseline** | nothing | fake-TCP | 78.9 MB/s | 58 |
+| **Only ICMP passes** | TCP and UDP cut | ICMP, paced to its cap | 21.4 MB/s | 3 |
+| **UDP blocked** | UDP dropped | fake-TCP | 74.5 MB/s | 73 |
+| **RST after the TLS handshake** | the CDN carrier's port cut | fake-TCP (+ UDP) | 89.1 MB/s | 15 |
+| **Loss + rate cap** (≈40 Mbit/s, 3% loss on the download path) | shaped link | fake-TCP / UDP | 3.4 MB/s | 3 |
 
 In **only ICMP**, every other carrier is down (100% probe loss) and ICMP alone
 carries the download, held at **21.4 MB/s** — its 22 MB/s cap biting, so the
 carrier stays under the ~30 MB/s volume-reroute trigger the research reports
 (net4people #676). In **RST after the TLS handshake**, the CDN carrier is dead
 but the others never notice. The loss+cap row shows the Bridge delivering a
-steady 3.2 MB/s through a 40 Mbit/s link with 3% loss.
+steady 3.4 MB/s through a 40 Mbit/s link with 3% loss.
+
+The **max reorder** column is how far out of order a frame arrived and was still
+accepted (the replay window's high-water mark). With several carriers of very
+different RTT active at once, it reached **101** in the resilience run — above the
+64 a narrow window would allow, so the replay window is sized at 4096 to avoid
+dropping legitimate frames and forcing needless kcp retransmits.
 
 **Resilience — one long download while carriers die and come back** (40 s,
-carriers ICMP + fake-TCP + UDP): 2.5 GB delivered, **62.6 MB/s average** across
+carriers ICMP + fake-TCP + UDP): 2.7 GB delivered, **68.9 MB/s average** across
 two carrier-kill events:
 
-- at ~t5, **fake-TCP and UDP are cut**: the download stalls for **~2–3 seconds**,
+- at ~t5, **fake-TCP and UDP are cut**: the download stalls for **~2 seconds**,
   then fails over to **ICMP** and resumes at its 22 MB/s cap — the open stream
   survives;
-- at ~t17, the carriers are **restored**: throughput climbs back to ~88 MB/s on
+- at ~t17, the carriers are **restored**: throughput climbs back to ~80–90 MB/s on
   fake-TCP with **no stall** (a recovered carrier rejoins seamlessly);
 - at ~t20, **ICMP is cut**: **no stall at all**, because fake-TCP and UDP were
   already carrying the stream.
 
 These are loopback-veth numbers — upper bounds, not Iran speeds. What they show is
 the behaviour: the download keeps going on whatever still passes the border, the
-failover is a few seconds, a recovered carrier rejoins without a hiccup, and the
-ICMP cap holds the carrier under its reroute trigger.
+failover is a couple of seconds, a recovered carrier rejoins without a hiccup, and
+the ICMP cap holds the carrier under its reroute trigger.
 
 The Go tests also prove the handshake, probe resistance (a wrong key gets
 silence), replay rejection, header protection, a full smux-over-kcp-over-UDP

@@ -66,6 +66,11 @@ type Transport struct {
 	// server: a fresh session was installed (restart the kcp accept side).
 	onSession func()
 
+	// server: ephemerals of Inits seen recently, so a replayed Init never
+	// installs a second session or (past a short window) draws a Resp.
+	hsMu    sync.Mutex
+	seenEph map[[32]byte]seenInit
+
 	inbound chan []byte
 	closed  chan struct{}
 	closeMu sync.Once
@@ -95,10 +100,33 @@ type carrierState struct {
 
 func (cs *carrierState) healthy() bool { return cs.c.Up() && !cs.down.Load() }
 
+// seenInit remembers one Init's ephemeral, so replays are recognised.
+type seenInit struct {
+	sid     [sidLen]byte
+	first   time.Time
+	carrier int
+}
+
+// respFresh bounds how long the server re-answers a client re-sending the same
+// Init (it re-sends every 700 ms until it sees the Resp); a later replay is met
+// with silence.
+const respFresh = 5 * time.Second
+
 // NewTransport builds the transport for one side.
 func newTransport(r role, psk []byte, static KeyPair, srvPub [32]byte, carriers []*carrierState) *Transport {
 	return &Transport{role: r, psk: psk, static: static, srvPub: srvPub, carriers: carriers,
-		inbound: make(chan []byte, 2048), closed: make(chan struct{}), confirmed: make(chan struct{})}
+		inbound: make(chan []byte, 2048), closed: make(chan struct{}), confirmed: make(chan struct{}),
+		seenEph: map[[32]byte]seenInit{}}
+}
+
+// ReorderDepth is the largest out-of-order gap the live session's replay window
+// has accepted, for tuning the window against real carrier reordering.
+func (tr *Transport) ReorderDepth() int64 {
+	s := tr.sess.Load()
+	if s == nil {
+		return 0
+	}
+	return int64(s.reorderDepth())
 }
 
 // start begins every carrier and the scheduler loops.
@@ -189,16 +217,54 @@ func (tr *Transport) handleInner(i int, pt []byte) {
 // ---------------------------------------------------------------- handshake
 
 func (tr *Transport) tryInit(i int, frame []byte) {
-	resp, s, err := readInit(tr.psk, tr.static, frame)
+	sid, key, eph, err := parseInit(tr.psk, tr.static, frame)
 	if err != nil {
 		return // silence
 	}
+	now := time.Now()
+	tr.hsMu.Lock()
+	tr.gcSeen(now)
+	e, seen := tr.seenEph[eph]
+	if seen {
+		// This ephemeral was already used. Never install a second session from
+		// it: that would reset sendSeq and the replay window under the same key
+		// (nonce reuse, and old frames replayed into a fresh window). Only
+		// re-answer the genuine client still re-sending its Init before it saw
+		// our Resp — same sid, same carrier, still fresh, session already live.
+		live := tr.sess.Load()
+		resend := e.sid == sid && e.carrier == i && now.Sub(e.first) <= respFresh && live != nil && live.sid == sid
+		tr.hsMu.Unlock()
+		if resend {
+			if resp, rerr := makeResp(key, sid); rerr == nil {
+				tr.carriers[i].c.Send(resp)
+			}
+		}
+		return // a replay from elsewhere, or after the window, gets silence
+	}
+	tr.seenEph[eph] = seenInit{sid: sid, first: now, carrier: i}
+	tr.hsMu.Unlock()
+
+	s, err := newSession(sid, key, false)
+	if err != nil {
+		return
+	}
 	prev := tr.sess.Swap(s)
-	cs := tr.carriers[i]
-	cs.c.Send(resp) // answer on the carrier the Init came in on
+	if resp, rerr := makeResp(key, sid); rerr == nil {
+		tr.carriers[i].c.Send(resp)
+	}
 	if prev == nil || prev.sid != s.sid {
 		if tr.onSession != nil {
 			tr.onSession()
+		}
+	}
+}
+
+// gcSeen drops Inits older than the handshake freshness window keeps mattering
+// for (2x the clock skew), so the cache cannot grow without bound.
+func (tr *Transport) gcSeen(now time.Time) {
+	for k, v := range tr.seenEph {
+		if now.Sub(v.first) > 2*clkSkew {
+			delete(tr.seenEph, k)
 		}
 	}
 }

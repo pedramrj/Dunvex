@@ -27,6 +27,8 @@ import (
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/chacha20"
@@ -83,7 +85,9 @@ func PubFromPriv(priv [32]byte) ([32]byte, error) {
 	return pub, nil
 }
 
-// session is one established channel's crypto state.
+// session is one established channel's crypto state. Several carriers feed
+// frames in at once, so the send counter is atomic and the replay window is
+// guarded.
 type session struct {
 	sid     [sidLen]byte
 	key     [keyLen]byte
@@ -91,7 +95,8 @@ type session struct {
 	hpKey   [keyLen]byte
 	sendDir byte
 	recvDir byte
-	sendSeq uint64
+	sendSeq atomic.Uint64
+	recvMu  sync.Mutex
 	replay  replayWindow
 }
 
@@ -121,8 +126,7 @@ func newSession(sid [sidLen]byte, key [keyLen]byte, client bool) (*session, erro
 
 // protect seals one plaintext frame for the wire.
 func (s *session) protect(plaintext []byte) []byte {
-	seq := s.sendSeq
-	s.sendSeq++
+	seq := s.sendSeq.Add(1) - 1
 	hdr := make([]byte, hdrLen)
 	copy(hdr, s.sid[:])
 	binary.BigEndian.PutUint64(hdr[sidLen:], seq)
@@ -159,10 +163,21 @@ func (s *session) unprotect(frame []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errSilent
 	}
-	if !s.replay.ok(seq) {
+	s.recvMu.Lock()
+	ok := s.replay.ok(seq)
+	s.recvMu.Unlock()
+	if !ok {
 		return nil, errReplay
 	}
 	return pt, nil
+}
+
+// reorderDepth is the largest accepted (top-seq) gap the replay window has seen,
+// for tuning the window against real carrier reordering.
+func (s *session) reorderDepth() uint64 {
+	s.recvMu.Lock()
+	defer s.recvMu.Unlock()
+	return s.replay.maxReorder
 }
 
 var (
@@ -222,6 +237,7 @@ func makeInit(psk []byte, serverStatic [32]byte) (initFrame []byte, sess *sessio
 	payload := make([]byte, sidLen+tsLen)
 	copy(payload, sid[:])
 	binary.BigEndian.PutUint64(payload[sidLen:], uint64(time.Now().Unix()))
+	payload = appendHandshakePad(payload) // so the Init size does not fingerprint the handshake
 	ct := a0.Seal(nil, nonce, payload, ephPub[:])
 	initFrame = make([]byte, 0, ephLen+nonceLn+len(ct))
 	initFrame = append(initFrame, ephPub[:]...)
@@ -243,68 +259,90 @@ func makeInit(psk []byte, serverStatic [32]byte) (initFrame []byte, sess *sessio
 	return initFrame, sess, nil
 }
 
-// readInit is the server side: open the Init with the PSK and the static key.
+// parseInit is the server side: open the Init with the PSK and the static key
+// and return the session id, the session key and the client's ephemeral public
+// key. It builds neither a Resp nor a session — the caller (Transport.tryInit)
+// first decides whether this Init is new and fresh, so a replayed Init can
+// never reset a live session (which would reuse record nonces) or draw a Resp.
 // Any failure returns errSilent, so the server answers nothing.
-func readInit(psk []byte, static KeyPair, initFrame []byte) (respFrame []byte, sess *session, err error) {
+func parseInit(psk []byte, static KeyPair, initFrame []byte) (sid [sidLen]byte, key [keyLen]byte, eph [32]byte, err error) {
 	if len(initFrame) < ephLen+nonceLn+tagLen {
-		return nil, nil, errSilent
+		err = errSilent
+		return
 	}
-	var ephPub [32]byte
-	copy(ephPub[:], initFrame[:ephLen])
+	copy(eph[:], initFrame[:ephLen])
 	nonce := initFrame[ephLen : ephLen+nonceLn]
 	ct := initFrame[ephLen+nonceLn:]
-	k0, err := initKey(psk, ephPub[:])
-	if err != nil {
-		return nil, nil, errSilent
+	k0, e := initKey(psk, eph[:])
+	if e != nil {
+		err = errSilent
+		return
 	}
-	a0, err := chacha20poly1305.New(k0)
-	if err != nil {
-		return nil, nil, errSilent
+	a0, e := chacha20poly1305.New(k0)
+	if e != nil {
+		err = errSilent
+		return
 	}
-	payload, err := a0.Open(nil, nonce, ct, ephPub[:])
-	if err != nil || len(payload) < sidLen+tsLen {
-		return nil, nil, errSilent
+	payload, e := a0.Open(nil, nonce, ct, eph[:])
+	if e != nil || len(payload) < sidLen+tsLen {
+		err = errSilent
+		return
 	}
-	ts := time.Unix(int64(binary.BigEndian.Uint64(payload[sidLen:])), 0)
+	ts := time.Unix(int64(binary.BigEndian.Uint64(payload[sidLen:sidLen+tsLen])), 0)
 	if d := time.Since(ts); d < -clkSkew || d > clkSkew {
-		return nil, nil, errSilent // stale or future: a replayed handshake
+		err = errSilent // stale or future: a replayed handshake
+		return
 	}
-	var sid [sidLen]byte
 	copy(sid[:], payload[:sidLen])
-	dh, err := curve25519.X25519(static.Priv[:], ephPub[:])
-	if err != nil {
-		return nil, nil, errSilent
+	dh, e := curve25519.X25519(static.Priv[:], eph[:])
+	if e != nil {
+		err = errSilent
+		return
 	}
-	key, err := sessionKey(dh, psk, sid)
-	if err != nil {
-		return nil, nil, errSilent
+	key, e = sessionKey(dh, psk, sid)
+	if e != nil {
+		err = errSilent
 	}
-	sess, err = newSession(sid, key, false)
+	return
+}
+
+// makeResp builds the server's Resp, sealed under a key derived separately from
+// the record key (so it never shares the record nonce space) and padded so its
+// size does not fingerprint the handshake.
+func makeResp(key [keyLen]byte, sid [sidLen]byte) ([]byte, error) {
+	rk, err := respKey(key)
 	if err != nil {
-		return nil, nil, errSilent
+		return nil, err
 	}
-	// Resp, sealed under the session key: proves the server holds the static key.
+	ra, err := chacha20poly1305.New(rk[:])
+	if err != nil {
+		return nil, err
+	}
 	rn := make([]byte, nonceLn)
 	randFill(rn)
 	rpayload := make([]byte, tsLen+2)
 	binary.BigEndian.PutUint64(rpayload, uint64(time.Now().Unix()))
 	rpayload[tsLen], rpayload[tsLen+1] = 'O', 'K'
-	ra, _ := chacha20poly1305.New(key[:])
+	rpayload = appendHandshakePad(rpayload)
 	rct := ra.Seal(nil, rn, rpayload, sid[:])
-	respFrame = make([]byte, 0, nonceLn+len(rct))
-	respFrame = append(respFrame, rn...)
-	respFrame = append(respFrame, rct...)
-	return respFrame, sess, nil
+	out := make([]byte, 0, nonceLn+len(rct))
+	out = append(out, rn...)
+	out = append(out, rct...)
+	return out, nil
 }
 
-// readResp is the client side: confirm the server with the session key.
+// readResp is the client side: confirm the server with the Resp key.
 func readResp(sess *session, respFrame []byte) error {
 	if len(respFrame) < nonceLn+tagLen {
 		return errSilent
 	}
+	rk, err := respKey(sess.key)
+	if err != nil {
+		return err
+	}
 	nonce := respFrame[:nonceLn]
 	ct := respFrame[nonceLn:]
-	ra, err := chacha20poly1305.New(sess.key[:])
+	ra, err := chacha20poly1305.New(rk[:])
 	if err != nil {
 		return err
 	}
@@ -313,6 +351,27 @@ func readResp(sess *session, respFrame []byte) error {
 		return errSilent
 	}
 	return nil
+}
+
+func respKey(key [keyLen]byte) ([keyLen]byte, error) {
+	var out [keyLen]byte
+	k, err := hkdf.Key(sha256.New, key[:], nil, "dvxb/v1/resp", keyLen)
+	if err != nil {
+		return out, err
+	}
+	copy(out[:], k)
+	return out, nil
+}
+
+// appendHandshakePad adds 0..96 random bytes inside the (encrypted) handshake
+// payload, so Init and Resp vary in size on the wire. The reader takes only the
+// fixed-length head and ignores the rest.
+func appendHandshakePad(b []byte) []byte {
+	var n [1]byte
+	randFill(n[:])
+	pad := make([]byte, int(n[0])%97)
+	randFill(pad)
+	return append(b, pad...)
 }
 
 func initKey(psk, ephPub []byte) ([]byte, error) {
@@ -335,38 +394,76 @@ func sessionKey(dh, psk []byte, sid [sidLen]byte) ([keyLen]byte, error) {
 // ---------------------------------------------------------------- replay window
 
 // replayWindow drops frames whose sequence number was already seen (or is far
-// below the window), so a captured frame cannot be replayed.
+// below the window), so a captured frame cannot be replayed. The window is wide
+// because the Bridge stripes frames across carriers with very different RTTs
+// (ICMP vs fake-TCP vs CDN), so legitimate frames arrive far out of order at
+// high rates; a window too narrow would drop them and force kcp retransmits.
+// Not safe for concurrent use: callers hold session.recvMu.
 type replayWindow struct {
-	top  uint64
-	bits uint64 // the 64 sequence numbers below top
-	seen bool
+	top        uint64
+	bits       []uint64 // replaySpan bits; bit at distance d (= top-seq) means that seq was seen
+	seen       bool
+	maxReorder uint64 // the largest accepted (top-seq) gap, for tuning the window
 }
 
-const replaySpan = 64
+const (
+	replaySpan  = 4096 // sequence numbers tracked below top
+	replayWords = replaySpan / 64
+)
 
 func (w *replayWindow) ok(seq uint64) bool {
 	if !w.seen {
-		w.seen, w.top, w.bits = true, seq, 1
+		w.seen, w.top = true, seq
+		w.bits = make([]uint64, replayWords)
+		w.set(0)
 		return true
 	}
 	if seq > w.top {
-		shift := seq - w.top
-		if shift >= replaySpan {
-			w.bits = 1
-		} else {
-			w.bits = (w.bits << shift) | 1
-		}
+		w.shiftUp(seq - w.top)
 		w.top = seq
+		w.set(0)
 		return true
 	}
 	back := w.top - seq
 	if back >= replaySpan {
 		return false // too old to prove it is not a replay
 	}
-	mask := uint64(1) << back
-	if w.bits&mask != 0 {
+	if back > w.maxReorder {
+		w.maxReorder = back
+	}
+	if w.get(back) {
 		return false
 	}
-	w.bits |= mask
+	w.set(back)
 	return true
+}
+
+func (w *replayWindow) set(d uint64)      { w.bits[d/64] |= 1 << (d % 64) }
+func (w *replayWindow) get(d uint64) bool { return w.bits[d/64]&(1<<(d%64)) != 0 }
+
+// shiftUp moves every recorded distance up by shift bits (the window slid
+// forward), dropping anything that falls past replaySpan.
+func (w *replayWindow) shiftUp(shift uint64) {
+	if shift >= replaySpan {
+		for i := range w.bits {
+			w.bits[i] = 0
+		}
+		return
+	}
+	words := int(shift / 64)
+	b := uint(shift % 64)
+	for i := replayWords - 1; i >= 0; i-- {
+		var lo, hi uint64
+		if i-words >= 0 {
+			lo = w.bits[i-words]
+		}
+		if b > 0 && i-words-1 >= 0 {
+			hi = w.bits[i-words-1]
+		}
+		if b == 0 {
+			w.bits[i] = lo
+		} else {
+			w.bits[i] = (lo << b) | (hi >> (64 - b))
+		}
+	}
 }

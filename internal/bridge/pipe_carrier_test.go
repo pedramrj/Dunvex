@@ -64,3 +64,16 @@ func (p *pipeCarrier) Close() error {
 	p.once.Do(func() { p.up.Store(false); close(p.closed) })
 	return nil
 }
+
+// countingCarrier is a stub that only counts the frames Send is asked to move,
+// for handshake/replay tests that feed frames in by hand.
+type countingCarrier struct {
+	recv func([]byte)
+	sent atomic.Int64
+}
+
+func (c *countingCarrier) Name() string               { return "count" }
+func (c *countingCarrier) Up() bool                   { return true }
+func (c *countingCarrier) Start(r func([]byte)) error { c.recv = r; return nil }
+func (c *countingCarrier) Send(frame []byte) error    { c.sent.Add(1); return nil }
+func (c *countingCarrier) Close() error               { return nil }

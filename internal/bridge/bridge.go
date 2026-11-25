@@ -83,6 +83,10 @@ func (l *Listener) Accept() (net.Conn, error) {
 // Stats is every carrier's live state.
 func (l *Listener) Stats() []CarrierStat { return l.tr.Stats() }
 
+// ReorderDepth is the largest out-of-order gap the replay window has accepted,
+// for tuning the window against real carrier reordering.
+func (l *Listener) ReorderDepth() int64 { return l.tr.ReorderDepth() }
+
 // Close stops the listener and the carriers.
 func (l *Listener) Close() error {
 	l.kl.Close()

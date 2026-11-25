@@ -175,7 +175,7 @@ func runServer(psk, privB64, carriers, certFile, keyFile string, seconds int) {
 		select {
 		case <-done:
 			mbps := float64(total) / time.Since(start).Seconds() / 1e6
-			fmt.Printf("RESULT total=%d bytes seconds=%.1f avg=%.2f MB/s\n", total, time.Since(start).Seconds(), mbps)
+			fmt.Printf("RESULT total=%d bytes seconds=%.1f avg=%.2f MB/s reorderDepth=%d\n", total, time.Since(start).Seconds(), mbps, ln.ReorderDepth())
 			st.Close()
 			return
 		case <-tick.C:
