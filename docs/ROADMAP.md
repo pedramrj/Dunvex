@@ -167,6 +167,7 @@ Dunvex is built and owned by **Pedram**. One binary, one database file, and one 
       secret (X25519 + PSK, ChaCha20-Poly1305), replay-protected; each carrier is probed every second, paced under the
       reported volume triggers, and the stream fails over to the healthy ones within ~3 s when one is blocked. The
       Servers page shows every carrier live in the Signal Console style. Tested in hostile-network namespaces
-      (only-ICMP, UDP blocked, RST after TLS, loss + rate cap, carriers dying and returning). See [BRIDGE.md](BRIDGE.md)
+      (only-ICMP, UDP blocked, RST after TLS, loss + rate cap, carriers dying and returning) (v1.38, beta). See
+      [BRIDGE.md](BRIDGE.md)
 - [ ] ISP-aware subscriptions: Dunvex knows a user's operator from their IP and tunes the configs for it
 - [ ] A Dunvex app (Android first): the Bridge carriers down to the phone, plus a whitelisted-WebRTC carrier
